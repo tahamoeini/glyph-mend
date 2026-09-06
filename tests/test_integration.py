@@ -10,6 +10,7 @@ def _sample_pdf(path: Path) -> None:
     page = doc.new_page(width=600, height=800)
     page.insert_text((72, 72), "Sample Document", fontsize=20)
     page.insert_text((72, 110), "This paragraph should survive extraction.", fontsize=11)
+    page.insert_text((220, 135), "x = y + 2", fontsize=12)
 
     # 2x2 table.
     x0, y0, x1, y1 = 72, 160, 420, 260
@@ -32,7 +33,7 @@ def _sample_pdf(path: Path) -> None:
     doc.close()
 
 
-def test_extracts_markdown_table_and_flow(tmp_path: Path):
+def test_extracts_semantic_markdown(tmp_path: Path):
     pdf = tmp_path / "sample.pdf"
     _sample_pdf(pdf)
     result = extract_pdf(
@@ -41,6 +42,7 @@ def test_extracts_markdown_table_and_flow(tmp_path: Path):
     )
     assert "This paragraph should survive extraction." in result.markdown
     assert "|" in result.markdown
+    assert "$$\nx = y + 2\n$$" in result.markdown
     assert "```mermaid" in result.markdown
     assert "Start" in result.markdown
     assert "Finish" in result.markdown
