@@ -194,40 +194,49 @@ def _table_from_words(page: Any, rect: BBox) -> str | None:
 
 
 def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
-    try:
-        finder = page.find_tables()
-    except Exception:
-        try:
-            finder = page.find_tables(strategy="text")
-        except Exception:
-            finder = None
+    # PyMuPDF 1.28.x enables layout-gated table detection by default. That is useful
+    # for many documents, but a valid ruled table may still be classified as a picture.
+    # Fall back to pure line detection, then text detection, before giving up.
+    attempts = (
+        {},
+        {"use_layout": False},
+        {"strategy": "text", "use_layout": False},
+    )
 
-    output: list[tuple[BBox, str]] = []
-    tables = list(getattr(finder, "tables", [])) if finder else []
-    for table in tables:
+    for kwargs in attempts:
         try:
-            if getattr(table, "row_count", 0) < 2 or getattr(table, "col_count", 0) < 2:
-                continue
-            rect = _bbox(table.bbox)
-            if not rect or rect_area(rect) <= 0:
-                continue
-            try:
-                markdown = table.to_markdown(clean=True, fill_empty=True)
-            except TypeError:
-                markdown = table.to_markdown()
-            markdown = sanitize_markdown(markdown)
-            if markdown.count("|") < 4:
-                continue
-            output.append((rect, markdown))
+            finder = page.find_tables(**kwargs)
         except Exception:
             continue
-    if output:
-        return output
 
+        output: list[tuple[BBox, str]] = []
+        for table in getattr(finder, "tables", []):
+            try:
+                if getattr(table, "row_count", 0) < 2 or getattr(table, "col_count", 0) < 2:
+                    continue
+                rect = _bbox(table.bbox)
+                if not rect or rect_area(rect) <= 0:
+                    continue
+                try:
+                    markdown = table.to_markdown(clean=True, fill_empty=True)
+                except TypeError:
+                    markdown = table.to_markdown()
+                markdown = sanitize_markdown(markdown)
+                if markdown.count("|") < 4:
+                    continue
+                output.append((rect, markdown))
+            except Exception:
+                continue
+
+        if output:
+            return output
+
+    # Last-resort fallback for simple ruled tables that PyMuPDF classifies as pictures.
     try:
         drawings = page.get_drawings()
     except Exception:
         drawings = []
+
     candidates: list[BBox] = []
     for path in drawings:
         rect = _bbox(path.get("rect"))
@@ -238,12 +247,13 @@ def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
         if width < 45 or height < 20:
             continue
         candidates.append(rect)
+
     for rect in sorted(candidates, key=rect_area, reverse=True):
         markdown = _table_from_words(page, rect)
         if markdown:
-            output.append((rect, markdown))
-            break
-    return output
+            return [(rect, markdown)]
+
+    return []
 
 
 def _picture_boxes(page_boxes: list[dict[str, Any]]) -> list[tuple[BBox, tuple[int, int] | None]]:
