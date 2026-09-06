@@ -1,5 +1,6 @@
 from .config import ExtractionConfig
-from .extractor import ExtractionResult, extract_pdf
+from .extractor import ExtractionResult
+from .pipeline import extract_pdf
 from .progress import ProgressCallback, ProgressEvent
 
 __all__ = [
