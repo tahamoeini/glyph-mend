@@ -7,6 +7,11 @@ _ZERO_WIDTH = "\u200b\u200c\u200d\u2060\ufeff"
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^\n)]*\)")
 _FENCE_RE = re.compile(r"(^```[^\n]*\n.*?^```[ \t]*$|^~~~[^\n]*\n.*?^~~~[ \t]*$)", re.MULTILINE | re.DOTALL)
+_ESCAPED_BR_RE = re.compile(r"&lt;br\s*/?&gt;", re.IGNORECASE)
+_PICTURE_MARKERS = (
+    "<!-- Start of picture text -->",
+    "<!-- End of picture text -->",
+)
 
 _LIGATURES = str.maketrans(
     {
@@ -57,6 +62,13 @@ def sanitize_markdown(text: str) -> str:
     value = _CONTROL_RE.sub("", value)
 
     value, fences = _protect_fences(value)
+
+    # PyMuPDF layout/table output can double-escape a small set of formatting artifacts.
+    # Decode only deterministic structural cases instead of broadly HTML-unescaping user text.
+    value = _ESCAPED_BR_RE.sub("<br>", value)
+    value = value.replace("&amp;#45;", "-").replace("&#45;", "-")
+    for marker in _PICTURE_MARKERS:
+        value = value.replace(marker, "")
 
     # Repair line-wrap hyphenation conservatively for Latin prose only. Fenced code,
     # Mermaid and other literal Markdown blocks have already been protected above.
