@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from .config import ExtractionConfig
@@ -14,6 +15,7 @@ from .graphics import (
     overlap_ratio,
     rect_area,
 )
+from .progress import ProgressCallback, emit_progress
 from .sanitize import sanitize_markdown
 from .semantics import (
     detect_display_equations,
@@ -349,12 +351,17 @@ def _page_markdown(
     chunk: dict[str, Any],
     page_number: int,
     config: ExtractionConfig,
+    *,
+    progress: ProgressCallback | None = None,
+    total_pages: int | None = None,
 ) -> str:
+    page_started = perf_counter()
     text = str(chunk.get("text") or "")
     page_boxes = list(chunk.get("page_boxes") or [])
     page_rect = _bbox(page.rect) or (0.0, 0.0, 1.0, 1.0)
     page_area = max(1.0, rect_area(page_rect))
     replacements: list[_Replacement] = []
+    placeholder_count = 0
 
     tables = _extract_tables(page) if config.extract_tables else []
     table_bboxes = [rect for rect, _ in tables]
@@ -416,6 +423,7 @@ def _page_markdown(
             else:
                 pos = _insertion_pos(page_boxes, rect, len(text))
                 replacements.append(_Replacement(pos, pos, placeholder, 60, rect))
+            placeholder_count += 1
             consumed_visuals.append(rect)
 
         for rect in _image_boxes(page):
@@ -426,6 +434,7 @@ def _page_markdown(
             pos = _insertion_pos(page_boxes, rect, len(text))
             placeholder = f'[IMAGE_PLACEHOLDER page={page_number} bbox="{format_bbox(rect)}"]'
             replacements.append(_Replacement(pos, pos, placeholder, 50, rect))
+            placeholder_count += 1
             consumed_visuals.append(rect)
 
         for rect in _graphic_clusters(page):
@@ -436,6 +445,7 @@ def _page_markdown(
             pos = _insertion_pos(page_boxes, rect, len(text))
             placeholder = f'[GRAPHIC_PLACEHOLDER page={page_number} bbox="{format_bbox(rect)}"]'
             replacements.append(_Replacement(pos, pos, placeholder, 40, rect))
+            placeholder_count += 1
             consumed_visuals.append(rect)
 
     output = sanitize_markdown(_apply_replacements(text, replacements))
@@ -446,6 +456,23 @@ def _page_markdown(
     if config.include_page_markers:
         marker = f"<!-- page: {page_number} -->"
         output = f"{marker}\n\n{output}" if output else marker
+
+    emit_progress(
+        progress,
+        "page",
+        f"Processed page {page_number}" + (f"/{total_pages}" if total_pages else ""),
+        current=page_number,
+        total=total_pages,
+        page=page_number,
+        elapsed_seconds=perf_counter() - page_started,
+        details={
+            "tables": len(tables),
+            "equations": len(equations),
+            "flows": len(diagrams),
+            "visual_placeholders": placeholder_count,
+            "output_chars": len(output),
+        },
+    )
     return output
 
 
@@ -454,23 +481,44 @@ def extract_pdf(
     *,
     config: ExtractionConfig | None = None,
     password: str | None = None,
+    progress: ProgressCallback | None = None,
 ) -> ExtractionResult:
-    """Extract a PDF into sanitized Markdown without calling external services."""
+    """Extract a PDF into sanitized Markdown without calling external services.
 
+    ``progress`` receives typed, non-content progress events. It is suitable for CLI logs,
+    GUIs, notebooks, job runners, or telemetry controlled by the caller.
+    """
+
+    started = perf_counter()
     config = config or ExtractionConfig()
-    config.validate()
+    document = None
     path = Path(pdf_path).expanduser().resolve()
 
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    if path.suffix.lower() != ".pdf":
-        raise ValueError(f"Expected a .pdf file: {path}")
-    if path.stat().st_size > config.max_file_mb * 1024 * 1024:
-        raise ValueError(f"PDF exceeds max_file_mb={config.max_file_mb}: {path}")
-
-    pymupdf, pymupdf4llm = _import_engines()
-    document = pymupdf.open(path)
     try:
+        emit_progress(progress, "validate", "Validating input PDF", details={"path": str(path)})
+        config.validate()
+
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        if path.suffix.lower() != ".pdf":
+            raise ValueError(f"Expected a .pdf file: {path}")
+        file_size = path.stat().st_size
+        if file_size > config.max_file_mb * 1024 * 1024:
+            raise ValueError(f"PDF exceeds max_file_mb={config.max_file_mb}: {path}")
+
+        pymupdf, pymupdf4llm = _import_engines()
+        emit_progress(
+            progress,
+            "engine",
+            "PDF extraction engines loaded",
+            elapsed_seconds=perf_counter() - started,
+            details={
+                "pymupdf": str(getattr(pymupdf, "__version__", "unknown")),
+                "pymupdf4llm": str(getattr(pymupdf4llm, "version", "unknown")),
+            },
+        )
+
+        document = pymupdf.open(path)
         if document.needs_pass:
             if not password or document.authenticate(password) <= 0:
                 raise PermissionError("PDF is password-protected; supply a valid password")
@@ -480,6 +528,31 @@ def extract_pdf(
                 f"PDF has {document.page_count} pages, exceeding max_pages={config.max_pages}"
             )
 
+        emit_progress(
+            progress,
+            "open",
+            f"Opened PDF with {document.page_count} page(s)",
+            current=0,
+            total=document.page_count,
+            elapsed_seconds=perf_counter() - started,
+            details={
+                "file_mb": round(file_size / (1024 * 1024), 3),
+                "page_count": document.page_count,
+                "ocr_enabled": config.use_ocr,
+                "force_ocr": config.force_ocr,
+                "ocr_language": config.ocr_language,
+            },
+        )
+
+        layout_started = perf_counter()
+        emit_progress(
+            progress,
+            "layout-start",
+            "Running layout-aware Markdown extraction and OCR analysis",
+            current=0,
+            total=document.page_count,
+            elapsed_seconds=layout_started - started,
+        )
         chunks = pymupdf4llm.to_markdown(
             document,
             page_chunks=True,
@@ -497,32 +570,86 @@ def extract_pdf(
         )
         if not isinstance(chunks, list):
             raise RuntimeError("PyMuPDF4LLM returned an unexpected non-page-chunk result")
+        emit_progress(
+            progress,
+            "layout-complete",
+            "Layout-aware extraction completed; running semantic page passes",
+            current=0,
+            total=document.page_count,
+            elapsed_seconds=perf_counter() - layout_started,
+            details={"chunks": len(chunks)},
+        )
 
         pages: list[str] = []
+        fallback_pages = 0
         for index, page in enumerate(document):
+            page_number = index + 1
             chunk = chunks[index] if index < len(chunks) else {"text": "", "page_boxes": []}
             try:
-                pages.append(_page_markdown(page, chunk, index + 1, config))
-            except Exception:
+                pages.append(
+                    _page_markdown(
+                        page,
+                        chunk,
+                        page_number,
+                        config,
+                        progress=progress,
+                        total_pages=document.page_count,
+                    )
+                )
+            except Exception as exc:
                 if config.strict:
                     raise
+                fallback_pages += 1
                 fallback = sanitize_markdown(str(chunk.get("text") or ""))
                 if config.extract_equations:
                     fallback = normalize_display_math_lines(fallback)
                 if config.normalize_task_lists:
                     fallback = normalize_task_lists(fallback)
                 if config.include_page_markers:
-                    fallback = f"<!-- page: {index + 1} -->\n\n{fallback}".strip()
+                    fallback = f"<!-- page: {page_number} -->\n\n{fallback}".strip()
                 pages.append(fallback)
+                emit_progress(
+                    progress,
+                    "page-fallback",
+                    f"Page {page_number} used safe text fallback",
+                    current=page_number,
+                    total=document.page_count,
+                    page=page_number,
+                    elapsed_seconds=perf_counter() - started,
+                    details={"error_type": type(exc).__name__, "error": str(exc)},
+                )
 
         markdown = sanitize_markdown("\n\n".join(page for page in pages if page.strip()))
         metadata = dict(document.metadata or {})
         metadata.update({"page_count": document.page_count, "source_filename": path.name})
-        return ExtractionResult(
+        result = ExtractionResult(
             source=path,
             markdown=markdown,
             page_count=document.page_count,
             metadata=metadata,
         )
+        emit_progress(
+            progress,
+            "complete",
+            f"Extraction completed: {document.page_count} page(s)",
+            current=document.page_count,
+            total=document.page_count,
+            elapsed_seconds=perf_counter() - started,
+            details={
+                "output_chars": len(markdown),
+                "fallback_pages": fallback_pages,
+            },
+        )
+        return result
+    except Exception as exc:
+        emit_progress(
+            progress,
+            "error",
+            "Extraction failed",
+            elapsed_seconds=perf_counter() - started,
+            details={"error_type": type(exc).__name__, "error": str(exc)},
+        )
+        raise
     finally:
-        document.close()
+        if document is not None:
+            document.close()
