@@ -1,5 +1,5 @@
 from pdf_sanitizer.config import ExtractionConfig
-from pdf_sanitizer.pipeline import _extract_layout_chunks
+from pdf_sanitizer.pipeline import _extract_layout_chunks, _invoke_markdown
 from pdf_sanitizer.progress import ProgressEvent
 
 
@@ -53,6 +53,14 @@ class FakeLLM:
         ]
 
 
+class ChattyFakeLLM(FakeLLM):
+    def to_markdown(self, document, *, pages, **kwargs):
+        print("=== Document parser messages ===")
+        print("Using Tesseract for OCR processing.")
+        print("OCR on page.number=0/1.")
+        return super().to_markdown(document, pages=pages, **kwargs)
+
+
 def test_auto_mode_repairs_pathological_layout_page():
     llm = FakeLLM()
     events: list[ProgressEvent] = []
@@ -75,3 +83,18 @@ def test_auto_mode_repairs_pathological_layout_page():
     assert noise == 0
     assert unknown == 0
     assert any(event.stage == "layout-repair" for event in events)
+
+
+def test_python_parser_chatter_is_captured_and_classified():
+    chunks, capture = _invoke_markdown(
+        FakeDocument(),
+        ChattyFakeLLM(),
+        ExtractionConfig(use_ocr=False, capture_engine_stderr=True),
+        [0],
+        use_layout=True,
+    )
+
+    assert chunks
+    assert capture is not None
+    assert len(capture.known_noise) == 3
+    assert capture.unknown == []
