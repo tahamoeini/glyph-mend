@@ -37,24 +37,17 @@ class NativeStderrCapture:
 def capture_native_stderr(enabled: bool = True) -> Iterator[NativeStderrCapture | None]:
     """Capture C/C++ stderr (for example Tesseract/Leptonica diagnostics).
 
-    ``contextlib.redirect_stderr`` only replaces Python's ``sys.stderr`` object and
-    therefore misses native libraries that write directly to file descriptor 2. This
-    context manager temporarily redirects the underlying descriptor instead.
-
-    If the current stderr object does not expose a file descriptor, capture gracefully
-    degrades to a no-op rather than breaking extraction.
+    Native OCR libraries write to process file descriptor 2 directly. Python test
+    runners and other wrappers may replace ``sys.stderr`` with an object whose own
+    file descriptor is different, so redirecting ``sys.stderr.fileno()`` is not enough.
+    We therefore redirect native fd 2 explicitly and restore it immediately afterward.
     """
 
     if not enabled:
         yield None
         return
 
-    try:
-        stderr_fd = sys.stderr.fileno()
-    except (AttributeError, OSError):
-        yield None
-        return
-
+    stderr_fd = 2
     capture = NativeStderrCapture()
     saved_fd: int | None = None
     try:
