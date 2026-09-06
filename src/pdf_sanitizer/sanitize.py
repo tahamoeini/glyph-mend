@@ -8,10 +8,19 @@ _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^\n)]*\)")
 _FENCE_RE = re.compile(r"(^```[^\n]*\n.*?^```[ \t]*$|^~~~[^\n]*\n.*?^~~~[ \t]*$)", re.MULTILINE | re.DOTALL)
 _ESCAPED_BR_RE = re.compile(r"&lt;br\s*/?&gt;", re.IGNORECASE)
+_BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _PICTURE_MARKERS = (
     "<!-- Start of picture text -->",
     "<!-- End of picture text -->",
 )
+_SAFE_ENTITIES = {
+    "&amp;": "&",
+    "&#x27;": "'",
+    "&#39;": "'",
+    "&apos;": "'",
+    "&quot;": '"',
+    "&nbsp;": " ",
+}
 
 _LIGATURES = str.maketrans(
     {
@@ -63,12 +72,20 @@ def sanitize_markdown(text: str) -> str:
 
     value, fences = _protect_fences(value)
 
-    # PyMuPDF layout/table output can double-escape a small set of formatting artifacts.
-    # Decode only deterministic structural cases instead of broadly HTML-unescaping user text.
+    # Decode only deterministic extraction artifacts. Do not broadly HTML-unescape
+    # arbitrary source text because angle brackets may be meaningful code or prose.
     value = _ESCAPED_BR_RE.sub("<br>", value)
     value = value.replace("&amp;#45;", "-").replace("&#45;", "-")
+    for source, replacement in _SAFE_ENTITIES.items():
+        value = value.replace(source, replacement)
     for marker in _PICTURE_MARKERS:
         value = value.replace(marker, "")
+
+    # PyMuPDF uses <br> inside table/layout cells to preserve visual line wrapping.
+    # In a semantic Markdown export those visual wraps are noise, not structure. Flatten
+    # them to spaces so raw Markdown stays readable and table cells stay single-line.
+    value = _BR_RE.sub(" ", value)
+    value = re.sub(r"[ \t]{2,}", " ", value)
 
     # Repair line-wrap hyphenation conservatively for Latin prose only. Fenced code,
     # Mermaid and other literal Markdown blocks have already been protected above.
