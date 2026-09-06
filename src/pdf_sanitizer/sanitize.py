@@ -6,6 +6,7 @@ import unicodedata
 _ZERO_WIDTH = "\u200b\u200c\u200d\u2060\ufeff"
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^\n)]*\)")
+_FENCE_RE = re.compile(r"(^```[^\n]*\n.*?^```[ \t]*$|^~~~[^\n]*\n.*?^~~~[ \t]*$)", re.MULTILINE | re.DOTALL)
 
 _LIGATURES = str.maketrans(
     {
@@ -20,32 +21,57 @@ _LIGATURES = str.maketrans(
 )
 
 
+def _protect_fences(text: str) -> tuple[str, list[str]]:
+    fences: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        token = f"<<<PDF_SANITIZER_FENCE_{len(fences):06d}>>>"
+        fences.append(match.group(0))
+        return token
+
+    return _FENCE_RE.sub(replace, text), fences
+
+
+def _restore_fences(text: str, fences: list[str]) -> str:
+    value = text
+    for index, fence in enumerate(fences):
+        value = value.replace(f"<<<PDF_SANITIZER_FENCE_{index:06d}>>>", fence)
+    return value
+
+
 def sanitize_markdown(text: str) -> str:
-    """Normalize extraction noise without rewriting or semantically changing content."""
+    """Normalize extraction noise without rewriting or semantically changing content.
+
+    NFC is used deliberately instead of NFKC: compatibility normalization can flatten
+    superscript/subscript characters and vulgar fractions, destroying mathematical meaning.
+    Fenced blocks are protected from prose-specific cleanup such as de-hyphenation.
+    """
 
     if not text:
         return ""
 
-    value = unicodedata.normalize("NFKC", text).translate(_LIGATURES)
+    value = text.replace("\r\n", "\n").replace("\r", "\n")
+    value = unicodedata.normalize("NFC", value).translate(_LIGATURES)
     value = value.replace("\u00ad", "")
     value = value.translate({ord(ch): None for ch in _ZERO_WIDTH})
     value = _CONTROL_RE.sub("", value)
-    value = value.replace("\r\n", "\n").replace("\r", "\n")
 
-    # Repair line-wrap hyphenation conservatively for Latin words only.
+    value, fences = _protect_fences(value)
+
+    # Repair line-wrap hyphenation conservatively for Latin prose only. Fenced code,
+    # Mermaid and other literal Markdown blocks have already been protected above.
     value = re.sub(r"(?<=[A-Za-z])-\n(?=[A-Za-z])", "", value)
 
-    # Never retain generated binary/remote image markdown. Visuals are represented
-    # by our own deterministic placeholders in the extraction stage.
+    # Generated image links/binaries are replaced by the extractor's deterministic
+    # visual placeholders. Literal examples inside fenced code remain untouched.
     value = _MD_IMAGE_RE.sub("[IMAGE_PLACEHOLDER]", value)
 
-    # Trim trailing whitespace without damaging Markdown structure.
     lines = [line.rstrip() for line in value.split("\n")]
     value = "\n".join(lines)
-
-    # Normalize excessive vertical whitespace while preserving paragraph boundaries.
     value = re.sub(r"\n{4,}", "\n\n\n", value)
     value = re.sub(r"[ \t]+\n", "\n", value)
+
+    value = _restore_fences(value, fences)
     return value.strip()
 
 
