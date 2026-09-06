@@ -22,6 +22,14 @@ class ExtractionConfig:
     detect_vector_flows: bool = True
     include_visual_placeholders: bool = True
 
+    # Process the expensive PyMuPDF4LLM layout/OCR pass in bounded page batches so
+    # callers receive meaningful progress before the entire document is finished.
+    layout_batch_pages: int = 20
+
+    # Tesseract/Leptonica may write benign diagnostics directly to native stderr,
+    # bypassing Python logging. Capture them by default and surface only a summary.
+    capture_engine_stderr: bool = True
+
     min_image_area_ratio: float = 0.0025
     min_graphic_area_ratio: float = 0.004
     full_page_scan_ratio: float = 0.80
@@ -33,6 +41,8 @@ class ExtractionConfig:
     def validate(self) -> None:
         if self.ocr_dpi < 72 or self.ocr_dpi > 600:
             raise ValueError("ocr_dpi must be between 72 and 600")
+        if self.layout_batch_pages <= 0:
+            raise ValueError("layout_batch_pages must be positive")
         for name in (
             "min_image_area_ratio",
             "min_graphic_area_ratio",
