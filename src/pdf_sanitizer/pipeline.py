@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import io
 import os
+import threading
+from contextlib import redirect_stdout
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
 from .config import ExtractionConfig
 from .extractor import ExtractionResult, _import_engines, _page_markdown
-from .native_stderr import capture_native_stderr
+from .native_stderr import NativeStderrCapture, capture_native_stderr
 from .progress import ProgressCallback, emit_progress
+from .quality import assess_layout_markdown
 from .sanitize import sanitize_markdown
 from .semantics import normalize_display_math_lines, normalize_task_lists
+
+
+_LAYOUT_SWITCH_LOCK = threading.RLock()
 
 
 def _layout_kwargs(config: ExtractionConfig) -> dict[str, Any]:
@@ -61,6 +68,60 @@ def _store_batch_chunks(
             output[index] = chunk
 
 
+def _invoke_markdown(
+    document: Any,
+    pymupdf4llm: Any,
+    config: ExtractionConfig,
+    selected_pages: list[int],
+    *,
+    use_layout: bool,
+) -> tuple[list[dict[str, Any]], NativeStderrCapture | None]:
+    """Run one PyMuPDF4LLM call with controlled global layout state and diagnostics."""
+
+    stdout_buffer = io.StringIO()
+    capture: NativeStderrCapture | None = None
+
+    # PyMuPDF4LLM exposes layout selection as process-global state. Serialize our own
+    # switches so concurrent pdf-sanitizer calls cannot toggle the engine underneath
+    # one another.
+    with _LAYOUT_SWITCH_LOCK:
+        pymupdf4llm.use_layout(use_layout)
+        try:
+            with capture_native_stderr(config.capture_engine_stderr) as native_capture:
+                capture = native_capture
+                if config.capture_engine_stderr:
+                    with redirect_stdout(stdout_buffer):
+                        result = pymupdf4llm.to_markdown(
+                            document,
+                            pages=selected_pages,
+                            **_layout_kwargs(config),
+                        )
+                else:
+                    result = pymupdf4llm.to_markdown(
+                        document,
+                        pages=selected_pages,
+                        **_layout_kwargs(config),
+                    )
+        finally:
+            # Restore the library default even after exceptions. This matters because
+            # use_layout() is global to the imported PyMuPDF4LLM module.
+            pymupdf4llm.use_layout(True)
+
+    if capture is not None and stdout_buffer.getvalue():
+        extra = stdout_buffer.getvalue()
+        capture.text = (capture.text + "\n" + extra).strip()
+
+    if not isinstance(result, list):
+        raise RuntimeError("PyMuPDF4LLM returned an unexpected non-page-chunk result")
+    return result, capture
+
+
+def _capture_counts(capture: NativeStderrCapture | None) -> tuple[int, int]:
+    if capture is None:
+        return 0, 0
+    return len(capture.known_noise), len(capture.unknown)
+
+
 def _extract_layout_chunks(
     document: Any,
     pymupdf4llm: Any,
@@ -68,7 +129,7 @@ def _extract_layout_chunks(
     *,
     progress: ProgressCallback | None,
     pipeline_started: float,
-) -> tuple[list[dict[str, Any]], int, int]:
+) -> tuple[list[dict[str, Any]], int, int, int]:
     total = document.page_count
     chunks: list[dict[str, Any]] = [
         {"text": "", "page_boxes": [], "metadata": {"page_number": index + 1}}
@@ -77,15 +138,21 @@ def _extract_layout_chunks(
     layout_started = perf_counter()
     suppressed_noise = 0
     unknown_diagnostics = 0
+    repaired_pages = 0
 
+    primary_layout = config.layout_mode != "legacy"
+    mode_label = "layout-aware" if primary_layout else "legacy"
     emit_progress(
         progress,
         "layout-start",
-        "Running batched layout-aware Markdown extraction and OCR analysis",
+        f"Running batched {mode_label} Markdown extraction and OCR analysis",
         current=0,
         total=total,
         elapsed_seconds=layout_started - pipeline_started,
-        details={"batch_pages": config.layout_batch_pages},
+        details={
+            "batch_pages": config.layout_batch_pages,
+            "layout_mode": config.layout_mode,
+        },
     )
 
     for start in range(0, total, config.layout_batch_pages):
@@ -93,21 +160,73 @@ def _extract_layout_chunks(
         selected = list(range(start, stop))
         batch_started = perf_counter()
 
-        with capture_native_stderr(config.capture_engine_stderr) as native_capture:
-            batch_chunks = pymupdf4llm.to_markdown(
-                document,
-                pages=selected,
-                **_layout_kwargs(config),
-            )
-
-        if not isinstance(batch_chunks, list):
-            raise RuntimeError("PyMuPDF4LLM returned an unexpected non-page-chunk result")
+        batch_chunks, primary_capture = _invoke_markdown(
+            document,
+            pymupdf4llm,
+            config,
+            selected,
+            use_layout=primary_layout,
+        )
         _store_batch_chunks(chunks, batch_chunks, selected)
 
-        batch_noise = len(native_capture.known_noise) if native_capture is not None else 0
-        batch_unknown = len(native_capture.unknown) if native_capture is not None else 0
+        batch_noise, batch_unknown = _capture_counts(primary_capture)
+        repair_noise = 0
+        repair_unknown = 0
+        repair_selected: list[int] = []
+        repair_details: list[dict[str, object]] = []
+
+        if config.layout_mode == "auto":
+            for index in selected:
+                quality = assess_layout_markdown(str(chunks[index].get("text") or ""), document[index])
+                if not quality.suspicious:
+                    continue
+                repair_selected.append(index)
+                repair_details.append(
+                    {
+                        "page": index + 1,
+                        "table_ratio": round(quality.table_ratio, 3),
+                        "table_rows": quality.table_rows,
+                        "prose_lines": quality.prose_lines,
+                        "split_word_boundaries": quality.split_word_boundaries,
+                    }
+                )
+
+            if repair_selected:
+                repair_chunks, repair_capture = _invoke_markdown(
+                    document,
+                    pymupdf4llm,
+                    config,
+                    repair_selected,
+                    use_layout=False,
+                )
+                _store_batch_chunks(chunks, repair_chunks, repair_selected)
+                repair_noise, repair_unknown = _capture_counts(repair_capture)
+                repaired_pages += len(repair_selected)
+
+                emit_progress(
+                    progress,
+                    "layout-repair",
+                    f"Re-extracted {len(repair_selected)} suspicious layout page(s) without Layout",
+                    current=stop,
+                    total=total,
+                    elapsed_seconds=perf_counter() - pipeline_started,
+                    details={
+                        "pages": [index + 1 for index in repair_selected],
+                        "sample_evidence": repair_details[:3],
+                    },
+                )
+
+        batch_noise += repair_noise
+        batch_unknown += repair_unknown
         suppressed_noise += batch_noise
         unknown_diagnostics += batch_unknown
+
+        captures = [capture for capture in (primary_capture,) if capture is not None]
+        if repair_selected:
+            # repair_capture is defined only when repair_selected is non-empty.
+            if repair_capture is not None:
+                captures.append(repair_capture)
+        unknown_lines = [line for capture in captures for line in capture.unknown]
 
         if batch_unknown:
             emit_progress(
@@ -119,7 +238,7 @@ def _extract_layout_chunks(
                 elapsed_seconds=perf_counter() - pipeline_started,
                 details={
                     "count": batch_unknown,
-                    "sample": native_capture.unknown[:3] if native_capture is not None else [],
+                    "sample": unknown_lines[:3],
                     "page_range": f"{start + 1}-{stop}",
                 },
             )
@@ -134,6 +253,7 @@ def _extract_layout_chunks(
             details={
                 "batch_seconds": round(perf_counter() - batch_started, 3),
                 "returned_chunks": len(batch_chunks),
+                "repaired_pages": len(repair_selected),
                 "suppressed_native_noise": batch_noise,
                 "unexpected_native_diagnostics": batch_unknown,
             },
@@ -142,17 +262,19 @@ def _extract_layout_chunks(
     emit_progress(
         progress,
         "layout-complete",
-        "Layout-aware extraction completed; running semantic page passes",
+        "Layout extraction completed; running semantic page passes",
         current=total,
         total=total,
         elapsed_seconds=perf_counter() - layout_started,
         details={
             "chunks": len(chunks),
+            "layout_mode": config.layout_mode,
+            "repaired_pages": repaired_pages,
             "suppressed_native_noise": suppressed_noise,
             "unexpected_native_diagnostics": unknown_diagnostics,
         },
     )
-    return chunks, suppressed_noise, unknown_diagnostics
+    return chunks, suppressed_noise, unknown_diagnostics, repaired_pages
 
 
 def extract_pdf(
@@ -216,12 +338,13 @@ def extract_pdf(
                 "ocr_enabled": config.use_ocr,
                 "force_ocr": config.force_ocr,
                 "ocr_language": config.ocr_language,
+                "layout_mode": config.layout_mode,
                 "layout_batch_pages": config.layout_batch_pages,
                 "capture_engine_stderr": config.capture_engine_stderr,
             },
         )
 
-        chunks, suppressed_noise, unknown_diagnostics = _extract_layout_chunks(
+        chunks, suppressed_noise, unknown_diagnostics, repaired_pages = _extract_layout_chunks(
             document,
             pymupdf4llm,
             config,
@@ -270,7 +393,14 @@ def extract_pdf(
 
         markdown = sanitize_markdown("\n\n".join(page for page in pages if page.strip()))
         metadata = dict(document.metadata or {})
-        metadata.update({"page_count": document.page_count, "source_filename": path.name})
+        metadata.update(
+            {
+                "page_count": document.page_count,
+                "source_filename": path.name,
+                "layout_mode": config.layout_mode,
+                "layout_repaired_pages": repaired_pages,
+            }
+        )
         result = ExtractionResult(
             source=path,
             markdown=markdown,
@@ -287,6 +417,7 @@ def extract_pdf(
             details={
                 "output_chars": len(markdown),
                 "fallback_pages": fallback_pages,
+                "layout_repaired_pages": repaired_pages,
                 "suppressed_native_noise": suppressed_noise,
                 "unexpected_native_diagnostics": unknown_diagnostics,
             },
