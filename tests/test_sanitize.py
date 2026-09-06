@@ -21,19 +21,16 @@ def test_replaces_markdown_images():
     )
 
 
-def test_decodes_safe_layout_artifacts_and_removes_internal_picture_markers():
-    value = (
-        "a&amp;#45;b&lt;br&gt;c\n"
-        "<!-- Start of picture text -->\n"
-        "visible\n"
-        "<!-- End of picture text -->"
-    )
-    result = sanitize_markdown(value)
-    assert "a-b<br>c" in result
-    assert "visible" in result
-    assert "picture text" not in result
-
-
 def test_does_not_rewrite_fenced_code():
-    value = "```text\ninter-\nnational\n![x](image.png)\n```"
+    value = "```text\ninter-\nnational\n![x](image.png)\n<br>\n```"
     assert sanitize_markdown(value) == value
+
+
+def test_normalizes_escaped_layout_artifacts():
+    value = "A&amp;#45;B &lt;br&gt; C &amp; D &#x27;quoted&#x27;"
+    assert sanitize_markdown(value) == "A-B C & D 'quoted'"
+
+
+def test_flattens_visual_br_tags_in_raw_markdown():
+    value = "Revenue<br>Management<br>\n| A<br>B | C |"
+    assert sanitize_markdown(value) == "Revenue Management\n| A B | C |"
