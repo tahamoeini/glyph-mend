@@ -121,6 +121,78 @@ def _apply_replacements(text: str, replacements: list[_Replacement]) -> str:
     return value
 
 
+def _table_from_words(page: Any, rect: BBox) -> str | None:
+    try:
+        words = page.get_text("words", clip=(rect[0], rect[1], rect[2], rect[3]))
+    except Exception:
+        return None
+    if not words:
+        return None
+
+    rows: list[list[dict[str, float | str]]] = []
+    current: list[dict[str, float | str]] = []
+    current_y: float | None = None
+    for word in words:
+        try:
+            if isinstance(word, (list, tuple)) and len(word) >= 5:
+                x0, y0, x1, y1, text = word[:5]
+            else:
+                continue
+        except Exception:
+            continue
+        label = str(text).strip()
+        if not label:
+            continue
+        item = {"x0": float(x0), "x1": float(x1), "y0": float(y0), "text": label}
+        if current_y is None:
+            current_y = item["y0"]
+        if abs(float(item["y0"]) - float(current_y)) > 12:
+            rows.append(current)
+            current = [item]
+            current_y = item["y0"]
+        else:
+            current.append(item)
+    if current:
+        rows.append(current)
+
+    normalized: list[list[str]] = []
+    for row in rows:
+        if not row:
+            continue
+        row = sorted(row, key=lambda item: float(item["x0"]))
+        cells: list[list[dict[str, float | str]]] = []
+        current_cell: list[dict[str, float | str]] = [row[0]]
+        for item in row[1:]:
+            gap = float(item["x0"]) - float(current_cell[-1]["x1"])
+            if gap > 18.0:
+                cells.append(current_cell)
+                current_cell = [item]
+            else:
+                current_cell.append(item)
+        cells.append(current_cell)
+        values = [" ".join(str(part["text"]) for part in cell).strip() for cell in cells if cell]
+        if values:
+            normalized.append(values)
+
+    if len(normalized) < 2:
+        return None
+    if max(len(row) for row in normalized) < 2:
+        return None
+
+    header = normalized[0]
+    body = normalized[1:]
+    width = max(len(header), max((len(row) for row in body), default=len(header)))
+    lines = [
+        "| " + " | ".join(header[:width]) + " |",
+        "| " + " | ".join(["---"] * width) + " |",
+    ]
+    for row in body:
+        cells = row[:width] + [""] * max(0, width - len(row))
+        lines.append("| " + " | ".join(cells) + " |")
+    markdown = "\n".join(lines)
+    return markdown if markdown.count("|") >= 4 else None
+
+
 def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
     try:
         finder = page.find_tables()
@@ -128,10 +200,11 @@ def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
         try:
             finder = page.find_tables(strategy="text")
         except Exception:
-            return []
+            finder = None
 
     output: list[tuple[BBox, str]] = []
-    for table in getattr(finder, "tables", []):
+    tables = list(getattr(finder, "tables", [])) if finder else []
+    for table in tables:
         try:
             if getattr(table, "row_count", 0) < 2 or getattr(table, "col_count", 0) < 2:
                 continue
@@ -148,6 +221,28 @@ def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
             output.append((rect, markdown))
         except Exception:
             continue
+    if output:
+        return output
+
+    try:
+        drawings = page.get_drawings()
+    except Exception:
+        drawings = []
+    candidates: list[BBox] = []
+    for path in drawings:
+        rect = _bbox(path.get("rect"))
+        if not rect or rect_area(rect) <= 0:
+            continue
+        width = rect[2] - rect[0]
+        height = rect[3] - rect[1]
+        if width < 45 or height < 20:
+            continue
+        candidates.append(rect)
+    for rect in sorted(candidates, key=rect_area, reverse=True):
+        markdown = _table_from_words(page, rect)
+        if markdown:
+            output.append((rect, markdown))
+            break
     return output
 
 
