@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pymupdf
 
-from pdf_sanitizer import ExtractionConfig, extract_pdf
+from pdf_sanitizer import ExtractionConfig, ProgressEvent, extract_pdf
 
 
 def _sample_pdf(path: Path) -> None:
@@ -33,16 +33,35 @@ def _sample_pdf(path: Path) -> None:
     doc.close()
 
 
-def test_extracts_semantic_markdown(tmp_path: Path):
+def test_extracts_semantic_markdown_and_emits_progress(tmp_path: Path):
     pdf = tmp_path / "sample.pdf"
     _sample_pdf(pdf)
+    events: list[ProgressEvent] = []
+
     result = extract_pdf(
         pdf,
         config=ExtractionConfig(use_ocr=False, keep_headers=True, keep_footers=True),
+        progress=events.append,
     )
+
     assert "This paragraph should survive extraction." in result.markdown
     assert "|" in result.markdown
     assert "$$\nx = y + 2\n$$" in result.markdown
     assert "```mermaid" in result.markdown
     assert "Start" in result.markdown
     assert "Finish" in result.markdown
+
+    stages = [event.stage for event in events]
+    assert stages[0] == "validate"
+    assert "layout-start" in stages
+    assert "layout-complete" in stages
+    assert "page" in stages
+    assert stages[-1] == "complete"
+
+    page_event = next(event for event in events if event.stage == "page")
+    assert page_event.current == 1
+    assert page_event.total == 1
+    assert page_event.percent == 100.0
+    assert page_event.details["tables"] >= 1
+    assert page_event.details["equations"] >= 1
+    assert page_event.details["flows"] >= 1
