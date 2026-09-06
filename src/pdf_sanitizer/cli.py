@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from .config import ExtractionConfig
-from .extractor import extract_pdf
+from .pipeline import extract_pdf
 from .reporting import ProgressReporter
 
 
@@ -29,6 +29,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-flows", action="store_true", help="Disable Mermaid vector-flow reconstruction")
     parser.add_argument("--no-placeholders", action="store_true", help="Omit image/graphic placeholders")
     parser.add_argument("--max-pages", type=int, default=2000, help="Reject PDFs above this page count")
+    parser.add_argument(
+        "--layout-batch-pages",
+        type=int,
+        default=20,
+        help="Pages per layout/OCR batch; smaller values give finer progress updates",
+    )
+    parser.add_argument(
+        "--show-engine-warnings",
+        action="store_true",
+        help="Do not capture raw native Tesseract/Leptonica stderr diagnostics",
+    )
     parser.add_argument("--strict", action="store_true", help="Fail instead of falling back on page-level errors")
     parser.add_argument("--stdout", action="store_true", help="Write Markdown to stdout instead of a file")
 
@@ -38,13 +49,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="count",
         default=0,
-        help="Show every page; use -vv to include detection details",
+        help="Show every progress batch/page; use -vv to include detection details",
     )
     logging_group.add_argument(
         "-q",
         "--quiet",
         action="store_true",
-        help="Suppress console progress logs except errors",
+        help="Suppress console progress logs except errors/warnings",
     )
     logging_group.add_argument(
         "--log-file",
@@ -74,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         normalize_task_lists=not args.no_task_lists,
         detect_vector_flows=not args.no_flows,
         include_visual_placeholders=not args.no_placeholders,
+        layout_batch_pages=args.layout_batch_pages,
+        capture_engine_stderr=not args.show_engine_warnings,
         max_pages=args.max_pages,
         strict=args.strict,
     )
