@@ -89,7 +89,7 @@ For OCR, install Tesseract and the language packs you need. OCR is only used whe
 pdf-sanitizer input.pdf
 ```
 
-This writes `input.md` next to the PDF.
+This writes `input.md` next to the PDF. Progress logs go to **stderr**, so `--stdout` remains safe for piping Markdown into another command.
 
 Useful options:
 
@@ -106,6 +106,54 @@ pdf-sanitizer input.pdf --no-flows
 pdf-sanitizer input.pdf --no-placeholders
 pdf-sanitizer protected.pdf --password "..."
 ```
+
+## Progress logging
+
+Normal CLI runs show low-noise milestones plus coarse page progress. Use `-v` for every page and `-vv` for per-page semantic details such as detected tables, equations, flows, and visual placeholders.
+
+```bash
+# Normal progress on stderr
+pdf-sanitizer input.pdf
+
+# Every page
+pdf-sanitizer input.pdf -v
+
+# Every page plus semantic detection details
+pdf-sanitizer input.pdf -vv
+
+# Errors only on the console
+pdf-sanitizer input.pdf --quiet
+
+# Persist every progress event to a text log
+pdf-sanitizer input.pdf --log-file extraction.log
+
+# Machine-readable JSON Lines progress
+pdf-sanitizer input.pdf --log-file extraction.jsonl --log-format json
+```
+
+Progress stages include input validation, engine loading, PDF opening, layout/OCR extraction start and completion, per-page semantic processing, page-level safe fallbacks, final completion, and failures.
+
+A page event can include data such as:
+
+```json
+{
+  "stage": "page",
+  "current": 12,
+  "total": 40,
+  "percent": 30.0,
+  "page": 12,
+  "elapsed_seconds": 0.18,
+  "details": {
+    "tables": 1,
+    "equations": 2,
+    "flows": 0,
+    "visual_placeholders": 1,
+    "output_chars": 3842
+  }
+}
+```
+
+Persistent log files receive **all** progress events even when console output is coarsened or `--quiet` is used.
 
 ## Python API
 
@@ -127,6 +175,24 @@ result = extract_pdf(
 
 print(result.markdown)
 ```
+
+Library callers can consume typed progress events directly instead of scraping log text:
+
+```python
+from pdf_sanitizer import ProgressEvent, extract_pdf
+
+
+def on_progress(event: ProgressEvent) -> None:
+    if event.percent is not None:
+        print(f"{event.stage}: {event.percent:.0f}%")
+    else:
+        print(f"{event.stage}: {event.message}")
+
+
+result = extract_pdf("input.pdf", progress=on_progress)
+```
+
+The progress callback contains no PDF text content. It reports operational metadata and counts, leaving telemetry/storage policy under the caller's control.
 
 ## Example output
 
@@ -230,6 +296,7 @@ These are explicit boundaries, not forgotten features.
 
 - No network calls or external AI APIs.
 - Does not execute PDF JavaScript, attachments, links, or embedded files.
+- Progress events do not contain extracted PDF text; only stages, counts, timing, paths, and error metadata.
 - Default input limit: 512 MB.
 - Default page limit: 2,000 pages.
 - Password-protected PDFs require an explicit password.
@@ -243,7 +310,7 @@ ruff check src tests
 pytest
 ```
 
-Regression coverage includes sanitization, semantic math conversion, task lists, table extraction, vector-flow reconstruction, and generated end-to-end PDFs.
+Regression coverage includes sanitization, semantic math conversion, task lists, table extraction, vector-flow reconstruction, progress reporting, and generated end-to-end PDFs.
 
 CI runs linting and tests on every push and pull request.
 
