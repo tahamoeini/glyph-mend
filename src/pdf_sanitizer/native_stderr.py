@@ -11,12 +11,15 @@ from typing import Iterator
 _KNOWN_NOISE = (
     "Image too small to scale!!",
     "Line cannot be recognized!!",
+    "=== Document parser messages ===",
+    "Using Tesseract for OCR processing.",
+    "OCR on page.number=",
 )
 
 
 @dataclass(slots=True)
 class NativeStderrCapture:
-    """Captured native-library stderr emitted below Python's logging layer."""
+    """Captured native/parser diagnostics emitted below the package logging layer."""
 
     text: str = ""
 
@@ -41,6 +44,8 @@ def capture_native_stderr(enabled: bool = True) -> Iterator[NativeStderrCapture 
     runners and other wrappers may replace ``sys.stderr`` with an object whose own
     file descriptor is different, so redirecting ``sys.stderr.fileno()`` is not enough.
     We therefore redirect native fd 2 explicitly and restore it immediately afterward.
+    Python-level stdout emitted by PyMuPDF4LLM is captured separately by the pipeline
+    and merged into this object for classification.
     """
 
     if not enabled:
