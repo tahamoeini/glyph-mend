@@ -138,6 +138,15 @@ def _translate_runs(text: str, chars: str, translation: dict[int, str], marker: 
     return pattern.sub(repl, text)
 
 
+def _replace_math_symbol(value: str, source: str, replacement: str) -> str:
+    # A LaTeX command followed directly by an ASCII letter needs a separator. Detect
+    # that boundary in the original source text, before replacement, instead of trying
+    # to parse already-produced commands such as \alpha or \leq.
+    pattern = re.compile(re.escape(source) + r"(?=[A-Za-z])")
+    value = pattern.sub(lambda _: replacement + " ", value)
+    return value.replace(source, replacement)
+
+
 def text_to_latex(text: str) -> str:
     """Conservatively normalize Unicode math into GitHub/MathJax-friendly LaTeX."""
 
@@ -147,17 +156,12 @@ def text_to_latex(text: str) -> str:
 
     value = _translate_runs(value, _SUPER_CHARS, _SUPERSCRIPT, "^")
     value = _translate_runs(value, _SUB_CHARS, _SUBSCRIPT, "_")
-
-    # Handle the common unambiguous square-root case without guessing expression scope.
     value = re.sub(r"√\s*([A-Za-z0-9]+)", r"\\sqrt{\1}", value)
 
     for source, replacement in {**_GREEK, **_SYMBOLS}.items():
-        value = value.replace(source, replacement)
+        value = _replace_math_symbol(value, source, replacement)
 
-    # LaTeX commands need a separator before a following ASCII letter.
-    value = re.sub(r"(\\[A-Za-z]+)(?=[A-Za-z])", r"\1 ", value)
-    value = re.sub(r"[ \t]+", " ", value).strip()
-    return value
+    return re.sub(r"[ \t]+", " ", value).strip()
 
 
 def _span_text(span: dict[str, Any]) -> str:
@@ -206,8 +210,6 @@ def _line_latex(spans: list[dict[str, Any]]) -> tuple[str, str]:
         raw_parts.append(raw)
         latex = text_to_latex(raw)
         if int(span.get("flags") or 0) & 1 and latex:
-            # If the glyph is already explicitly superscripted Unicode, text_to_latex
-            # has handled it and wrapping again would duplicate the exponent.
             if not any(ch in raw for ch in _SUPER_CHARS):
                 latex = f"^{{{latex}}}"
         latex_parts.append(latex)
@@ -220,11 +222,7 @@ def detect_display_equations(
     page: Any,
     excluded_bboxes: Iterable[BBox] | None = None,
 ) -> list[DisplayEquation]:
-    """Detect text-based display equations and emit conservative LaTeX math blocks.
-
-    This intentionally handles only lines with strong mathematical evidence. Inline prose
-    is left untouched rather than being wrapped in math delimiters based on weak guesses.
-    """
+    """Detect text-based display equations and emit conservative LaTeX math blocks."""
 
     excluded = list(excluded_bboxes or [])
     try:
@@ -268,11 +266,7 @@ def _outside_fences(markdown: str, transform: Callable[[str], str]) -> str:
 
 
 def normalize_display_math_lines(markdown: str) -> str:
-    """Catch strong standalone equations left by OCR or layout extraction.
-
-    This is intentionally stricter than native span-level detection because OCR has less
-    structural evidence. It never rewrites fenced code, Mermaid, or existing literal blocks.
-    """
+    """Catch strong standalone equations left by OCR or layout extraction."""
 
     def transform(part: str) -> str:
         lines: list[str] = []
