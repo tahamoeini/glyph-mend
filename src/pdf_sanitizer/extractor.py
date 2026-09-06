@@ -15,6 +15,11 @@ from .graphics import (
     rect_area,
 )
 from .sanitize import sanitize_markdown
+from .semantics import (
+    detect_display_equations,
+    normalize_display_math_lines,
+    normalize_task_lists,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,7 +57,11 @@ def _bbox(value: Any) -> BBox | None:
         return None
 
 
-def _box_span(page_boxes: list[dict[str, Any]], target: BBox, threshold: float = 0.45) -> tuple[int, int] | None:
+def _box_span(
+    page_boxes: list[dict[str, Any]],
+    target: BBox,
+    threshold: float = 0.45,
+) -> tuple[int, int] | None:
     spans: list[tuple[int, int]] = []
     for box in page_boxes:
         box_bbox = _bbox(box.get("bbox"))
@@ -70,6 +79,38 @@ def _box_span(page_boxes: list[dict[str, Any]], target: BBox, threshold: float =
     if not spans:
         return None
     return min(s[0] for s in spans), max(s[1] for s in spans)
+
+
+def _source_span(text: str, source: str) -> tuple[int, int] | None:
+    source = source.strip()
+    if not source:
+        return None
+    start = text.find(source)
+    if start < 0:
+        return None
+    if text.find(source, start + 1) >= 0:
+        return None
+    return start, start + len(source)
+
+
+def _equation_span(
+    text: str,
+    page_boxes: list[dict[str, Any]],
+    bbox: BBox,
+    source: str,
+) -> tuple[int, int] | None:
+    exact = _source_span(text, source)
+    if exact:
+        return exact
+
+    geometric = _box_span(page_boxes, bbox, threshold=0.55)
+    if not geometric:
+        return None
+    span_length = geometric[1] - geometric[0]
+    # Do not let a small equation replace a large paragraph-level layout box.
+    if span_length <= max(32, int(len(source) * 2.5)):
+        return geometric
+    return None
 
 
 def _insertion_pos(page_boxes: list[dict[str, Any]], target: BBox, text_length: int) -> int:
@@ -106,7 +147,6 @@ def _select_replacements(items: list[_Replacement]) -> list[_Replacement]:
 
 def _apply_replacements(text: str, replacements: list[_Replacement]) -> str:
     value = text
-    # Reverse-order edits preserve original character offsets.
     ordered = sorted(
         _select_replacements(replacements),
         key=lambda r: (r.start, r.stop, r.priority),
@@ -194,9 +234,6 @@ def _table_from_words(page: Any, rect: BBox) -> str | None:
 
 
 def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
-    # PyMuPDF 1.28.x enables layout-gated table detection by default. That is useful
-    # for many documents, but a valid ruled table may still be classified as a picture.
-    # Fall back to pure line detection, then text detection, before giving up.
     attempts = (
         {},
         {"use_layout": False},
@@ -231,7 +268,6 @@ def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
         if this_output:
             return this_output
 
-    # Last-resort fallback for simple ruled tables that PyMuPDF classifies as pictures.
     try:
         drawings = page.get_drawings()
     except Exception:
@@ -326,7 +362,6 @@ def _page_markdown(
         span = _box_span(page_boxes, rect)
         if span:
             existing = text[span[0] : span[1]]
-            # PyMuPDF4LLM often already did the correct job. Do not churn good tables.
             if existing.count("|") >= 4 and "\n" in existing:
                 continue
             replacements.append(_Replacement(span[0], span[1], table_md, 100, rect))
@@ -338,6 +373,22 @@ def _page_markdown(
     if config.detect_vector_flows:
         diagrams = detect_vector_diagrams(page, excluded_bboxes=table_bboxes)
     diagram_bboxes = [item.bbox for item in diagrams]
+
+    equations = []
+    if config.extract_equations:
+        equations = detect_display_equations(
+            page,
+            excluded_bboxes=table_bboxes + diagram_bboxes,
+        )
+    equation_bboxes = [item.bbox for item in equations]
+    for equation in equations:
+        span = _equation_span(text, page_boxes, equation.bbox, equation.source_text)
+        if span:
+            replacements.append(_Replacement(span[0], span[1], equation.markdown, 95, equation.bbox))
+        else:
+            pos = _insertion_pos(page_boxes, equation.bbox, len(text))
+            replacements.append(_Replacement(pos, pos, equation.markdown, 95, equation.bbox))
+
     for diagram in diagrams:
         span = _box_span(page_boxes, diagram.bbox, threshold=0.30)
         if span:
@@ -349,15 +400,13 @@ def _page_markdown(
     if config.include_visual_placeholders:
         native_text = (page.get_text("text") or "").strip()
         picture_boxes = _picture_boxes(page_boxes)
-        consumed_visuals = table_bboxes + diagram_bboxes
+        consumed_visuals = table_bboxes + equation_bboxes + diagram_bboxes
 
         for rect, span in picture_boxes:
             area_ratio = rect_area(rect) / page_area
             if area_ratio < config.min_image_area_ratio or _overlaps_any(rect, consumed_visuals):
                 continue
 
-            # A full-page raster with little native text is probably a scanned page.
-            # Keep OCR output instead of replacing the page with one useless placeholder.
             if area_ratio >= config.full_page_scan_ratio and len(native_text) < 50 and len(text.strip()) >= 80:
                 continue
 
@@ -390,6 +439,10 @@ def _page_markdown(
             consumed_visuals.append(rect)
 
     output = sanitize_markdown(_apply_replacements(text, replacements))
+    if config.extract_equations:
+        output = normalize_display_math_lines(output)
+    if config.normalize_task_lists:
+        output = normalize_task_lists(output)
     if config.include_page_markers:
         marker = f"<!-- page: {page_number} -->"
         output = f"{marker}\n\n{output}" if output else marker
@@ -433,6 +486,7 @@ def extract_pdf(
             write_images=False,
             embed_images=False,
             force_text=True,
+            ignore_code=False,
             use_ocr=config.use_ocr,
             force_ocr=config.force_ocr,
             ocr_language=config.ocr_language,
@@ -453,6 +507,10 @@ def extract_pdf(
                 if config.strict:
                     raise
                 fallback = sanitize_markdown(str(chunk.get("text") or ""))
+                if config.extract_equations:
+                    fallback = normalize_display_math_lines(fallback)
+                if config.normalize_task_lists:
+                    fallback = normalize_task_lists(fallback)
                 if config.include_page_markers:
                     fallback = f"<!-- page: {index + 1} -->\n\n{fallback}".strip()
                 pages.append(fallback)
