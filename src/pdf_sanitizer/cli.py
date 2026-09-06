@@ -23,6 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-footers", action="store_true", help="Keep detected page footers")
     parser.add_argument("--no-page-markers", action="store_true", help="Omit HTML page comments")
     parser.add_argument("--no-tables", action="store_true", help="Disable table correction/extraction")
+    parser.add_argument("--no-equations", action="store_true", help="Disable LaTeX display-equation reconstruction")
+    parser.add_argument("--no-task-lists", action="store_true", help="Do not normalize PDF checkbox lists")
     parser.add_argument("--no-flows", action="store_true", help="Disable Mermaid vector-flow reconstruction")
     parser.add_argument("--no-placeholders", action="store_true", help="Omit image/graphic placeholders")
     parser.add_argument("--max-pages", type=int, default=2000, help="Reject PDFs above this page count")
@@ -41,6 +43,8 @@ def main(argv: list[str] | None = None) -> int:
         keep_footers=args.keep_footers,
         include_page_markers=not args.no_page_markers,
         extract_tables=not args.no_tables,
+        extract_equations=not args.no_equations,
+        normalize_task_lists=not args.no_task_lists,
         detect_vector_flows=not args.no_flows,
         include_visual_placeholders=not args.no_placeholders,
         max_pages=args.max_pages,
@@ -48,8 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        call_kwargs = {'password': args.password}
-        result = extract_pdf(args.input, config=config, **call_kwargs)
+        result = extract_pdf(args.input, config=config, password=args.password)
     except Exception as exc:
         print(f"pdf-sanitizer: {exc}", file=sys.stderr)
         return 1
