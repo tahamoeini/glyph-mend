@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
@@ -119,6 +120,14 @@ _MATH_FONT_HINTS = ("math", "symbol", "stix", "cambria", "computer modern", "cms
 _URL_RE = re.compile(r"(?:https?://|www\.|\b\S+@\S+\.\S+)", re.IGNORECASE)
 _WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{3,}")
 _FENCE_RE = re.compile(r"(^```[^\n]*\n.*?^```[ \t]*$|^~~~[^\n]*\n.*?^~~~[ \t]*$)", re.MULTILINE | re.DOTALL)
+_MATH_BLOCK_RE = re.compile(r"\$\$\s*(.*?)\s*\$\$", re.DOTALL)
+_PICTURE_START = "<!-- Start of picture text -->"
+_PICTURE_END = "<!-- End of picture text -->"
+_BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_TAG_RE = re.compile(r"<[^>]+>")
+_LATEX_SIGNAL_RE = re.compile(r"\\(?:frac|sqrt|sum|prod|int|partial|nabla|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|phi|omega|leq|geq|neq|approx|infty|to)\b")
+_RELATION_RE = re.compile(r"(?:=|≤|≥|≠|≈|≡|(?<!<)<(?![!A-Za-z/])|(?<!>)>(?![A-Za-z]))")
+_VARIABLE_OPERATOR_RE = re.compile(r"(?:^|\s|\()[A-Za-z][A-Za-z0-9_]*\s*(?:[+*/^]|-(?!\d))\s*(?:[A-Za-z0-9(])")
 
 
 def _bbox(value: Any) -> BBox | None:
@@ -173,7 +182,9 @@ def _math_score(text: str, spans: list[dict[str, Any]]) -> int:
     if len(stripped) < 3 or len(stripped) > 260 or _URL_RE.search(stripped):
         return -100
 
-    math_hits = sum(1 for ch in stripped if ch in _MATH_CHARS)
+    # Hyphens are weak evidence by themselves because ISBNs, dates, and prose contain
+    # many of them. Stronger mathematical signals receive most of the score.
+    math_hits = sum(1 for ch in stripped if ch in _MATH_CHARS and ch != "-")
     relations = sum(1 for ch in stripped if ch in "=<>≤≥≠≈≡")
     greek = sum(1 for ch in stripped if ch in _GREEK)
     super_sub = sum(1 for ch in stripped if ch in _SUPER_CHARS or ch in _SUB_CHARS)
@@ -198,6 +209,36 @@ def _math_score(text: str, spans: list[dict[str, Any]]) -> int:
     if stripped.endswith((".", "!", "?")) and len(words) > 5:
         score -= 2
     return score
+
+
+def _clean_math_payload(value: str) -> str:
+    value = value.replace(_PICTURE_START, "").replace(_PICTURE_END, "")
+    value = _BR_RE.sub("\n", value)
+    # Some extractors double-escape HTML entities. Two passes are intentional.
+    value = html.unescape(html.unescape(value))
+    value = _TAG_RE.sub("", value)
+    value = value.replace("`", "")
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in value.splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
+def _plausible_math(text: str) -> bool:
+    value = _clean_math_payload(text)
+    if len(value) < 3 or len(value) > 500 or _URL_RE.search(value):
+        return False
+
+    words = _WORD_RE.findall(value)
+    relation = bool(_RELATION_RE.search(value))
+    latex_signal = bool(_LATEX_SIGNAL_RE.search(value))
+    advanced_symbol = any(ch in value for ch in "±∓×÷≤≥≠≈≡∞∑∏∫√∂∇∈∉⊂⊆⊃⊇∪∩→←↔⇒⇐⇔∝")
+    scripts = bool(re.search(r"(?:\^|_)(?:\{|[A-Za-z0-9])", value))
+    variable_operator = bool(_VARIABLE_OPERATOR_RE.search(value))
+
+    if len(words) > 10 and not (latex_signal or advanced_symbol):
+        return False
+    if relation or latex_signal or advanced_symbol or scripts:
+        return True
+    return variable_operator and len(words) <= 6
 
 
 def _line_latex(spans: list[dict[str, Any]]) -> tuple[str, str]:
@@ -239,7 +280,12 @@ def detect_display_equations(
             if not spans:
                 continue
             raw_text, latex_text = _line_latex(spans)
-            if not raw_text or not latex_text or _math_score(raw_text, spans) < 4:
+            if (
+                not raw_text
+                or not latex_text
+                or not _plausible_math(raw_text)
+                or _math_score(raw_text, spans) < 4
+            ):
                 continue
 
             rects = [_bbox(span.get("bbox")) for span in spans]
@@ -265,10 +311,28 @@ def _outside_fences(markdown: str, transform: Callable[[str], str]) -> str:
     return "".join(part if _FENCE_RE.fullmatch(part) else transform(part) for part in parts)
 
 
+def _repair_existing_math_blocks(part: str) -> str:
+    """Remove false display-math wrappers produced by layout/OCR heuristics."""
+
+    def repl(match: re.Match[str]) -> str:
+        raw = match.group(1)
+        cleaned = _clean_math_payload(raw)
+        if not cleaned:
+            return ""
+        if not _plausible_math(cleaned):
+            return cleaned
+        normalized = "\n".join(text_to_latex(line) for line in cleaned.splitlines())
+        return f"$$\n{normalized}\n$$"
+
+    value = _MATH_BLOCK_RE.sub(repl, part)
+    return value.replace(_PICTURE_START, "").replace(_PICTURE_END, "")
+
+
 def normalize_display_math_lines(markdown: str) -> str:
-    """Catch strong standalone equations left by OCR or layout extraction."""
+    """Repair existing math blocks and catch strong standalone equations."""
 
     def transform(part: str) -> str:
+        part = _repair_existing_math_blocks(part)
         lines: list[str] = []
         inside_math = False
         for line in part.split("\n"):
@@ -283,7 +347,7 @@ def normalize_display_math_lines(markdown: str) -> str:
             if stripped.startswith(("#", "|", ">", "- ", "* ", "+ ", "[", "<!--")):
                 lines.append(line)
                 continue
-            if _math_score(stripped, []) >= 6:
+            if _plausible_math(stripped) and _math_score(stripped, []) >= 6:
                 lines.extend(("$$", text_to_latex(stripped), "$$"))
             else:
                 lines.append(line)
