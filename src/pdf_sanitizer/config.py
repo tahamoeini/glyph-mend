@@ -17,6 +17,8 @@ class ExtractionConfig:
     include_page_markers: bool = True
 
     extract_tables: bool = True
+    extract_equations: bool = True
+    normalize_task_lists: bool = True
     detect_vector_flows: bool = True
     include_visual_placeholders: bool = True
 
