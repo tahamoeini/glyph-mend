@@ -50,22 +50,33 @@ class ProgressReporter:
             return "WARNING"
         return "INFO"
 
-    def _is_progress_event(self, event: ProgressEvent) -> bool:
-        return event.stage in {"page", "layout"}
-
     def _show_on_console(self, event: ProgressEvent) -> bool:
         if event.stage in {"error", "page-fallback", "engine-warning"}:
             return True
         if self.quiet:
             return False
-        if not self._is_progress_event(event):
+        if event.stage not in {"page", "layout"}:
             return True
         if self.verbose >= 1:
             return True
         if event.current is None or event.total is None or event.total <= 0:
             return False
-        step = max(1, event.total // 10)
-        return event.current in {1, event.total} or event.current % step < max(1, 20)
+
+        if event.stage == "page":
+            step = max(1, event.total // 10)
+            return event.current in {1, event.total} or event.current % step == 0
+
+        # Layout events arrive in batches rather than one event per page. Show the
+        # first/final batch and whichever batch crosses each 10% boundary.
+        batch_pages = event.details.get("returned_chunks", 1)
+        try:
+            batch_pages = max(1, int(batch_pages))
+        except (TypeError, ValueError):
+            batch_pages = 1
+        previous = max(0, event.current - batch_pages)
+        previous_decile = int(previous * 10 / event.total)
+        current_decile = int(event.current * 10 / event.total)
+        return previous == 0 or event.current == event.total or current_decile > previous_decile
 
     def _as_dict(self, event: ProgressEvent) -> dict[str, object]:
         return {
