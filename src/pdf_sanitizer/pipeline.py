@@ -9,10 +9,12 @@ from time import perf_counter
 from typing import Any
 
 from .config import ExtractionConfig
-from .extractor import ExtractionResult, _import_engines, _page_markdown
+from .extractor import ExtractionResult, _import_engines
+from .native import native_markdown_chunk
 from .native_stderr import NativeStderrCapture, capture_native_stderr
 from .progress import ProgressCallback, emit_progress
 from .quality import assess_layout_markdown
+from .renderer import render_page_markdown
 from .sanitize import sanitize_markdown
 from .semantics import normalize_display_math_lines, normalize_task_lists
 
@@ -20,8 +22,8 @@ from .semantics import normalize_display_math_lines, normalize_task_lists
 _LAYOUT_SWITCH_LOCK = threading.RLock()
 
 
-def _layout_kwargs(config: ExtractionConfig) -> dict[str, Any]:
-    return {
+def _layout_kwargs(config: ExtractionConfig, *, use_layout: bool) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
         "page_chunks": True,
         "write_images": False,
         "embed_images": False,
@@ -35,6 +37,12 @@ def _layout_kwargs(config: ExtractionConfig) -> dict[str, Any]:
         "footer": config.keep_footers,
         "show_progress": False,
     }
+    if not use_layout:
+        # The legacy PyMuPDF4LLM path can still infer tables from page graphics.
+        # We want a text-only safety baseline here; real tables are reconstructed later
+        # by our conservative region-level table extractor.
+        kwargs["ignore_graphics"] = True
+    return kwargs
 
 
 def _store_batch_chunks(
@@ -94,13 +102,13 @@ def _invoke_markdown(
                         result = pymupdf4llm.to_markdown(
                             document,
                             pages=selected_pages,
-                            **_layout_kwargs(config),
+                            **_layout_kwargs(config, use_layout=use_layout),
                         )
                 else:
                     result = pymupdf4llm.to_markdown(
                         document,
                         pages=selected_pages,
-                        **_layout_kwargs(config),
+                        **_layout_kwargs(config, use_layout=use_layout),
                     )
         finally:
             # Restore the library default even after exceptions. This matters because
@@ -141,7 +149,7 @@ def _extract_layout_chunks(
     repaired_pages = 0
 
     primary_layout = config.layout_mode != "legacy"
-    mode_label = "layout-aware" if primary_layout else "legacy"
+    mode_label = "layout-aware" if primary_layout else "text-first"
     emit_progress(
         progress,
         "layout-start",
@@ -168,16 +176,23 @@ def _extract_layout_chunks(
             use_layout=primary_layout,
         )
         _store_batch_chunks(chunks, batch_chunks, selected)
+        for index in selected:
+            metadata = chunks[index].setdefault("metadata", {})
+            if isinstance(metadata, dict):
+                metadata.setdefault("source", "layout" if primary_layout else "text-first")
 
         batch_noise, batch_unknown = _capture_counts(primary_capture)
-        repair_noise = 0
-        repair_unknown = 0
         repair_selected: list[int] = []
         repair_details: list[dict[str, object]] = []
+        legacy_repair_selected: list[int] = []
+        repair_capture: NativeStderrCapture | None = None
 
         if config.layout_mode == "auto":
             for index in selected:
-                quality = assess_layout_markdown(str(chunks[index].get("text") or ""), document[index])
+                quality = assess_layout_markdown(
+                    str(chunks[index].get("text") or ""),
+                    document[index],
+                )
                 if not quality.suspicious:
                     continue
                 repair_selected.append(index)
@@ -192,40 +207,55 @@ def _extract_layout_chunks(
                 )
 
             if repair_selected:
-                repair_chunks, repair_capture = _invoke_markdown(
-                    document,
-                    pymupdf4llm,
-                    config,
-                    repair_selected,
-                    use_layout=False,
-                )
-                _store_batch_chunks(chunks, repair_chunks, repair_selected)
-                repair_noise, repair_unknown = _capture_counts(repair_capture)
-                repaired_pages += len(repair_selected)
+                # Do not ask the same layout stack to reinterpret a page it already
+                # mangled. Native PyMuPDF text geometry becomes the deterministic base;
+                # tables/equations/diagrams are overlaid later by independent detectors.
+                for index in repair_selected:
+                    native_chunk = native_markdown_chunk(document[index], index + 1)
+                    if str(native_chunk.get("text") or "").strip():
+                        chunks[index] = native_chunk
+                    else:
+                        legacy_repair_selected.append(index)
 
+                # Image-only/scanned pages may have no useful native text. For those
+                # only, fall back to PyMuPDF4LLM without Layout and with graphics/table
+                # inference disabled, preserving OCR while avoiding page-wide grids.
+                if legacy_repair_selected:
+                    repair_chunks, repair_capture = _invoke_markdown(
+                        document,
+                        pymupdf4llm,
+                        config,
+                        legacy_repair_selected,
+                        use_layout=False,
+                    )
+                    _store_batch_chunks(chunks, repair_chunks, legacy_repair_selected)
+                    for index in legacy_repair_selected:
+                        metadata = chunks[index].setdefault("metadata", {})
+                        if isinstance(metadata, dict):
+                            metadata["source"] = "text-first-ocr"
+
+                repaired_pages += len(repair_selected)
                 emit_progress(
                     progress,
                     "layout-repair",
-                    f"Re-extracted {len(repair_selected)} suspicious layout page(s) without Layout",
+                    f"Rebuilt {len(repair_selected)} suspicious layout page(s) from text-first geometry",
                     current=stop,
                     total=total,
                     elapsed_seconds=perf_counter() - pipeline_started,
                     details={
                         "pages": [index + 1 for index in repair_selected],
+                        "ocr_fallback_pages": [index + 1 for index in legacy_repair_selected],
                         "sample_evidence": repair_details[:3],
                     },
                 )
 
+        repair_noise, repair_unknown = _capture_counts(repair_capture)
         batch_noise += repair_noise
         batch_unknown += repair_unknown
         suppressed_noise += batch_noise
         unknown_diagnostics += batch_unknown
 
-        captures = [capture for capture in (primary_capture,) if capture is not None]
-        if repair_selected:
-            # repair_capture is defined only when repair_selected is non-empty.
-            if repair_capture is not None:
-                captures.append(repair_capture)
+        captures = [capture for capture in (primary_capture, repair_capture) if capture is not None]
         unknown_lines = [line for capture in captures for line in capture.unknown]
 
         if batch_unknown:
@@ -359,7 +389,7 @@ def extract_pdf(
             chunk = chunks[index]
             try:
                 pages.append(
-                    _page_markdown(
+                    render_page_markdown(
                         page,
                         chunk,
                         page_number,
@@ -372,7 +402,8 @@ def extract_pdf(
                 if config.strict:
                     raise
                 fallback_pages += 1
-                fallback = sanitize_markdown(str(chunk.get("text") or ""))
+                fallback_chunk = native_markdown_chunk(page, page_number)
+                fallback = sanitize_markdown(str(fallback_chunk.get("text") or chunk.get("text") or ""))
                 if config.extract_equations:
                     fallback = normalize_display_math_lines(fallback)
                 if config.normalize_task_lists:
@@ -383,7 +414,7 @@ def extract_pdf(
                 emit_progress(
                     progress,
                     "page-fallback",
-                    f"Page {page_number} used safe text fallback",
+                    f"Page {page_number} used safe native-text fallback",
                     current=page_number,
                     total=document.page_count,
                     page=page_number,
