@@ -30,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-placeholders", action="store_true", help="Omit image/graphic placeholders")
     parser.add_argument("--max-pages", type=int, default=2000, help="Reject PDFs above this page count")
     parser.add_argument(
+        "--layout-mode",
+        choices=("auto", "layout", "legacy"),
+        default="auto",
+        help="Layout strategy: auto repairs pathological page-wide tables; layout/legacy force one path",
+    )
+    parser.add_argument(
         "--layout-batch-pages",
         type=int,
         default=20,
@@ -38,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--show-engine-warnings",
         action="store_true",
-        help="Do not capture raw native Tesseract/Leptonica stderr diagnostics",
+        help="Do not capture raw PyMuPDF/Tesseract parser diagnostics",
     )
     parser.add_argument("--strict", action="store_true", help="Fail instead of falling back on page-level errors")
     parser.add_argument("--stdout", action="store_true", help="Write Markdown to stdout instead of a file")
@@ -85,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         normalize_task_lists=not args.no_task_lists,
         detect_vector_flows=not args.no_flows,
         include_visual_placeholders=not args.no_placeholders,
+        layout_mode=args.layout_mode,
         layout_batch_pages=args.layout_batch_pages,
         capture_engine_stderr=not args.show_engine_warnings,
         max_pages=args.max_pages,
