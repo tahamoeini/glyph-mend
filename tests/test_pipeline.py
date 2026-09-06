@@ -4,12 +4,15 @@ from pdf_sanitizer.progress import ProgressEvent
 
 
 class FakePage:
-    def get_text(self, *_args, **_kwargs):
-        return (
+    def get_text(self, mode="text", *_args, **_kwargs):
+        prose = (
             "This ordinary prose line is long enough to represent a normal textbook paragraph.\n"
             "Another sentence continues naturally across the page instead of across table cells.\n"
             "The extractor should preserve prose structure whenever the page contains paragraphs.\n"
         )
+        if mode == "dict":
+            return {"blocks": []}
+        return prose
 
 
 class FakeDocument:
@@ -23,13 +26,13 @@ class FakeDocument:
 class FakeLLM:
     def __init__(self):
         self.layout_enabled = True
-        self.calls: list[bool] = []
+        self.calls: list[tuple[bool, dict]] = []
 
     def use_layout(self, enabled: bool = True):
         self.layout_enabled = enabled
 
-    def to_markdown(self, _document, *, pages, **_kwargs):
-        self.calls.append(self.layout_enabled)
+    def to_markdown(self, _document, *, pages, **kwargs):
+        self.calls.append((self.layout_enabled, kwargs))
         if self.layout_enabled:
             text = "\n".join(
                 [
@@ -61,7 +64,7 @@ class ChattyFakeLLM(FakeLLM):
         return super().to_markdown(document, pages=pages, **kwargs)
 
 
-def test_auto_mode_repairs_pathological_layout_page():
+def test_auto_mode_repairs_pathological_layout_page_from_native_text():
     llm = FakeLLM()
     events: list[ProgressEvent] = []
     chunks, noise, unknown, repaired = _extract_layout_chunks(
@@ -77,12 +80,29 @@ def test_auto_mode_repairs_pathological_layout_page():
         pipeline_started=0.0,
     )
 
-    assert "recovered without the Layout model" in chunks[0]["text"]
-    assert llm.calls == [True, False]
+    assert "ordinary prose line" in chunks[0]["text"]
+    assert "|This ordina|" not in chunks[0]["text"]
+    assert chunks[0]["metadata"]["source"] == "native-text"
+    assert [enabled for enabled, _ in llm.calls] == [True]
     assert repaired == 1
     assert noise == 0
     assert unknown == 0
     assert any(event.stage == "layout-repair" for event in events)
+
+
+def test_legacy_path_disables_graphics_and_table_inference():
+    llm = FakeLLM()
+    chunks, _ = _invoke_markdown(
+        FakeDocument(),
+        llm,
+        ExtractionConfig(use_ocr=False, capture_engine_stderr=False),
+        [0],
+        use_layout=False,
+    )
+
+    assert chunks
+    assert llm.calls[-1][0] is False
+    assert llm.calls[-1][1]["ignore_graphics"] is True
 
 
 def test_python_parser_chatter_is_captured_and_classified():
