@@ -209,7 +209,7 @@ def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
         except Exception:
             continue
 
-        output: list[tuple[BBox, str]] = []
+        this_output: list[tuple[BBox, str]] = []
         for table in getattr(finder, "tables", []):
             try:
                 if getattr(table, "row_count", 0) < 2 or getattr(table, "col_count", 0) < 2:
@@ -224,12 +224,12 @@ def _extract_tables(page: Any) -> list[tuple[BBox, str]]:
                 markdown = sanitize_markdown(markdown)
                 if markdown.count("|") < 4:
                     continue
-                output.append((rect, markdown))
+                this_output.append((rect, markdown))
             except Exception:
                 continue
 
-        if output:
-            return output
+        if this_output:
+            return this_output
 
     # Last-resort fallback for simple ruled tables that PyMuPDF classifies as pictures.
     try:
