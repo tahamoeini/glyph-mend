@@ -40,7 +40,12 @@ def test_extracts_semantic_markdown_and_emits_progress(tmp_path: Path):
 
     result = extract_pdf(
         pdf,
-        config=ExtractionConfig(use_ocr=False, keep_headers=True, keep_footers=True),
+        config=ExtractionConfig(
+            use_ocr=False,
+            keep_headers=True,
+            keep_footers=True,
+            layout_batch_pages=1,
+        ),
         progress=events.append,
     )
 
@@ -54,9 +59,15 @@ def test_extracts_semantic_markdown_and_emits_progress(tmp_path: Path):
     stages = [event.stage for event in events]
     assert stages[0] == "validate"
     assert "layout-start" in stages
+    assert "layout" in stages
     assert "layout-complete" in stages
     assert "page" in stages
     assert stages[-1] == "complete"
+
+    layout_event = next(event for event in events if event.stage == "layout")
+    assert layout_event.current == 1
+    assert layout_event.total == 1
+    assert layout_event.percent == 100.0
 
     page_event = next(event for event in events if event.stage == "page")
     assert page_event.current == 1
