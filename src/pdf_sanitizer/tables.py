@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .graphics import BBox, rect_area
 from .sanitize import sanitize_markdown
+
+_WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{2,}")
 
 
 def _bbox(value: Any) -> BBox | None:
@@ -16,6 +19,25 @@ def _bbox(value: Any) -> BBox | None:
 def _page_bbox(page: Any) -> BBox:
     rect = _bbox(getattr(page, "rect", None))
     return rect or (0.0, 0.0, 1.0, 1.0)
+
+
+def _prose_lines_in_rect(page: Any, rect: BBox) -> int:
+    try:
+        text = str(page.get_text("text", clip=rect, sort=True) or "")
+    except TypeError:
+        try:
+            text = str(page.get_text("text", clip=rect) or "")
+        except Exception:
+            return 0
+    except Exception:
+        return 0
+
+    count = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if len(line) >= 48 and len(_WORD_RE.findall(line)) >= 7:
+            count += 1
+    return count
 
 
 def _text_table_is_plausible(page: Any, rect: BBox, row_count: int, col_count: int) -> bool:
@@ -40,7 +62,14 @@ def _text_table_is_plausible(page: Any, rect: BBox, row_count: int, col_count: i
         return False
     if width_ratio > 0.92 and height_ratio > 0.52 and row_count >= 6:
         return False
-    if height_ratio > 0.70 and row_count >= 10:
+    if height_ratio > 0.62 and row_count >= 10:
+        return False
+
+    # A large whitespace grid that contains several natural-language prose lines is
+    # almost certainly a paragraph page whose aligned word positions were mistaken for
+    # virtual cell boundaries. This is the failure seen in long-form books and papers.
+    prose_lines = _prose_lines_in_rect(page, rect)
+    if prose_lines >= 2 and (height_ratio > 0.35 or area_ratio > 0.30):
         return False
     return True
 
