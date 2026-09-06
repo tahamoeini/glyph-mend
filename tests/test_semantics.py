@@ -21,6 +21,31 @@ def test_prose_with_equals_is_not_forced_into_math():
     assert normalize_display_math_lines(value) == value
 
 
+def test_false_layout_math_blocks_are_unwrapped():
+    value = "$$\neBook ISBN: 1-4020-7933-8 Print ISBN: 1-4020-7701-7\n$$"
+    result = normalize_display_math_lines(value)
+    assert "$$" not in result
+    assert "eBook ISBN" in result
+
+
+def test_picture_title_is_not_math_and_internal_markers_are_removed():
+    value = (
+        "<!-- Start of picture text -->\n"
+        "$$\nREVENUE<br>MANAGEMENT<br><!-- End of picture text -->\n$$"
+    )
+    result = normalize_display_math_lines(value)
+    assert "$$" not in result
+    assert "picture text" not in result
+    assert "REVENUE\nMANAGEMENT" in result
+
+
+def test_existing_real_math_block_is_preserved_and_cleaned():
+    value = "<!-- Start of picture text -->\n$$\nx₁ = ½\n<!-- End of picture text -->\n$$"
+    result = normalize_display_math_lines(value)
+    assert "picture text" not in result
+    assert "$$\nx_{1} = \\frac{1}{2}\n$$" in result
+
+
 def test_checkbox_lists_become_github_task_lists():
     value = "☐ First\n☑ Second\nNormal"
     assert normalize_task_lists(value) == "- [ ] First\n- [x] Second\nNormal"
