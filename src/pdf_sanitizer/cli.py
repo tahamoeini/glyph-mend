@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .config import ExtractionConfig
 from .extractor import extract_pdf
+from .reporting import ProgressReporter
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +31,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-pages", type=int, default=2000, help="Reject PDFs above this page count")
     parser.add_argument("--strict", action="store_true", help="Fail instead of falling back on page-level errors")
     parser.add_argument("--stdout", action="store_true", help="Write Markdown to stdout instead of a file")
+
+    logging_group = parser.add_argument_group("progress logging")
+    logging_group.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Show every page; use -vv to include detection details",
+    )
+    logging_group.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress console progress logs except errors",
+    )
+    logging_group.add_argument(
+        "--log-file",
+        type=Path,
+        help="Append all progress events to a log file",
+    )
+    logging_group.add_argument(
+        "--log-format",
+        choices=("text", "json"),
+        default="text",
+        help="Progress log format for stderr and --log-file",
+    )
     return parser
 
 
@@ -51,11 +78,21 @@ def main(argv: list[str] | None = None) -> int:
         strict=args.strict,
     )
 
-    try:
-        result = extract_pdf(args.input, config=config, password=args.password)
-    except Exception as exc:
-        print(f"pdf-sanitizer: {exc}", file=sys.stderr)
-        return 1
+    with ProgressReporter(
+        verbose=args.verbose,
+        quiet=args.quiet,
+        log_file=args.log_file,
+        log_format=args.log_format,
+    ) as reporter:
+        try:
+            result = extract_pdf(
+                args.input,
+                config=config,
+                password=args.password,
+                progress=reporter,
+            )
+        except Exception:
+            return 1
 
     if args.stdout:
         sys.stdout.write(result.markdown)
