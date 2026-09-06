@@ -48,7 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        result = extract_pdf(args.input, config=config, password=args.password)
+        call_kwargs = {'password': args.password}
+        result = extract_pdf(args.input, config=config, **call_kwargs)
     except Exception as exc:
         print(f"pdf-sanitizer: {exc}", file=sys.stderr)
         return 1
