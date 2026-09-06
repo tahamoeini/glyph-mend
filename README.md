@@ -1,31 +1,73 @@
 # pdf-sanitizer
 
-A local-first PDF content extractor that returns **clean, deterministic Markdown** for downstream search, RAG, indexing, archival, or human review.
+A local-first **semantic PDF-to-Markdown extractor and sanitizer** for search, RAG, indexing, archival, migration, and human review.
 
-It consolidates the useful ideas from [`pdf-tokenizer`](https://github.com/tahamoeini/pdf-tokenizer) and the document-ingestion path in [`article-writer`](https://github.com/tahamoeini/article-writer), while narrowing the contract to one thing: **PDF in, sanitized Markdown out.**
+It consolidates the useful PDF-processing ideas from [`pdf-tokenizer`](https://github.com/tahamoeini/pdf-tokenizer) and the ingestion path in [`article-writer`](https://github.com/tahamoeini/article-writer), then goes further in one deliberately narrow direction:
 
-## Output contract
+> **PDF in → faithful, deterministic, structure-aware Markdown out.**
 
-`pdf-sanitizer` tries to preserve meaning without pretending it understands visual content that cannot be reconstructed safely.
+This is not merely text extraction. The goal is to use the most appropriate Markdown representation for content that has real structure, while refusing to invent semantics for visuals that cannot be reconstructed safely.
 
-| PDF content | Markdown output |
+## Semantic output contract
+
+| PDF content | Output |
 | --- | --- |
-| Titles, headings, paragraphs, lists, code | Markdown text and structure |
+| Titles and headings | Markdown headings |
+| Paragraphs | Markdown prose |
+| Ordered/unordered lists | Markdown lists |
+| Checkbox lists | GitHub task lists (`- [ ]`, `- [x]`) |
+| Bold/italic and other layout-supported text | Markdown formatting when recoverable by the extraction engine |
+| Monospaced/code regions | Fenced Markdown code blocks when detected |
+| Links | Markdown links when recoverable from the PDF |
 | Tables | GitHub-flavored Markdown tables |
+| Text-based display equations | GitHub/MathJax LaTeX blocks (`$$ ... $$`) |
+| Strong standalone equations left by OCR | Conservative LaTeX math blocks |
+| Superscript/subscript/fractions | Preserved semantically; common math forms normalized to LaTeX in equations |
 | Simple vector box/connector flows | Mermaid `flowchart` blocks |
 | Embedded raster images | `[IMAGE_PLACEHOLDER ...]` |
-| Non-reconstructable vector graphics | `[GRAPHIC_PLACEHOLDER ...]` |
+| Complex/non-reconstructable vector graphics | `[GRAPHIC_PLACEHOLDER ...]` |
 | Scanned text pages | OCR text when OCR is available/enabled |
 | Headers/footers | Removed by default |
 | Page boundaries | `<!-- page: N -->` comments by default |
 
-The extractor is deliberately conservative. If a vector diagram cannot be reconstructed with enough evidence, it becomes a placeholder instead of fabricated Mermaid semantics.
+The trust rule is simple:
 
-## Why this design
+1. **Native Markdown structure** when the PDF provides enough evidence.
+2. **Deterministic reconstruction** for tables, equations, task lists, and simple flows.
+3. **Faithful text preservation** when semantics are uncertain.
+4. **Explicit placeholders** when the content is genuinely visual.
 
-The older `pdf-tokenizer` already contains useful OCR fallback, source tracking, image handling, and heuristic diagram work. `article-writer` has the cleaner downstream assumption: extracted documents should become structured, normalized source material rather than a pile of image artifacts and auxiliary JSON. This project combines those lessons and removes the rest.
+No summarization and no semantic guessing disguised as extraction.
 
-The implementation uses PyMuPDF/PyMuPDF4LLM for layout-aware Markdown, table handling, multi-column reading order, and optional OCR. A second conservative pass corrects/normalizes tables, identifies simple vector flows, replaces visuals with deterministic placeholders, and sanitizes Unicode/layout noise.
+## Why this supersedes the older extraction paths
+
+`pdf-tokenizer` already had useful OCR fallback, image handling, source tracking, and heuristic diagram work, but it also carried GUI/export/tokenization concerns and often reduced visual content to OCR text or generic image reporting.
+
+`article-writer` had a cleaner downstream ingestion philosophy, but its PDF path was primarily structured text extraction for indexing rather than a complete semantic PDF-to-Markdown representation.
+
+`pdf-sanitizer` is the canonical preprocessing layer instead:
+
+```text
+PDF
+ ↓
+layout-aware extraction
+ ↓
+table recovery
+ ↓
+equation / math reconstruction
+ ↓
+task-list normalization
+ ↓
+vector-flow reconstruction
+ ↓
+visual classification + placeholders
+ ↓
+structure-safe sanitization
+ ↓
+Markdown
+```
+
+Chunking, embeddings, vector databases, article generation, and other downstream concerns should consume this Markdown rather than being coupled to PDF parsing.
 
 ## Installation
 
@@ -57,6 +99,9 @@ pdf-sanitizer input.pdf --stdout
 pdf-sanitizer input.pdf --no-ocr
 pdf-sanitizer input.pdf --ocr-language eng+fas
 pdf-sanitizer input.pdf --force-ocr
+pdf-sanitizer input.pdf --no-tables
+pdf-sanitizer input.pdf --no-equations
+pdf-sanitizer input.pdf --no-task-lists
 pdf-sanitizer input.pdf --no-flows
 pdf-sanitizer input.pdf --no-placeholders
 pdf-sanitizer protected.pdf --password "..."
@@ -72,6 +117,10 @@ result = extract_pdf(
     config=ExtractionConfig(
         use_ocr=True,
         ocr_language="eng+fas",
+        extract_tables=True,
+        extract_equations=True,
+        normalize_task_lists=True,
+        detect_vector_flows=True,
         include_page_markers=True,
     ),
 )
@@ -84,7 +133,7 @@ print(result.markdown)
 ````markdown
 <!-- page: 1 -->
 
-# Payment Flow
+# Payment Model
 
 The terminal sends the transaction request to the switch.
 
@@ -92,6 +141,13 @@ The terminal sends the transaction request to the switch.
 | --- | --- |
 | STAN | System trace audit number |
 | RRN | Retrieval reference number |
+
+$$
+P_{success} = 1 - P_{timeout}
+$$
+
+- [x] Validate request
+- [ ] Complete settlement
 
 ```mermaid
 flowchart LR
@@ -105,32 +161,70 @@ flowchart LR
 [IMAGE_PLACEHOLDER page=1 bbox="72,420,540,690"]
 ````
 
-## Sanitization rules
+## Equation handling
 
-The sanitizer is intentionally structural, not editorial. It:
+GitHub Markdown supports LaTeX math, so mathematical content should not be flattened into ordinary prose when the PDF provides enough evidence.
 
-- normalizes Unicode (NFKC), ligatures, line endings, and zero-width/control characters;
-- repairs obvious Latin word-wrap hyphenation;
-- suppresses generated image links/binaries in favor of placeholders;
+The extractor uses two conservative paths:
+
+- **Native text equations:** span-level text, math symbols, font hints, and superscript information are used to identify likely display equations and reconstruct common Unicode math as LaTeX.
+- **OCR/layout fallback:** a stricter standalone-line detector catches obvious equations such as `x = y + 2` when span-level structure is unavailable.
+
+Common Greek symbols, relations, operators, fractions, superscripts, and subscripts are normalized where doing so is deterministic.
+
+Inline prose is deliberately not aggressively rewritten into `$...$`. A false equation is worse than preserved plain text.
+
+Image-only or highly graphical formulas are not hallucinated into LaTeX. They remain visual placeholders unless a future deterministic/local formula-recognition backend is added.
+
+## Structure-safe sanitization
+
+Sanitization is structural, not editorial. It:
+
+- uses Unicode **NFC**, not compatibility normalization that can destroy superscripts, subscripts, or fractions;
+- normalizes ligatures, line endings, zero-width/control characters, and extraction noise;
+- repairs obvious Latin prose line-wrap hyphenation;
+- protects fenced code, Mermaid, and other literal blocks from prose cleanup;
+- suppresses generated image links/binaries in favor of deterministic visual placeholders;
 - removes detected headers and footers by default;
-- avoids duplicate table/diagram text when replacing a detected region;
-- preserves the actual textual claims of the PDF rather than summarizing or rewriting them.
+- avoids duplicate table/equation/diagram text when replacing a detected region;
+- preserves the actual claims and wording of the PDF rather than summarizing or rewriting them.
 
-It does **not** remove text because it looks like an instruction, opinion, prompt injection, or unwanted claim. Content filtering is a separate concern from faithful document extraction.
+It does **not** remove text because it looks like an instruction, prompt injection, opinion, or unwanted claim. Content filtering is a separate concern from faithful extraction.
 
-## Visual handling
+## Tables
 
-### Tables
+Tables are extracted through PyMuPDF table detection and emitted as GitHub-flavored Markdown. The extractor uses multiple table strategies, including a layout-independent fallback for ruled tables that newer layout analysis may classify as pictures.
 
-Tables are extracted through PyMuPDF table detection and emitted as GitHub-flavored Markdown. If PyMuPDF4LLM has already produced a valid Markdown table, the sanitizer leaves it alone.
+A final word-position fallback handles simple ruled tables when the primary table detector still fails.
 
-### Flows and shapes
+Complex merged-cell tables may necessarily lose rowspan/colspan semantics because GitHub-flavored Markdown tables do not represent those features directly. The tool prefers faithful cell text over fabricated structure.
 
-Simple vector diagrams are reconstructed only when the page contains multiple labeled rectangle nodes and actual connector line evidence. The result is Mermaid. Connector direction is intentionally not invented; reconstructed connections use Mermaid's undirected `---` edge unless the source provides stronger semantics in future versions.
+## Flows and vector graphics
 
-### Images and complex graphics
+Simple vector diagrams are reconstructed only when the page contains multiple labeled rectangle nodes and actual connector-line evidence. The result is Mermaid.
 
-Raster images and ambiguous/complex vector graphics are not OCR-summarized into fake prose. They become deterministic placeholders containing page and bounding-box coordinates. Full-page scans are the exception: if the page has little native text and OCR produced meaningful text, the OCR content is preserved.
+Connector direction is not invented. Until arrowhead direction can be established reliably, reconstructed links use Mermaid's undirected `---` edge.
+
+Everything more ambiguous stays a `[GRAPHIC_PLACEHOLDER ...]`.
+
+## Images and scans
+
+Raster images are not OCR-summarized into fake prose. They become deterministic placeholders containing page and bounding-box coordinates.
+
+Full-page scanned documents are treated differently: when OCR supplies meaningful page text, that text is preserved rather than replacing the entire page with one image placeholder.
+
+## What is preserved but not over-inferred
+
+Some PDF semantics are inherently ambiguous because PDF stores visual placement more reliably than logical document structure. The extractor therefore preserves content without pretending certainty for cases such as:
+
+- inline mathematical fragments embedded deeply in prose;
+- footnotes whose reference/definition relationship is not structurally recoverable;
+- arbitrary UML/BPMN/network/architecture diagrams;
+- charts whose data values are encoded only graphically;
+- merged/irregular tables whose cell spanning cannot be represented faithfully in GFM;
+- rasterized equations without a dedicated formula-recognition backend.
+
+These are explicit boundaries, not forgotten features.
 
 ## Safety and operational limits
 
@@ -149,8 +243,14 @@ ruff check src tests
 pytest
 ```
 
+Regression coverage includes sanitization, semantic math conversion, task lists, table extraction, vector-flow reconstruction, and generated end-to-end PDFs.
+
 CI runs linting and tests on every push and pull request.
 
-## Scope
+## Project boundary
 
-This repository is the canonical extractor/sanitizer. It is not a tokenizer, chunker, vector database, RAG pipeline, article writer, OCR workbench, GUI, or PDF editor. Those can consume its Markdown output. Keeping that boundary sharp is the whole point.
+This repository is the **canonical PDF extractor/sanitizer**.
+
+It is not a tokenizer, chunker, vector database, RAG pipeline, article writer, GUI, or PDF editor. Those can consume its Markdown output.
+
+Keeping PDF interpretation in one well-tested layer is substantially less absurd than maintaining slightly different PDF parsers inside every downstream project.
