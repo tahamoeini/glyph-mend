@@ -8,3 +8,4 @@ build/
 *.egg-info/
 *.md.tmp
 .DS_Store
+*.pdf
