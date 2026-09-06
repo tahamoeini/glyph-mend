@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from .graphics import BBox, merge_bbox, overlap_ratio
 
@@ -105,7 +105,10 @@ _FRACTIONS = {
 }
 
 _SUPERSCRIPT = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ", "0123456789+-=()ni")
-_SUBSCRIPT = str.maketrans("₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜₓ", "0123456789+-=()ae hijklmnoprstx".replace(" ", ""))
+_SUBSCRIPT = str.maketrans(
+    "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜₓ",
+    "0123456789+-=()aehijklmnoprstx",
+)
 _SUPER_CHARS = "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ"
 _SUB_CHARS = "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜₓ"
 _MATH_CHARS = set("=+-*/^_<>±∓×÷≤≥≠≈≡∞∑∏∫√∂∇∈∉⊂⊆⊃⊇∪∩→←↔⇒⇐⇔∝∴∵")
@@ -115,6 +118,7 @@ _MATH_CHARS.update(_SUB_CHARS)
 _MATH_FONT_HINTS = ("math", "symbol", "stix", "cambria", "computer modern", "cmsy", "cmmi")
 _URL_RE = re.compile(r"(?:https?://|www\.|\b\S+@\S+\.\S+)", re.IGNORECASE)
 _WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{3,}")
+_FENCE_RE = re.compile(r"(^```[^\n]*\n.*?^```[ \t]*$|^~~~[^\n]*\n.*?^~~~[ \t]*$)", re.MULTILINE | re.DOTALL)
 
 
 def _bbox(value: Any) -> BBox | None:
@@ -258,13 +262,49 @@ def detect_display_equations(
     return output
 
 
+def _outside_fences(markdown: str, transform: Callable[[str], str]) -> str:
+    parts = _FENCE_RE.split(markdown)
+    return "".join(part if _FENCE_RE.fullmatch(part) else transform(part) for part in parts)
+
+
+def normalize_display_math_lines(markdown: str) -> str:
+    """Catch strong standalone equations left by OCR or layout extraction.
+
+    This is intentionally stricter than native span-level detection because OCR has less
+    structural evidence. It never rewrites fenced code, Mermaid, or existing literal blocks.
+    """
+
+    def transform(part: str) -> str:
+        lines: list[str] = []
+        inside_math = False
+        for line in part.split("\n"):
+            stripped = line.strip()
+            if stripped == "$$":
+                inside_math = not inside_math
+                lines.append(line)
+                continue
+            if inside_math or not stripped:
+                lines.append(line)
+                continue
+            if stripped.startswith(("#", "|", ">", "- ", "* ", "+ ", "[", "<!--")):
+                lines.append(line)
+                continue
+            if _math_score(stripped, []) >= 6:
+                lines.extend(("$$", text_to_latex(stripped), "$$"))
+            else:
+                lines.append(line)
+        return "\n".join(lines)
+
+    return _outside_fences(markdown, transform)
+
+
 def normalize_task_lists(markdown: str) -> str:
     """Turn PDF checkbox-list glyphs into GitHub task-list syntax."""
 
-    if not markdown:
-        return markdown
-    unchecked = re.compile(r"^(\s*)(?:[-*+]\s*)?[☐□]\s+(.+)$", re.MULTILINE)
-    checked = re.compile(r"^(\s*)(?:[-*+]\s*)?[☑☒]\s+(.+)$", re.MULTILINE)
-    value = unchecked.sub(r"\1- [ ] \2", markdown)
-    value = checked.sub(r"\1- [x] \2", value)
-    return value
+    def transform(part: str) -> str:
+        unchecked = re.compile(r"^(\s*)(?:[-*+]\s*)?[☐□]\s+(.+)$", re.MULTILINE)
+        checked = re.compile(r"^(\s*)(?:[-*+]\s*)?[☑☒]\s+(.+)$", re.MULTILINE)
+        value = unchecked.sub(r"\1- [ ] \2", part)
+        return checked.sub(r"\1- [x] \2", value)
+
+    return _outside_fences(markdown, transform) if markdown else markdown
