@@ -17,6 +17,15 @@ def _bbox(value: Any) -> BBox | None:
         return None
 
 
+def _merge_rects(rects: list[BBox]) -> BBox:
+    return (
+        min(rect[0] for rect in rects),
+        min(rect[1] for rect in rects),
+        max(rect[2] for rect in rects),
+        max(rect[3] for rect in rects),
+    )
+
+
 def _join_wrapped_lines(lines: list[str]) -> str:
     value = ""
     for raw in lines:
@@ -46,7 +55,36 @@ def _heading_prefix(max_size: float, body_size: float, text: str) -> str:
     return ""
 
 
-def native_markdown_chunk(page: Any, page_number: int) -> dict[str, Any]:
+def _page_height(page: Any) -> float | None:
+    rect = _bbox(getattr(page, "rect", None))
+    if rect is None:
+        return None
+    return max(1.0, rect[3] - rect[1])
+
+
+def _skip_running_matter(
+    rect: BBox,
+    page_height: float | None,
+    *,
+    keep_headers: bool,
+    keep_footers: bool,
+) -> bool:
+    if page_height is None:
+        return False
+    if not keep_headers and rect[1] <= page_height * 0.06:
+        return True
+    if not keep_footers and rect[3] >= page_height * 0.96:
+        return True
+    return False
+
+
+def native_markdown_chunk(
+    page: Any,
+    page_number: int,
+    *,
+    keep_headers: bool = False,
+    keep_footers: bool = False,
+) -> dict[str, Any]:
     """Build a conservative Markdown chunk directly from PyMuPDF text geometry.
 
     This is the safety path for pages where a layout model has hallucinated page-wide
@@ -63,9 +101,18 @@ def native_markdown_chunk(page: Any, page_number: int) -> dict[str, Any]:
         payload = {"blocks": []}
 
     blocks = list(payload.get("blocks", [])) if isinstance(payload, dict) else []
+    page_height = _page_height(page)
     sizes: list[float] = []
     for block in blocks:
         if block.get("type", 0) != 0:
+            continue
+        block_rect = _bbox(block.get("bbox"))
+        if block_rect is not None and _skip_running_matter(
+            block_rect,
+            page_height,
+            keep_headers=keep_headers,
+            keep_footers=keep_footers,
+        ):
             continue
         for line in block.get("lines", []):
             for span in line.get("spans", []):
@@ -80,59 +127,85 @@ def native_markdown_chunk(page: Any, page_number: int) -> dict[str, Any]:
                     sizes.extend([size] * min(8, max(1, len(text) // 8)))
     body_size = median(sizes) if sizes else 10.0
 
-    output = ""
-    page_boxes: list[dict[str, Any]] = []
-    box_index = 0
+    segments: list[tuple[str, BBox]] = []
 
     for block in blocks:
         if block.get("type", 0) != 0:
             continue
-        rect = _bbox(block.get("bbox"))
-        if rect is None:
+        block_rect = _bbox(block.get("bbox"))
+        if block_rect is None:
+            continue
+        if _skip_running_matter(
+            block_rect,
+            page_height,
+            keep_headers=keep_headers,
+            keep_footers=keep_footers,
+        ):
             continue
 
-        raw_lines: list[str] = []
-        max_size = 0.0
+        paragraph_lines: list[str] = []
+        paragraph_rects: list[BBox] = []
+
+        def flush_paragraph() -> None:
+            nonlocal paragraph_lines, paragraph_rects
+            if not paragraph_lines or not paragraph_rects:
+                paragraph_lines = []
+                paragraph_rects = []
+                return
+            text = _join_wrapped_lines(paragraph_lines)
+            if text:
+                segments.append((text, _merge_rects(paragraph_rects)))
+            paragraph_lines = []
+            paragraph_rects = []
+
         for line in block.get("lines", []):
+            line_rect = _bbox(line.get("bbox"))
             spans = [span for span in line.get("spans", []) if str(span.get("text") or "")]
             if not spans:
                 continue
+            if line_rect is None:
+                span_rects = [_bbox(span.get("bbox")) for span in spans]
+                span_rects = [rect for rect in span_rects if rect is not None]
+                line_rect = _merge_rects(span_rects) if span_rects else block_rect
+
             line_text = "".join(str(span.get("text") or "") for span in spans).strip()
-            if line_text:
-                raw_lines.append(line_text)
+            if not line_text:
+                continue
+            max_size = 0.0
             for span in spans:
                 try:
                     max_size = max(max_size, float(span.get("size") or 0))
                 except Exception:
                     pass
 
-        if not raw_lines:
-            continue
+            heading = _heading_prefix(max_size, body_size, line_text)
+            bullet = bool(_BULLET_RE.match(line_text))
+            numbered = bool(_NUMBERED_RE.match(line_text))
 
-        joined = _join_wrapped_lines(raw_lines)
-        if not joined:
-            continue
+            if heading:
+                flush_paragraph()
+                segments.append((heading + line_text, line_rect))
+            elif bullet:
+                flush_paragraph()
+                cleaned = _BULLET_RE.sub("", line_text).strip()
+                if cleaned:
+                    segments.append((f"- {cleaned}", line_rect))
+            elif numbered:
+                flush_paragraph()
+                segments.append((line_text, line_rect))
+            else:
+                paragraph_lines.append(line_text)
+                paragraph_rects.append(line_rect)
 
-        bullet = bool(_BULLET_RE.match(raw_lines[0]))
-        numbered = bool(_NUMBERED_RE.match(raw_lines[0]))
-        heading = _heading_prefix(max_size, body_size, joined)
+        flush_paragraph()
 
-        if bullet:
-            cleaned = _BULLET_RE.sub("", joined).strip()
-            block_text = f"- {cleaned}" if cleaned else ""
-        elif numbered:
-            block_text = joined
-        elif heading:
-            block_text = heading + joined
-        else:
-            block_text = joined
-
-        if not block_text:
-            continue
+    output = ""
+    page_boxes: list[dict[str, Any]] = []
+    for box_index, (segment_text, rect) in enumerate(segments):
         if output:
             output += "\n\n"
         start = len(output)
-        output += block_text
+        output += segment_text
         stop = len(output)
         page_boxes.append(
             {
@@ -142,7 +215,6 @@ def native_markdown_chunk(page: Any, page_number: int) -> dict[str, Any]:
                 "pos": (start, stop),
             }
         )
-        box_index += 1
 
     if not output:
         try:
