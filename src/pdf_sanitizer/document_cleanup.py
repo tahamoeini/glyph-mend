@@ -17,8 +17,14 @@ _CROSS_PAGE_HYPHEN_RE = re.compile(
     r"(?P<marker><!--\s*page:\s*\d+\s*-->)\s*\n+\s*"
     rf"(?P<right>[a-zà-öø-ÿ]{{2,}})"
 )
+_CROSS_PAGE_PARAGRAPH_RE = re.compile(
+    r"(?P<left>[^\n]+)\n+\s*"
+    r"(?P<marker><!--\s*page:\s*\d+\s*-->)\s*\n+"
+    r"(?P<right>[^\n]+)"
+)
 _LOW_COMMA_RE = re.compile(r"‚(?=(?:[*_`]+)?(?:\s|[”’\"]))")
 _FOOTNOTE_NUMBER_RE = re.compile(r"(?m)^(?P<prefix>\s*>\s*)(?P<number>\d{1,3})(?=[A-ZÀ-ÖØ-Þ])")
+_STRUCTURAL_PREFIXES = ("#", ">", "[IMAGE_", "[GRAPHIC_", "[VISUAL_", "|", "```", "~~~", "$$")
 
 
 def _split_pages(markdown: str) -> tuple[str, list[tuple[int, str, str]]]:
@@ -43,8 +49,6 @@ def _edge_signature(line: str) -> tuple[str, bool] | None:
     ):
         return None
 
-    # A layout engine can accidentally promote a running header to a Markdown heading.
-    # Remove heading syntax for signature comparison rather than excluding it entirely.
     raw_without_heading = _HEADING_RE.sub("", raw)
     plain = _EMPHASIS_RE.sub("", raw_without_heading).strip()
 
@@ -76,8 +80,6 @@ def _edge_signature(line: str) -> tuple[str, bool] | None:
 
 @lru_cache(maxsize=256)
 def _running_prefix_pattern(signature: str) -> re.Pattern[str]:
-    # Signatures are normalized plain text. The source line may wrap the title in
-    # Markdown emphasis or have a printed Arabic/Roman page label before/after it.
     tokens = signature.split()
     title = r"[\s*_`]+".join(re.escape(token) for token in tokens)
     pattern = (
@@ -90,10 +92,6 @@ def _running_prefix_pattern(signature: str) -> re.Pattern[str]:
 
 
 def _strip_running_prefix(line: str, repeated: set[str]) -> tuple[str, str] | None:
-    """Strip a known recurring header prefix while preserving fused body text."""
-
-    # Longest titles first prevents a short chapter title from consuming part of a
-    # longer book-title signature if both happen to share initial words.
     for signature in sorted(repeated, key=len, reverse=True):
         match = _running_prefix_pattern(signature).match(line)
         if not match:
@@ -104,13 +102,7 @@ def _strip_running_prefix(line: str, repeated: set[str]) -> tuple[str, str] | No
 
 
 def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str:
-    """Remove recurring page headers/footers after page parts have been combined.
-
-    The document-level pass complements geometry-based page cleanup. It recognizes both
-    Arabic and Roman printed page labels, tolerates headers incorrectly emitted as
-    Markdown headings, and can remove a repeated header that was fused to the first body
-    sentence without discarding that sentence.
-    """
+    """Remove repeated headers/footers, including Roman labels and fused body text."""
 
     prefix, pages = _split_pages(markdown)
     if not pages:
@@ -141,8 +133,6 @@ def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str
         frequency.update(seen)
         numbered_frequency.update(seen_numbered)
 
-    # Unnumbered italic/all-caps text needs stronger repetition evidence. A title paired
-    # with printed page labels is much less ambiguous, so two pages are sufficient.
     repeated = {
         signature
         for signature, count in frequency.items()
@@ -158,8 +148,6 @@ def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str
         edge_indexes = set(substantive_indexes[:edge_lines] + substantive_indexes[-edge_lines:])
         page_repeated = page_edge_signatures.get(page_number, set()) & repeated
 
-        # Pre-scan for a known prefix, including fused variants whose whole-line signature
-        # was unique and therefore could not participate in the frequency count itself.
         page_has_running_prefix = False
         for line_index in edge_indexes:
             if line_index >= len(lines):
@@ -237,12 +225,42 @@ def repair_cross_page_hyphenation(markdown: str) -> str:
     return _CROSS_PAGE_HYPHEN_RE.sub(replace, markdown)
 
 
+def repair_cross_page_paragraphs(markdown: str) -> str:
+    """Rejoin high-confidence prose continuations split only by a source page boundary.
+
+    The marker becomes an inline HTML comment so provenance survives. We require a
+    substantial prose line, no terminal sentence punctuation, and a lowercase next line.
+    Structural blocks and all-caps front matter are deliberately excluded.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        left = match.group("left").strip()
+        right = match.group("right").strip()
+        if not left or not right:
+            return match.group(0)
+        if left.startswith(_STRUCTURAL_PREFIXES) or right.startswith(_STRUCTURAL_PREFIXES):
+            return match.group(0)
+        if left.startswith(('- ', '* ', '+ ')) or re.match(r"^\d+[.)]\s", left):
+            return match.group(0)
+        if right.startswith(('- ', '* ', '+ ')) or re.match(r"^\d+[.)]\s", right):
+            return match.group(0)
+        if len(left) < 40 or left.rstrip().endswith((".", "!", "?", ":", ";")):
+            return match.group(0)
+        plain_left = _EMPHASIS_RE.sub("", left)
+        if plain_left.isupper() and any(char.isalpha() for char in plain_left):
+            return match.group(0)
+        first = right[:1]
+        if not first or not first.islower():
+            return match.group(0)
+        return f"{left} {match.group('marker')} {right}"
+
+    return _CROSS_PAGE_PARAGRAPH_RE.sub(replace, markdown)
+
+
 def normalize_extraction_punctuation(markdown: str) -> str:
     """Repair deterministic punctuation/spacing encoding artifacts."""
 
     value = _LOW_COMMA_RE.sub(",", markdown)
-    # Extracted footnotes commonly arrive as `> 2It ...`; the numeric marker and first
-    # word are distinct source items even when the PDF text layer omitted their space.
     value = _FOOTNOTE_NUMBER_RE.sub(r"\g<prefix>\g<number> ", value)
     return value
 
@@ -250,11 +268,11 @@ def normalize_extraction_punctuation(markdown: str) -> str:
 def cleanup_combined_markdown(markdown: str) -> str:
     value = strip_repeated_running_matter(markdown)
     value = repair_cross_page_hyphenation(value)
+    value = repair_cross_page_paragraphs(value)
     value = normalize_extraction_punctuation(value)
 
     # Checkpoint parts may have been produced by an older equation-quality heuristic.
-    # Re-evaluate display blocks at document-combine / DOCX-export time so obvious stale
-    # caption artifacts are unwrapped without forcing an expensive PDF re-extraction.
+    # Re-evaluate display blocks during combine / DOCX export without re-reading the PDF.
     from .structure import normalize_math_artifacts
 
     value = normalize_math_artifacts(value)
