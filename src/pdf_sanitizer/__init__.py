@@ -18,4 +18,4 @@ __all__ = [
     "extract_pdf_resumable",
     "markdown_to_docx",
 ]
-__version__ = "0.3.2"
+__version__ = "0.3.3"
