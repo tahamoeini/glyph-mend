@@ -1,4 +1,9 @@
-from pdf_sanitizer.equation_quality import display_math_text_is_plausible
+from types import SimpleNamespace
+
+from pdf_sanitizer.equation_quality import (
+    display_math_text_is_plausible,
+    equation_overlay_is_plausible,
+)
 from pdf_sanitizer.running_matter import strip_running_matter
 from pdf_sanitizer.structure import (
     normalize_heading_structure,
@@ -27,6 +32,12 @@ def test_prose_fragments_with_math_symbols_are_not_display_math():
     assert not display_math_text_is_plausible(
         "efficient sets can be ordered by revenue. These can be ordered as follows"
     )
+
+
+def test_compact_equation_fragment_already_inside_longer_formula_is_rejected():
+    equation = SimpleNamespace(source_text="ifpi=pe", markdown="$$\nifpi=pe\n$$")
+    existing = "dpi) if pi<pe di(pi,p2) = d(pi)/2 if pi =pe (8.24) 0 if pi > po."
+    assert not equation_overlay_is_plausible(equation, existing)
 
 
 def test_heading_depth_follows_explicit_section_numbering():
