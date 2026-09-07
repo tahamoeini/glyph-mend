@@ -69,13 +69,18 @@ next checkpoint
 validated parts combined
  ↓
 document-level cleanup
- ├─ repeated running headers/page numbers
+ ├─ repeated Arabic/Roman running headers and page labels
+ ├─ running headers accidentally fused to body text
  ├─ cross-page wrap hyphenation
- └─ deterministic punctuation encoding artifacts
+ ├─ high-confidence cross-page prose continuation
+ ├─ stale false display-math artifacts
+ └─ deterministic punctuation/footnote spacing artifacts
  ↓
 final Markdown
  ↓ optional
 DOCX
+ ├─ recognized display math → native Word OMML equation
+ └─ visual placeholder + source PDF → embedded source crop
 ```
 
 This avoids the old failure mode where a 700-page extraction crashed near the end and the only available recovery strategy was apparently to age one year and start again.
@@ -168,7 +173,7 @@ If the PDF, extraction options, or extraction algorithm intentionally changed, s
 pdf-sanitizer input.pdf --restart
 ```
 
-`v0.3.2` uses checkpoint algorithm version 3. Workspaces created by an earlier extraction algorithm are deliberately rejected rather than silently reusing stale output.
+`v0.3.3` uses checkpoint algorithm version 3. Workspaces created by an earlier extraction algorithm are deliberately rejected rather than silently reusing stale output. Cleanup and DOCX-export improvements that can be safely applied after extraction do not unnecessarily invalidate algorithm-3 parts.
 
 `--restart` refuses to recursively delete arbitrary non-workspace directories. Humans already have enough ways to delete their own files.
 
@@ -217,6 +222,14 @@ md-to-docx input.md -o input.docx
 md-to-docx input.md -o report.docx --title "Revenue Management"
 ```
 
+If the original PDF is available, pass it to preserve visual-only content that Markdown could not semantically reconstruct:
+
+```bash
+md-to-docx input.md --source-pdf input.pdf
+```
+
+For placeholders with page/bounding-box provenance, the exporter crops that region from the source PDF and embeds it in Word. This is especially useful for image-only formulas, irregular tables, charts, and diagrams.
+
 The exporter maps sanitizer Markdown into Word structure:
 
 | Markdown | DOCX |
@@ -230,9 +243,10 @@ The exporter maps sanitizer Markdown into Word structure:
 | GFM tables | Word tables |
 | blockquotes | quote style when available |
 | fenced code / Mermaid | monospaced code blocks |
-| visual placeholders | readable caption-style notices |
-| `<!-- page: N -->` | metadata only; Word reflows naturally by default |
-| `$$ ... $$` | centered LaTeX text in Cambria Math |
+| `$$ ... $$` | **native Word Office Math (OMML)** |
+| visual placeholder + `--source-pdf` | embedded crop from the source PDF |
+| visual placeholder without source PDF | readable caption-style notice |
+| `<!-- page: N -->` | provenance metadata; Word reflows naturally by default |
 
 Word is a reflowing format. The default exporter therefore **does not** turn every source-PDF page marker into a hard Word page break. Doing that to a long technical book can create hundreds of sparse pages and a much larger document.
 
@@ -242,9 +256,19 @@ Preserve source PDF page boundaries only when that is explicitly required:
 md-to-docx input.md --preserve-page-breaks
 ```
 
-The desktop GUI uses the same natural-reflow default and warns before preserving very large numbers of source page boundaries.
+The desktop GUI uses the same natural-reflow default, exposes an optional source-PDF field for visual preservation, and warns before preserving very large numbers of source page boundaries.
 
-The DOCX exporter does **not** pretend to convert arbitrary LaTeX into native Word OMML equations. It preserves LaTeX legibly rather than silently corrupting formulas.
+### Native Word equation scope
+
+Recognized Markdown display equations are no longer ordinary Cambria Math text. They are written as native Word `m:oMath` objects. The conservative converter structurally handles the common math emitted by this project, including:
+
+- fractions (`\frac`);
+- square roots (`\sqrt`);
+- superscripts and subscripts;
+- Greek letters;
+- common relations/operators, arrows, set operators, sums, products, and integrals.
+
+Unknown or damaged tokens are preserved rather than silently invented or discarded. This does **not** mean an image-only formula has magically become editable math: if no reliable textual formula was extracted, use `--source-pdf` to preserve the original visual crop instead of fabricating LaTeX.
 
 ## Progress logging
 
@@ -313,12 +337,12 @@ from pdf_sanitizer import combine_workspace
 combine_workspace("input.parts", "input.md")
 ```
 
-Convert Markdown to DOCX:
+Convert Markdown to DOCX, optionally preserving visual placeholders from the source PDF:
 
 ```python
 from pdf_sanitizer import markdown_to_docx
 
-markdown_to_docx("input.md", "input.docx")
+markdown_to_docx("input.md", "input.docx", source_pdf="input.pdf")
 ```
 
 ## Equation handling
@@ -329,8 +353,10 @@ The extractor uses:
 
 - span-level math symbols, font hints, superscript metadata, and text geometry for native equations;
 - a stricter standalone-line detector for OCR/layout text;
-- prose-density and surrounding-text checks to reject sentence fragments that merely contain mathematical symbols;
+- prose-density, long-word, caption, and surrounding-text checks to reject sentence/caption fragments that merely contain mathematical symbols;
 - conservative Unicode-to-LaTeX normalization for common Greek symbols, relations, fractions, superscripts, and subscripts.
+
+Whitespace-stripped captions such as `Binomialandnormalapproximation...C=` are explicitly rejected as display math rather than being centered as fake formulas.
 
 Inline prose is not aggressively rewritten as math. Rasterized formulas without reliable recognition remain visual content rather than invented LaTeX.
 
@@ -346,7 +372,7 @@ The preferred order is:
 
 Page-wide whitespace grids are rejected because justified paragraphs can otherwise be misread as 5-8 artificial columns. Genuine compact tables remain tables when their cell structure is recoverable; prose remains prose.
 
-**Known limitation:** tables that are rasterized, highly irregular, heavily merged, or otherwise only recoverable as a visual region may remain image/graphic placeholders. `pdf-sanitizer` does not currently run a dedicated image-table recognition model, and it prefers a visible placeholder to a fabricated grid.
+**Known limitation:** tables that are rasterized, highly irregular, heavily merged, or otherwise only recoverable as a visual region may remain image/graphic placeholders. `pdf-sanitizer` does not currently run a dedicated image-table recognition model, and it prefers a faithful visual crop or visible placeholder to a fabricated grid.
 
 ## Structure-safe sanitization
 
@@ -356,21 +382,25 @@ Sanitization is structural, not editorial. It:
 - normalizes ligatures, zero-width/control characters, line endings, and deterministic extraction artifacts;
 - removes meaningless `<br>` layout debris from generated semantic Markdown;
 - repairs conservative Latin line-wrap hyphenation, including proven cross-page wraps at final assembly;
-- removes repeated running titles/page numbers using page geometry and document-level repetition evidence;
-- normalizes known embedded-font punctuation artifacts only in safe punctuation contexts;
+- rejoins high-confidence prose that was split only by a source-PDF page boundary while retaining an inline provenance comment;
+- removes repeated running titles/page labels using page geometry and document-level repetition evidence, including Roman numerals and header/body fusion;
+- rechecks stale false display-math blocks at combine/DOCX time;
+- normalizes known embedded-font punctuation and footnote-spacing artifacts only in safe contexts;
 - protects fenced code and Mermaid from prose cleanup;
 - avoids duplicate text when replacing tables, equations, and diagrams;
 - preserves the actual source claims instead of summarizing or rewriting them.
 
 ## Images, scans, and vector graphics
 
-Raster images become deterministic placeholders containing page/bounding-box coordinates in canonical Markdown. DOCX renders those placeholders as readable caption-style notices rather than exposing parser coordinates as document prose.
+Raster images become deterministic placeholders containing page/bounding-box coordinates in canonical Markdown.
+
+For DOCX, supplying the original PDF converts those placeholders into embedded source crops. Without the PDF, the exporter emits a readable caption-style notice and hides parser coordinates from reader-facing prose.
 
 Simple vector rectangle/connector diagrams can become Mermaid when connector evidence exists. Connector direction is not invented.
 
 Full-page scans can use OCR text when available. Ambiguous graphics remain placeholders.
 
-**Known limitation:** image-only formulas, raster diagrams, and raster tables are not reconstructed by a dedicated formula/table/diagram vision model. OCR may recover text around them, but visually encoded semantics can remain placeholders.
+**Known limitation:** image-only formulas, raster diagrams, and raster tables are not reconstructed by a dedicated formula/table/diagram vision model. `--source-pdf` preserves them visually, but they remain non-editable images unless a reliable semantic recognizer is added later.
 
 ## Front matter and complex lists
 
@@ -410,7 +440,7 @@ ruff check src tests
 pytest
 ```
 
-Regression coverage includes sanitization, math/prose discrimination, task lists, conservative table extraction, vector-flow reconstruction, repeated running-matter cleanup, cross-page hyphenation, progress reporting, checkpoint integrity/resume, Markdown combination, DOCX reflow/formatting, and generated end-to-end PDFs.
+Regression coverage includes sanitization, math/prose discrimination, native Word OMML equations, optional source-PDF visual embedding, task lists, conservative table extraction, vector-flow reconstruction, repeated running-matter cleanup, cross-page hyphenation/reflow, progress reporting, checkpoint integrity/resume, Markdown combination, DOCX reflow/formatting, and generated end-to-end PDFs.
 
 CI runs linting and tests on every push and pull request.
 
