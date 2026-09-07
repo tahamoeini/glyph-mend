@@ -6,9 +6,16 @@ import unicodedata
 _ZERO_WIDTH = "\u200b\u200c\u200d\u2060\ufeff"
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^\n)]*\)")
-_FENCE_RE = re.compile(r"(^```[^\n]*\n.*?^```[ \t]*$|^~~~[^\n]*\n.*?^~~~[ \t]*$)", re.MULTILINE | re.DOTALL)
+_FENCE_RE = re.compile(
+    r"(^```[^\n]*\n.*?^```[ \t]*$|^~~~[^\n]*\n.*?^~~~[ \t]*$)",
+    re.MULTILINE | re.DOTALL,
+)
 _ESCAPED_BR_RE = re.compile(r"&lt;br\s*/?&gt;", re.IGNORECASE)
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+# Some older embedded PDF fonts map the ordinary comma glyph to U+201A. Replace it
+# only in word/list punctuation contexts, not globally, because U+201A is legitimate
+# opening punctuation in some languages.
+_MISENCODED_COMMA_RE = re.compile(r"(?<=[A-Za-z0-9)])\u201a(?=(?:\s|[A-Za-z0-9(]))")
 _PICTURE_MARKERS = (
     "<!-- Start of picture text -->",
     "<!-- End of picture text -->",
@@ -80,6 +87,8 @@ def sanitize_markdown(text: str) -> str:
         value = value.replace(source, replacement)
     for marker in _PICTURE_MARKERS:
         value = value.replace(marker, "")
+
+    value = _MISENCODED_COMMA_RE.sub(",", value)
 
     # PyMuPDF uses <br> inside table/layout cells to preserve visual line wrapping.
     # In a semantic Markdown export those visual wraps are noise, not structure. Flatten
