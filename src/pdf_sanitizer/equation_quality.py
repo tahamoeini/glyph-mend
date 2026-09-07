@@ -43,6 +43,13 @@ def _comparison_text(value: str) -> str:
     return _NONWORD_RE.sub(" ", text).strip()
 
 
+def _compact_math_text(value: str) -> str:
+    """Compact OCR spacing while retaining relation/operator characters."""
+
+    text = _MARKUP_RE.sub("", _clean(value)).casefold()
+    return re.sub(r"[^a-z0-9=<>≤≥≠≈≡+*/^-]+", "", text)
+
+
 def _math_density(text: str) -> float:
     if not text:
         return 0.0
@@ -125,6 +132,19 @@ def equation_overlay_is_plausible(equation: Any, existing_markdown: str) -> bool
             if len(_WORD_RE.findall(line)) >= 6:
                 return False
         return True
+
+    # OCR often changes only spacing: a candidate such as "ifpi=pe" may already be
+    # embedded in a longer extracted formula as "if pi = pe". Treating the compact
+    # fragment as a second display equation only duplicates damaged source text.
+    source_compact = _compact_math_text(source)
+    if len(source_compact) >= 5:
+        for raw_line in existing_markdown.splitlines():
+            line_compact = _compact_math_text(raw_line)
+            if (
+                source_compact in line_compact
+                and len(line_compact) >= max(len(source_compact) + 8, int(len(source_compact) * 1.5))
+            ):
+                return False
 
     source_cmp = _comparison_text(source)
     if not source_cmp:
