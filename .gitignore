@@ -7,5 +7,6 @@ dist/
 build/
 *.egg-info/
 *.md.tmp
+*.parts/
 .DS_Store
 *.pdf
