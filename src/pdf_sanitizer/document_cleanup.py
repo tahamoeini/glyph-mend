@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from functools import lru_cache
 
 _PAGE_MARKER_RE = re.compile(r"(?m)^[ \t]*<!--\s*page:\s*(\d+)\s*-->[ \t]*$")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
 _EMPHASIS_RE = re.compile(r"[*_`]+")
-_PAGE_NUMBER_ONLY_RE = re.compile(r"^\d{1,5}$")
+_PAGE_LABEL = r"(?:\d{1,5}|[ivxlcdm]{1,12})"
+_PAGE_NUMBER_ONLY_RE = re.compile(rf"^{_PAGE_LABEL}$", re.IGNORECASE)
+_LEADING_PAGE_RE = re.compile(rf"^(?P<label>{_PAGE_LABEL})\s+", re.IGNORECASE)
+_TRAILING_PAGE_RE = re.compile(rf"\s+(?P<label>{_PAGE_LABEL})$", re.IGNORECASE)
 _LATIN_WORD_RE = r"[A-Za-zÀ-ÖØ-öø-ÿ]"
 _CROSS_PAGE_HYPHEN_RE = re.compile(
     rf"(?P<left>{_LATIN_WORD_RE}{{3,}})-\s*\n+\s*"
@@ -14,6 +18,7 @@ _CROSS_PAGE_HYPHEN_RE = re.compile(
     rf"(?P<right>[a-zà-öø-ÿ]{{2,}})"
 )
 _LOW_COMMA_RE = re.compile(r"‚(?=(?:[*_`]+)?(?:\s|[”’\"]))")
+_FOOTNOTE_NUMBER_RE = re.compile(r"(?m)^(?P<prefix>\s*>\s*)(?P<number>\d{1,3})(?=[A-ZÀ-ÖØ-Þ])")
 
 
 def _split_pages(markdown: str) -> tuple[str, list[tuple[int, str, str]]]:
@@ -34,26 +39,34 @@ def _edge_signature(line: str) -> tuple[str, bool] | None:
     if (
         not raw
         or raw == "$$"
-        or _HEADING_RE.match(raw)
         or raw.startswith(("```", "~~~", "[IMAGE_", "[GRAPHIC_", "[VISUAL_", ">", "|"))
     ):
         return None
 
-    plain = _EMPHASIS_RE.sub("", raw)
-    has_page_number = bool(re.match(r"^\d{1,5}\s+", plain) or re.search(r"\s+\d{1,5}$", plain))
-    plain = re.sub(r"^\d{1,5}\s+", "", plain)
-    plain = re.sub(r"\s+\d{1,5}$", "", plain)
-    plain = re.sub(r"\s+", " ", plain).strip()
+    # A layout engine can accidentally promote a running header to a Markdown heading.
+    # Remove heading syntax for signature comparison rather than excluding it entirely.
+    raw_without_heading = _HEADING_RE.sub("", raw)
+    plain = _EMPHASIS_RE.sub("", raw_without_heading).strip()
+
+    has_page_number = False
+    leading = _LEADING_PAGE_RE.match(plain)
+    if leading:
+        has_page_number = True
+        plain = plain[leading.end() :].strip()
+    trailing = _TRAILING_PAGE_RE.search(plain)
+    if trailing:
+        has_page_number = True
+        plain = plain[: trailing.start()].strip()
 
     if plain.casefold() == "this page intentionally left blank":
         return None
 
-    italic_wrapped = bool(re.match(r"^_[^_].*_$", raw))
+    italic_wrapped = bool(re.match(r"^_[^_].*_$", raw_without_heading))
     all_caps = plain.isupper() and any(char.isalpha() for char in plain)
     if not (has_page_number or italic_wrapped or all_caps):
         return None
 
-    signature = plain.casefold()
+    signature = re.sub(r"\s+", " ", plain).strip().casefold()
     if len(signature) < 3 or len(signature) > 120:
         return None
     if not re.search(r"[A-Za-zÀ-ÖØ-öø-ÿ]", signature):
@@ -61,13 +74,42 @@ def _edge_signature(line: str) -> tuple[str, bool] | None:
     return signature, has_page_number
 
 
+@lru_cache(maxsize=256)
+def _running_prefix_pattern(signature: str) -> re.Pattern[str]:
+    # Signatures are normalized plain text. The source line may wrap the title in
+    # Markdown emphasis or have a printed Arabic/Roman page label before/after it.
+    tokens = signature.split()
+    title = r"[\s*_`]+".join(re.escape(token) for token in tokens)
+    pattern = (
+        rf"^\s*(?:#{{1,6}}\s*)?"
+        rf"(?:(?:{_PAGE_LABEL})[\s*_`]+)?"
+        rf"[*_`]*{title}[*_`]*"
+        rf"(?:(?:[\s*_`]+{_PAGE_LABEL})(?=\s|$))?"
+    )
+    return re.compile(pattern, re.IGNORECASE)
+
+
+def _strip_running_prefix(line: str, repeated: set[str]) -> tuple[str, str] | None:
+    """Strip a known recurring header prefix while preserving fused body text."""
+
+    # Longest titles first prevents a short chapter title from consuming part of a
+    # longer book-title signature if both happen to share initial words.
+    for signature in sorted(repeated, key=len, reverse=True):
+        match = _running_prefix_pattern(signature).match(line)
+        if not match:
+            continue
+        remainder = line[match.end() :].lstrip(" \t*_`")
+        return signature, remainder
+    return None
+
+
 def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str:
     """Remove recurring page headers/footers after page parts have been combined.
 
-    Per-page geometry is useful but not sufficient for difficult books where formulas,
-    pictures, or OCR blocks can be emitted before the printed running header. At document
-    level repetition becomes strong evidence: a short italic/all-caps edge line repeated
-    on several pages is much more likely to be running matter than body prose.
+    The document-level pass complements geometry-based page cleanup. It recognizes both
+    Arabic and Roman printed page labels, tolerates headers incorrectly emitted as
+    Markdown headings, and can remove a repeated header that was fused to the first body
+    sentence without discarding that sentence.
     """
 
     prefix, pages = _split_pages(markdown)
@@ -75,6 +117,7 @@ def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str
         return markdown
 
     frequency: Counter[str] = Counter()
+    numbered_frequency: Counter[str] = Counter()
     page_edge_signatures: dict[int, set[str]] = {}
     first_unpaginated_occurrence: dict[str, tuple[int, int]] = {}
 
@@ -83,18 +126,28 @@ def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str
         substantive = [(idx, line.strip()) for idx, line in enumerate(lines) if line.strip()]
         edge = substantive[:edge_lines] + substantive[-edge_lines:]
         seen: set[str] = set()
+        seen_numbered: set[str] = set()
         for line_index, line in edge:
             candidate = _edge_signature(line)
             if candidate is None:
                 continue
             signature, has_page_number = candidate
             seen.add(signature)
-            if not has_page_number:
+            if has_page_number:
+                seen_numbered.add(signature)
+            else:
                 first_unpaginated_occurrence.setdefault(signature, (page_number, line_index))
         page_edge_signatures[page_number] = seen
         frequency.update(seen)
+        numbered_frequency.update(seen_numbered)
 
-    repeated = {signature for signature, count in frequency.items() if count >= 4}
+    # Unnumbered italic/all-caps text needs stronger repetition evidence. A title paired
+    # with printed page labels is much less ambiguous, so two pages are sufficient.
+    repeated = {
+        signature
+        for signature, count in frequency.items()
+        if count >= 4 or numbered_frequency[signature] >= 2
+    }
     if not repeated:
         return markdown
 
@@ -104,14 +157,36 @@ def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str
         substantive_indexes = [idx for idx, line in enumerate(lines) if line.strip()]
         edge_indexes = set(substantive_indexes[:edge_lines] + substantive_indexes[-edge_lines:])
         page_repeated = page_edge_signatures.get(page_number, set()) & repeated
-        output: list[str] = []
 
+        # Pre-scan for a known prefix, including fused variants whose whole-line signature
+        # was unique and therefore could not participate in the frequency count itself.
+        page_has_running_prefix = False
+        for line_index in edge_indexes:
+            if line_index >= len(lines):
+                continue
+            candidate = _edge_signature(lines[line_index])
+            if candidate is not None:
+                signature, has_page_number = candidate
+                if (
+                    signature in repeated
+                    and not has_page_number
+                    and first_unpaginated_occurrence.get(signature) == (page_number, line_index)
+                ):
+                    continue
+            if _strip_running_prefix(lines[line_index], repeated) is not None:
+                page_has_running_prefix = True
+                break
+
+        output: list[str] = []
         for line_index, line in enumerate(lines):
             stripped = line.strip()
+            if line_index not in edge_indexes:
+                output.append(line)
+                continue
+
             if (
-                line_index in edge_indexes
-                and page_repeated
-                and _PAGE_NUMBER_ONLY_RE.fullmatch(stripped)
+                (page_repeated or page_has_running_prefix)
+                and _PAGE_NUMBER_ONLY_RE.fullmatch(_EMPHASIS_RE.sub("", stripped))
             ):
                 continue
 
@@ -119,15 +194,20 @@ def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str
             if candidate is not None:
                 signature, has_page_number = candidate
                 if signature in repeated:
-                    # A numbered candidate is unambiguously running matter. For an
-                    # unnumbered italic/all-caps signature, preserve its first occurrence
-                    # because it may be the actual appendix/part title that later became
-                    # a running header.
-                    if has_page_number or first_unpaginated_occurrence.get(signature) != (
-                        page_number,
-                        line_index,
-                    ):
+                    is_first_real_title = (
+                        not has_page_number
+                        and first_unpaginated_occurrence.get(signature) == (page_number, line_index)
+                    )
+                    if is_first_real_title:
+                        output.append(line)
                         continue
+
+            stripped_prefix = _strip_running_prefix(line, repeated)
+            if stripped_prefix is not None:
+                _signature, remainder = stripped_prefix
+                if remainder:
+                    output.append(remainder)
+                continue
 
             output.append(line)
 
@@ -141,12 +221,7 @@ def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str
 
 
 def repair_cross_page_hyphenation(markdown: str) -> str:
-    """Join proven line-wrap hyphenation across page comments without losing the marker.
-
-    The join is made only when the unhyphenated word occurs elsewhere in the same
-    document and the hyphenated spelling does not. This avoids guessing about genuine
-    compounds such as ``price-sensitive``.
-    """
+    """Join proven line-wrap hyphenation across page comments without losing the marker."""
 
     search_text = markdown.casefold()
 
@@ -163,16 +238,24 @@ def repair_cross_page_hyphenation(markdown: str) -> str:
 
 
 def normalize_extraction_punctuation(markdown: str) -> str:
-    """Repair deterministic punctuation encoding artifacts without broad transcoding."""
+    """Repair deterministic punctuation/spacing encoding artifacts."""
 
-    # Some older embedded PDF fonts map a comma glyph to U+201A. A true opening
-    # low-quotation mark is followed directly by quoted text, whereas this extraction
-    # artifact is followed by whitespace, Markdown emphasis, or a closing quote.
-    return _LOW_COMMA_RE.sub(",", markdown)
+    value = _LOW_COMMA_RE.sub(",", markdown)
+    # Extracted footnotes commonly arrive as `> 2It ...`; the numeric marker and first
+    # word are distinct source items even when the PDF text layer omitted their space.
+    value = _FOOTNOTE_NUMBER_RE.sub(r"\g<prefix>\g<number> ", value)
+    return value
 
 
 def cleanup_combined_markdown(markdown: str) -> str:
     value = strip_repeated_running_matter(markdown)
     value = repair_cross_page_hyphenation(value)
     value = normalize_extraction_punctuation(value)
+
+    # Checkpoint parts may have been produced by an older equation-quality heuristic.
+    # Re-evaluate display blocks at document-combine / DOCX-export time so obvious stale
+    # caption artifacts are unwrapped without forcing an expensive PDF re-extraction.
+    from .structure import normalize_math_artifacts
+
+    value = normalize_math_artifacts(value)
     return value.strip()
