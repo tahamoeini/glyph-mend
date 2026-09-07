@@ -122,6 +122,11 @@ def build_parser() -> argparse.ArgumentParser:
     docx_parser.add_argument("-o", "--output", type=Path, help="Output DOCX path; defaults to <input>.docx")
     docx_parser.add_argument("--title", help="Optional Word document title")
     docx_parser.add_argument(
+        "--source-pdf",
+        type=Path,
+        help="Optional original PDF; embed page/bbox visual placeholders as source crops",
+    )
+    docx_parser.add_argument(
         "--preserve-page-breaks",
         action="store_true",
         help="Turn source <!-- page: N --> markers into hard Word page breaks",
@@ -237,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.output,
                 title=args.title,
                 page_breaks=args.preserve_page_breaks and not args.no_page_breaks,
+                source_pdf=args.source_pdf,
             )
         except Exception as exc:
             print(f"pdf-sanitizer: {exc}", file=sys.stderr)
