@@ -19,7 +19,7 @@ DOCX is an export format layered on top of the Markdown. Chunking, embeddings, R
 | Bold/italic/layout text | Markdown formatting when recoverable |
 | Monospaced/code regions | fenced code when detected |
 | Links | Markdown links when recoverable |
-| Real tables | GitHub-flavored Markdown tables |
+| Real tables | GitHub-flavored Markdown tables when structure is recoverable |
 | Text-based display equations | GitHub/MathJax `$$ ... $$` blocks |
 | Strong standalone OCR equations | conservative LaTeX blocks |
 | Superscripts/subscripts/fractions | preserved; normalized in equations when deterministic |
@@ -27,7 +27,7 @@ DOCX is an export format layered on top of the Markdown. Chunking, embeddings, R
 | Raster images | `[IMAGE_PLACEHOLDER ...]` |
 | Ambiguous vector graphics | `[GRAPHIC_PLACEHOLDER ...]` |
 | Scanned text pages | OCR text when OCR is enabled/available |
-| Headers/footers | removed by default |
+| Headers/footers | removed by default using page geometry plus repeated-document evidence |
 | Page boundaries | `<!-- page: N -->` comments by default |
 
 The trust hierarchy is intentionally conservative:
@@ -58,7 +58,7 @@ conservative regional tables
  ↓
 equations / task lists / flows / visual placeholders
  ↓
-structure-safe sanitization
+page-level structure-safe sanitization
  ↓
 part-0001-pages-0001-0020.md
  ↓
@@ -67,6 +67,11 @@ manifest.json updated atomically
 next checkpoint
  ↓
 validated parts combined
+ ↓
+document-level cleanup
+ ├─ repeated running headers/page numbers
+ ├─ cross-page wrap hyphenation
+ └─ deterministic punctuation encoding artifacts
  ↓
 final Markdown
  ↓ optional
@@ -152,15 +157,18 @@ If the process stops after pages 1-400, rerun the same command. Completed parts 
 - page count;
 - extraction configuration;
 - checkpoint size;
+- extraction algorithm version;
 - persisted part SHA-256 checksums.
 
-Only missing or corrupt parts are processed again.
+Only missing or corrupt compatible parts are processed again.
 
-If the PDF or extraction options intentionally changed, start a fresh workspace:
+If the PDF, extraction options, or extraction algorithm intentionally changed, start a fresh workspace:
 
 ```bash
 pdf-sanitizer input.pdf --restart
 ```
+
+`v0.3.2` uses checkpoint algorithm version 3. Workspaces created by an earlier extraction algorithm are deliberately rejected rather than silently reusing stale output.
 
 `--restart` refuses to recursively delete arbitrary non-workspace directories. Humans already have enough ways to delete their own files.
 
@@ -178,7 +186,7 @@ pdf-sanitizer input.pdf --stdout > clean.md
 
 ### Combine existing parts without re-extraction
 
-If every part exists but the run stopped before final assembly:
+If every compatible part exists but the run stopped before final assembly:
 
 ```bash
 pdf-sanitizer combine input.parts -o input.md
@@ -186,7 +194,7 @@ pdf-sanitizer combine input.parts -o input.md
 
 If `-o` is omitted, the output path stored in `manifest.json` is used.
 
-Combination verifies every part and checksum before writing the final Markdown atomically.
+Combination verifies every part and checksum before writing final Markdown atomically, then runs document-level cleanup that needs evidence across page/checkpoint boundaries.
 
 ## Convert Markdown to DOCX
 
@@ -216,15 +224,25 @@ The exporter maps sanitizer Markdown into Word structure:
 | headings | Word heading styles |
 | paragraphs | normal paragraphs |
 | bold/italic/code spans | formatted runs |
+| `<sup>`, `<sub>`, `<u>` | native Word run formatting |
 | ordered/unordered lists | Word lists |
 | task lists | visible checkbox symbols |
 | GFM tables | Word tables |
 | blockquotes | quote style when available |
 | fenced code / Mermaid | monospaced code blocks |
-| `<!-- page: N -->` | Word page breaks by default |
+| visual placeholders | readable caption-style notices |
+| `<!-- page: N -->` | metadata only; Word reflows naturally by default |
 | `$$ ... $$` | centered LaTeX text in Cambria Math |
 
-Use `--no-page-breaks` if page markers should not create Word page breaks.
+Word is a reflowing format. The default exporter therefore **does not** turn every source-PDF page marker into a hard Word page break. Doing that to a long technical book can create hundreds of sparse pages and a much larger document.
+
+Preserve source PDF page boundaries only when that is explicitly required:
+
+```bash
+md-to-docx input.md --preserve-page-breaks
+```
+
+The desktop GUI uses the same natural-reflow default and warns before preserving very large numbers of source page boundaries.
 
 The DOCX exporter does **not** pretend to convert arbitrary LaTeX into native Word OMML equations. It preserves LaTeX legibly rather than silently corrupting formulas.
 
@@ -311,6 +329,7 @@ The extractor uses:
 
 - span-level math symbols, font hints, superscript metadata, and text geometry for native equations;
 - a stricter standalone-line detector for OCR/layout text;
+- prose-density and surrounding-text checks to reject sentence fragments that merely contain mathematical symbols;
 - conservative Unicode-to-LaTeX normalization for common Greek symbols, relations, fractions, superscripts, and subscripts.
 
 Inline prose is not aggressively rewritten as math. Rasterized formulas without reliable recognition remain visual content rather than invented LaTeX.
@@ -325,27 +344,39 @@ The preferred order is:
 2. line-based table evidence;
 3. bounded whitespace/text tables under conservative size and prose checks.
 
-Page-wide whitespace grids are rejected because justified paragraphs can otherwise be misread as 5-8 artificial columns. Genuine compact tables remain tables; prose remains prose.
+Page-wide whitespace grids are rejected because justified paragraphs can otherwise be misread as 5-8 artificial columns. Genuine compact tables remain tables when their cell structure is recoverable; prose remains prose.
+
+**Known limitation:** tables that are rasterized, highly irregular, heavily merged, or otherwise only recoverable as a visual region may remain image/graphic placeholders. `pdf-sanitizer` does not currently run a dedicated image-table recognition model, and it prefers a visible placeholder to a fabricated grid.
 
 ## Structure-safe sanitization
 
 Sanitization is structural, not editorial. It:
 
 - uses Unicode NFC rather than destructive compatibility normalization;
-- normalizes ligatures, zero-width/control characters, line endings, and extraction artifacts;
+- normalizes ligatures, zero-width/control characters, line endings, and deterministic extraction artifacts;
 - removes meaningless `<br>` layout debris from generated semantic Markdown;
-- repairs conservative Latin line-wrap hyphenation;
+- repairs conservative Latin line-wrap hyphenation, including proven cross-page wraps at final assembly;
+- removes repeated running titles/page numbers using page geometry and document-level repetition evidence;
+- normalizes known embedded-font punctuation artifacts only in safe punctuation contexts;
 - protects fenced code and Mermaid from prose cleanup;
 - avoids duplicate text when replacing tables, equations, and diagrams;
 - preserves the actual source claims instead of summarizing or rewriting them.
 
 ## Images, scans, and vector graphics
 
-Raster images become deterministic placeholders containing page/bounding-box coordinates.
+Raster images become deterministic placeholders containing page/bounding-box coordinates in canonical Markdown. DOCX renders those placeholders as readable caption-style notices rather than exposing parser coordinates as document prose.
 
 Simple vector rectangle/connector diagrams can become Mermaid when connector evidence exists. Connector direction is not invented.
 
 Full-page scans can use OCR text when available. Ambiguous graphics remain placeholders.
+
+**Known limitation:** image-only formulas, raster diagrams, and raster tables are not reconstructed by a dedicated formula/table/diagram vision model. OCR may recover text around them, but visually encoded semantics can remain placeholders.
+
+## Front matter and complex lists
+
+Books often encode tables of contents, lists of figures, and lists of tables as multi-column geometry rather than semantic PDF structure. The extractor protects these pages from false giant-table reconstruction, but a difficult source may still produce a readable flattened sequence rather than a perfectly paired title/page-number hierarchy.
+
+That is intentional: losing some presentation structure is preferable to inventing associations between entries and page numbers. A specialized geometry-aware TOC/list reconstruction pass is a possible future enhancement.
 
 ## Workspace integrity
 
@@ -353,6 +384,7 @@ Full-page scans can use OCR text when available. Ambiguous graphics remain place
 
 - source fingerprint;
 - extraction configuration fingerprint;
+- extraction algorithm version;
 - page count;
 - checkpoint size;
 - each part's page range, filename, status, size, and SHA-256;
@@ -378,7 +410,7 @@ ruff check src tests
 pytest
 ```
 
-Regression coverage includes sanitization, math, task lists, conservative table extraction, vector-flow reconstruction, progress reporting, checkpoint integrity/resume, Markdown combination, DOCX export, and generated end-to-end PDFs.
+Regression coverage includes sanitization, math/prose discrimination, task lists, conservative table extraction, vector-flow reconstruction, repeated running-matter cleanup, cross-page hyphenation, progress reporting, checkpoint integrity/resume, Markdown combination, DOCX reflow/formatting, and generated end-to-end PDFs.
 
 CI runs linting and tests on every push and pull request.
 
