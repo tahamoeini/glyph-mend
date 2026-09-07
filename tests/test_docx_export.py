@@ -1,6 +1,7 @@
 from pathlib import Path
 from zipfile import ZipFile
 
+import pymupdf
 from docx import Document
 from lxml import etree
 
@@ -8,12 +9,22 @@ from pdf_sanitizer.docx_export import markdown_to_docx
 
 
 _W_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+_M_NS = {"m": "http://schemas.openxmlformats.org/officeDocument/2006/math"}
+
+
+def _document_xml(path: Path):
+    with ZipFile(path) as archive:
+        return etree.fromstring(archive.read("word/document.xml"))
 
 
 def _page_break_count(path: Path) -> int:
-    with ZipFile(path) as archive:
-        root = etree.fromstring(archive.read("word/document.xml"))
+    root = _document_xml(path)
     return len(root.xpath('.//w:br[@w:type="page"]', namespaces=_W_NS))
+
+
+def _math_count(path: Path) -> int:
+    root = _document_xml(path)
+    return len(root.xpath(".//m:oMath", namespaces=_M_NS))
 
 
 def test_markdown_to_docx_preserves_core_structure(tmp_path: Path):
@@ -60,14 +71,32 @@ More text.
     assert any("A bold paragraph" in text for text in texts)
     assert any("☒ Finished" in text for text in texts)
     assert any("☐ Pending" in text for text in texts)
-    assert any("x = y + 2" in text for text in texts)
     assert any("flowchart LR" in text for text in texts)
     assert "Second page" in texts
     assert len(document.tables) == 1
     assert document.tables[0].cell(0, 0).text == "Name"
     assert document.tables[0].cell(1, 1).text == "1"
+    assert _math_count(output) == 1
     # Word is reflowing by default; source PDF page comments are metadata.
     assert _page_break_count(output) == 0
+
+
+def test_latex_math_becomes_native_word_omml_structures(tmp_path: Path):
+    markdown = tmp_path / "math.md"
+    markdown.write_text(
+        r"""$$
+\frac{1}{2}x^2 + \sqrt{y} + \alpha_1
+$$
+""",
+        encoding="utf-8",
+    )
+    output = markdown_to_docx(markdown)
+    root = _document_xml(output)
+    assert len(root.xpath(".//m:oMath", namespaces=_M_NS)) == 1
+    assert len(root.xpath(".//m:f", namespaces=_M_NS)) == 1
+    assert len(root.xpath(".//m:rad", namespaces=_M_NS)) == 1
+    assert len(root.xpath(".//m:sSup", namespaces=_M_NS)) >= 1
+    assert len(root.xpath(".//m:sSub", namespaces=_M_NS)) >= 1
 
 
 def test_source_page_breaks_are_explicit_opt_in(tmp_path: Path):
@@ -99,6 +128,31 @@ def test_visual_placeholder_becomes_readable_caption_without_bbox(tmp_path: Path
     assert paragraph.style.name == "Caption"
     assert paragraph.text == "Image omitted from semantic extraction (source page 62)."
     assert "bbox" not in paragraph.text
+
+
+def test_source_pdf_can_embed_visual_placeholder_crop(tmp_path: Path):
+    source_pdf = tmp_path / "source.pdf"
+    pdf = pymupdf.open()
+    page = pdf.new_page(width=300, height=200)
+    page.draw_rect((50, 50, 250, 120), color=(0, 0, 0), width=2)
+    page.insert_text((70, 90), "visual formula")
+    pdf.save(source_pdf)
+    pdf.close()
+
+    markdown = tmp_path / "visual.md"
+    markdown.write_text(
+        '<!-- page: 1 -->\n\n[IMAGE_PLACEHOLDER page=1 bbox="50,50,250,120"]',
+        encoding="utf-8",
+    )
+    output = markdown_to_docx(markdown, source_pdf=source_pdf)
+    root = _document_xml(output)
+    with ZipFile(output) as archive:
+        media = [name for name in archive.namelist() if name.startswith("word/media/")]
+    assert media
+    assert len(root.xpath(".//w:drawing", namespaces=_W_NS)) == 1
+    assert "omitted from semantic extraction" not in " ".join(
+        paragraph.text for paragraph in Document(output).paragraphs
+    )
 
 
 def test_html_inline_semantics_become_word_run_formatting(tmp_path: Path):
