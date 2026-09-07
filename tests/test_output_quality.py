@@ -34,6 +34,15 @@ def test_prose_fragments_with_math_symbols_are_not_display_math():
     )
 
 
+def test_whitespace_stripped_caption_is_not_display_math():
+    assert not display_math_text_is_plausible(
+        "BinomialandnormalapproximationoverbookingprobabilitieswithC="
+    )
+    assert not display_math_text_is_plausible(
+        "Attributeweightsx},forattributesm=1,2inalternativej=1,"
+    )
+
+
 def test_compact_equation_fragment_already_inside_longer_formula_is_rejected():
     equation = SimpleNamespace(source_text="ifpi=pe", markdown="$$\nifpi=pe\n$$")
     existing = "dpi) if pi<pe di(pi,p2) = d(pi)/2 if pi =pe (8.24) 0 if pi > po."
