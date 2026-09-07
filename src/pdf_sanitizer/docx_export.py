@@ -12,6 +12,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 
 _PAGE_MARKER_RE = re.compile(r"^\s*<!--\s*page:\s*(\d+)\s*-->\s*$", re.IGNORECASE)
+_INLINE_PAGE_MARKER_RE = re.compile(r"<!--\s*page:\s*\d+\s*-->", re.IGNORECASE)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _BULLET_RE = re.compile(r"^(\s*)[-*+]\s+(.+)$")
 _ORDERED_RE = re.compile(r"^(\s*)\d+[.)]\s+(.+)$")
@@ -27,7 +28,7 @@ _INLINE_RE = re.compile(
     r"\[[^\]]+\]\([^\s)]+\)"
     r"|<sup>.*?</sup>|<sub>.*?</sub>|<u>.*?</u>"
     r"|\*\*[^*]+\*\*|__[^_]+__|`[^`]+`"
-    r"|(?<!\*)\*[^*\n]+\*(?!\*)|(?<!_)_[^_\n]+_(?!_)"
+    r"|(?<!\*)\*[^*<>\n]+\*(?!\*)|(?<!_)_[^_<>\n]+_(?!_)"
     r")",
     re.IGNORECASE,
 )
@@ -99,6 +100,10 @@ def _add_hyperlink(paragraph, text: str, url: str) -> None:
 
 
 def _add_inline(paragraph, text: str) -> None:
+    # Page comments may be inline when a word was split exactly at a source-PDF page
+    # boundary. They are provenance metadata, not visible Word content.
+    text = _INLINE_PAGE_MARKER_RE.sub("", text)
+
     position = 0
     for match in _INLINE_RE.finditer(text):
         if match.start() > position:
@@ -246,14 +251,10 @@ def _add_list_paragraph(document: Document, text: str, *, ordered: bool, indent_
 def _add_placeholder(document: Document, match: re.Match[str]) -> None:
     kind = match.group(1).capitalize()
     page = match.group(2)
-    bbox = match.group(3)
-    details: list[str] = []
-    if page:
-        details.append(f"source page {page}")
-    if bbox:
-        details.append(f"bbox {bbox}")
-    suffix = f" ({'; '.join(details)})" if details else ""
-    paragraph = document.add_paragraph(style="Caption" if _style_exists(document, "Caption") else None)
+    suffix = f" (source page {page})" if page else ""
+    paragraph = document.add_paragraph(
+        style="Caption" if _style_exists(document, "Caption") else None
+    )
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     paragraph.add_run(f"{kind} omitted from semantic extraction{suffix}.")
 
@@ -293,7 +294,11 @@ def markdown_to_docx(
         raise FileNotFoundError(source)
     if source.suffix.lower() not in {".md", ".markdown"}:
         raise ValueError(f"Expected a Markdown file: {source}")
-    output = Path(output_path).expanduser().resolve() if output_path is not None else source.with_suffix(".docx")
+    output = (
+        Path(output_path).expanduser().resolve()
+        if output_path is not None
+        else source.with_suffix(".docx")
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
 
     text = source.read_text(encoding="utf-8")
@@ -415,7 +420,9 @@ def markdown_to_docx(
 
         quote = _BLOCKQUOTE_RE.match(line)
         if quote:
-            paragraph = document.add_paragraph(style="Quote" if _style_exists(document, "Quote") else None)
+            paragraph = document.add_paragraph(
+                style="Quote" if _style_exists(document, "Quote") else None
+            )
             _add_inline(paragraph, quote.group(1))
             index += 1
             continue
