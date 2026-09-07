@@ -110,6 +110,15 @@ def sanitize_markdown(text: str) -> str:
     value = re.sub(r"[ \t]+\n", "\n", value)
 
     value = _restore_fences(value, fences)
+
+    # A multi-page chunk provides evidence unavailable on a single page: repeated
+    # running titles can be identified statistically, and page-boundary hyphenation can
+    # be repaired without guessing. Import lazily to avoid a module cycle.
+    if value.count("<!-- page:") >= 2:
+        from .document_cleanup import cleanup_combined_markdown
+
+        value = cleanup_combined_markdown(value)
+
     return value.strip()
 
 
