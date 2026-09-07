@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pymupdf
 
-from pdf_sanitizer import ExtractionConfig, ProgressEvent, extract_pdf
+from pdf_sanitizer import (
+    ExtractionConfig,
+    ProgressEvent,
+    extract_pdf,
+    extract_pdf_resumable,
+)
 
 
 def _sample_pdf(path: Path) -> None:
@@ -76,3 +81,48 @@ def test_extracts_semantic_markdown_and_emits_progress(tmp_path: Path):
     assert page_event.details["tables"] >= 1
     assert page_event.details["equations"] >= 1
     assert page_event.details["flows"] >= 1
+
+
+def test_resumable_extraction_reuses_completed_part(tmp_path: Path, monkeypatch):
+    pdf = tmp_path / "sample.pdf"
+    output = tmp_path / "sample.md"
+    workspace = tmp_path / "sample.parts"
+    _sample_pdf(pdf)
+    config = ExtractionConfig(
+        use_ocr=False,
+        keep_headers=True,
+        keep_footers=True,
+        layout_batch_pages=1,
+    )
+
+    first_events: list[ProgressEvent] = []
+    first = extract_pdf_resumable(
+        pdf,
+        output,
+        workspace_path=workspace,
+        checkpoint_pages=1,
+        config=config,
+        progress=first_events.append,
+    )
+    assert output.is_file()
+    assert (workspace / "manifest.json").is_file()
+    assert any(path.name.startswith("part-0001-") for path in workspace.glob("*.md"))
+    assert "This paragraph should survive extraction." in first.markdown
+
+    def should_not_extract(*_args, **_kwargs):
+        raise AssertionError("completed checkpoint should have been reused")
+
+    monkeypatch.setattr("pdf_sanitizer.workflow._extract_checkpoint_chunks", should_not_extract)
+    second_events: list[ProgressEvent] = []
+    second = extract_pdf_resumable(
+        pdf,
+        output,
+        workspace_path=workspace,
+        checkpoint_pages=1,
+        config=config,
+        progress=second_events.append,
+    )
+
+    assert second.markdown == first.markdown
+    assert second.metadata["resumed_parts"] == 1
+    assert any(event.stage == "checkpoint-resume" for event in second_events)
