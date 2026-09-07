@@ -16,6 +16,18 @@ _CAPTION_RE = re.compile(
 _PLACEHOLDER_RE = re.compile(r"(?:IMAGE|GRAPHIC|VISUAL)?_?PLACEHOLDER", re.IGNORECASE)
 _MARKUP_RE = re.compile(r"[*_`$]|</?(?:sup|sub|u)>|<!--.*?-->", re.IGNORECASE)
 _NONWORD_RE = re.compile(r"[^a-z0-9]+")
+_PROSE_RUN_RE = re.compile(
+    r"\b[A-Za-zÀ-ÖØ-öø-ÿ]{2,}\s+"
+    r"[A-Za-zÀ-ÖØ-öø-ÿ]{2,}\s+"
+    r"[A-Za-zÀ-ÖØ-öø-ÿ]{2,}\s+"
+    r"[A-Za-zÀ-ÖØ-öø-ÿ]{2,}\b"
+)
+_PROSE_CUE_RE = re.compile(
+    r"\b(?:the|this|these|those|that|which|where|because|however|therefore|given|note|"
+    r"can|could|would|should|is|are|was|were|and|with|from|into|than)\b",
+    re.IGNORECASE,
+)
+_MATH_DENSITY_CHARS = set("=+-*/^_<>≤≥≠≈≡∑∏∫√∂∇∞()[]{}")
 
 
 def _clean(value: str) -> str:
@@ -29,6 +41,13 @@ def _comparison_text(value: str) -> str:
     text = _MARKUP_RE.sub(" ", _clean(value)).lower()
     text = re.sub(r"\\[A-Za-z]+", " ", text)
     return _NONWORD_RE.sub(" ", text).strip()
+
+
+def _math_density(text: str) -> float:
+    if not text:
+        return 0.0
+    symbol_count = sum(char in _MATH_DENSITY_CHARS for char in text)
+    return symbol_count / len(text)
 
 
 def display_math_text_is_plausible(value: str) -> bool:
@@ -47,21 +66,33 @@ def display_math_text_is_plausible(value: str) -> bool:
     relations = len(_RELATION_RE.findall(text))
     operators = len(_OPERATOR_RE.findall(text))
     advanced = bool(_ADVANCED_RE.search(text))
+    density = _math_density(text)
+    prose_cues = len(_PROSE_CUE_RE.findall(text))
 
     if _CAPTION_RE.match(text) and len(words) >= 2:
         return False
 
-    # Long natural-language blocks should stay prose unless they contain unmistakably
-    # mathematical structure. This catches captions such as "Table 4.2 ... C = 150".
-    if len(words) >= 10 and not advanced:
+    # Four consecutive natural-language words are strong evidence that the block is a
+    # sentence fragment with some mathematics in it, not a standalone display equation.
+    # OCR-heavy formulas may contain short labels such as "if" or "max", but rarely a
+    # normal prose run of this length.
+    if len(words) >= 5 and _PROSE_RUN_RE.search(text):
         return False
-    if len(words) >= 7 and relations <= 1 and operators <= 1 and not advanced:
+    if len(words) >= 6 and prose_cues >= 3:
         return False
 
-    sentence_like = text.rstrip().endswith((".", "!", "?", ":", ";"))
-    if sentence_like and len(words) >= 5 and relations <= 1 and not advanced:
+    # Long natural-language blocks should stay prose unless the symbol density is
+    # unmistakably mathematical. This catches cases such as a sentence ending in
+    # "... = 16.23. This is higher than given" even though it contains \times tokens.
+    if len(words) >= 8 and density < 0.16:
         return False
-    if text.count(",") >= 2 and len(words) >= 5 and relations <= 1 and operators <= 1 and not advanced:
+    if len(words) >= 6 and density < 0.10:
+        return False
+
+    sentence_like = text.rstrip().endswith((".", "!", "?", ":", ";", ","))
+    if sentence_like and len(words) >= 5 and density < 0.18:
+        return False
+    if text.count(",") >= 2 and len(words) >= 5 and relations <= 1 and density < 0.16:
         return False
 
     if advanced:
@@ -81,8 +112,18 @@ def equation_overlay_is_plausible(equation: Any, existing_markdown: str) -> bool
     if not display_math_text_is_plausible(source or markdown):
         return False
 
-    # If the exact source is present, the renderer can replace that span with MathJax.
+    # If the exact source is present, first check whether it is actually a fragment of
+    # a much longer prose line. Replacing such a fragment with display math was the
+    # source of duplicates like "(as Ci > R(..." appearing below the original sentence.
     if source and source in existing_markdown:
+        for raw_line in existing_markdown.splitlines():
+            if source not in raw_line:
+                continue
+            line = raw_line.strip()
+            if line == source or len(line) <= max(len(source) + 12, int(len(source) * 1.25)):
+                return True
+            if len(_WORD_RE.findall(line)) >= 6:
+                return False
         return True
 
     source_cmp = _comparison_text(source)
