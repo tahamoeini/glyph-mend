@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -108,7 +109,8 @@ def main() -> int:
             self.docx_input = tk.StringVar()
             self.docx_output = tk.StringVar()
             self.docx_title = tk.StringVar()
-            self.docx_page_breaks = tk.BooleanVar(value=True)
+            # Word is reflowing; reproducing every source PDF page boundary is opt-in.
+            self.docx_page_breaks = tk.BooleanVar(value=False)
 
             self.status = tk.StringVar(value="Ready")
             self.progress_value = tk.DoubleVar(value=0.0)
@@ -253,13 +255,13 @@ def main() -> int:
             ttk.Entry(frame, textvariable=self.docx_title).grid(row=2, column=1, sticky="ew", pady=4)
             ttk.Checkbutton(
                 frame,
-                text="Convert <!-- page: N --> markers to Word page breaks",
+                text="Preserve source PDF page boundaries as hard Word page breaks",
                 variable=self.docx_page_breaks,
             ).grid(row=3, column=1, sticky="w", pady=4)
             ttk.Button(parent, text="Create DOCX", command=self._docx).pack(anchor="w", pady=12)
             ttk.Label(
                 parent,
-                text="Tables, headings, lists, links, code, and page breaks become Word structures; LaTeX and Mermaid stay readable rather than being guessed.",
+                text="Word reflows naturally by default. Headings, tables, lists, links and code become Word structures; source page breaks are optional because forcing hundreds of them can create sparse, oversized documents.",
                 wraplength=820,
             ).pack(anchor="w")
 
@@ -416,6 +418,24 @@ def main() -> int:
             output = Path(output_text) if output_text else source.with_suffix(".docx")
             title = self.docx_title.get().strip() or None
             page_breaks = self.docx_page_breaks.get()
+
+            if page_breaks:
+                try:
+                    marker_count = len(
+                        re.findall(
+                            r"<!--\s*page:\s*\d+\s*-->",
+                            source.read_text(encoding="utf-8"),
+                            flags=re.IGNORECASE,
+                        )
+                    )
+                except Exception:
+                    marker_count = 0
+                if marker_count > 100 and not messagebox.askyesno(
+                    "Preserve source page boundaries?",
+                    f"This Markdown contains {marker_count} source page markers. Hard Word page breaks "
+                    "can create a much longer, sparse document. Continue anyway?",
+                ):
+                    return
 
             def task(_callback: Callable[[ProgressEvent], None]) -> Path:
                 return markdown_to_docx(source, output, title=title, page_breaks=page_breaks)
