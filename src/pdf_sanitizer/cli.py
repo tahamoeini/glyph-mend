@@ -122,10 +122,13 @@ def build_parser() -> argparse.ArgumentParser:
     docx_parser.add_argument("-o", "--output", type=Path, help="Output DOCX path; defaults to <input>.docx")
     docx_parser.add_argument("--title", help="Optional Word document title")
     docx_parser.add_argument(
-        "--no-page-breaks",
+        "--preserve-page-breaks",
         action="store_true",
-        help="Do not convert <!-- page: N --> markers into Word page breaks",
+        help="Turn source <!-- page: N --> markers into hard Word page breaks",
     )
+    # Kept for scripts written against 0.2/0.3. Page breaks are now off by default,
+    # so this compatibility flag is intentionally hidden and effectively a no-op.
+    docx_parser.add_argument("--no-page-breaks", action="store_true", help=argparse.SUPPRESS)
 
     subparsers.add_parser("gui", help="Launch the native desktop interface")
     return parser
@@ -233,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.input,
                 args.output,
                 title=args.title,
-                page_breaks=not args.no_page_breaks,
+                page_breaks=args.preserve_page_breaks and not args.no_page_breaks,
             )
         except Exception as exc:
             print(f"pdf-sanitizer: {exc}", file=sys.stderr)
