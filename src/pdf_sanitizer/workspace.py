@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import shutil
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -13,6 +12,25 @@ from .config import ExtractionConfig
 
 
 SCHEMA_VERSION = 1
+ALGORITHM_VERSION = 1
+_OUTPUT_CONFIG_FIELDS = (
+    "use_ocr",
+    "force_ocr",
+    "ocr_language",
+    "ocr_dpi",
+    "keep_headers",
+    "keep_footers",
+    "include_page_markers",
+    "extract_tables",
+    "extract_equations",
+    "normalize_task_lists",
+    "detect_vector_flows",
+    "include_visual_placeholders",
+    "layout_mode",
+    "min_image_area_ratio",
+    "min_graphic_area_ratio",
+    "full_page_scan_ratio",
+)
 
 
 class WorkspaceError(RuntimeError):
@@ -62,7 +80,9 @@ def _json_fingerprint(value: Any) -> str:
 
 
 def _config_payload(config: ExtractionConfig) -> dict[str, Any]:
-    return asdict(config)
+    # Only settings that can change produced Markdown invalidate checkpoints. Logging,
+    # batching, fail-fast behavior, and safety limits can change between resume attempts.
+    return {name: getattr(config, name) for name in _OUTPUT_CONFIG_FIELDS}
 
 
 def source_fingerprint(path: Path) -> dict[str, Any]:
@@ -162,6 +182,7 @@ class ExtractionWorkspace:
 
         manifest = {
             "schema_version": SCHEMA_VERSION,
+            "algorithm_version": ALGORITHM_VERSION,
             "status": "in_progress",
             "created_at": _now(),
             "updated_at": _now(),
@@ -189,6 +210,8 @@ class ExtractionWorkspace:
     ) -> None:
         if manifest.get("schema_version") != SCHEMA_VERSION:
             raise WorkspaceError("Workspace manifest schema is incompatible; use --restart")
+        if manifest.get("algorithm_version") != ALGORITHM_VERSION:
+            raise WorkspaceError("Extraction algorithm changed since this workspace was created; use --restart")
         old_source = manifest.get("source") or {}
         if old_source.get("sha256") != source_info["sha256"] or old_source.get("size") != source_info["size"]:
             raise WorkspaceError("Workspace belongs to a different or changed PDF; use --restart")
@@ -211,6 +234,8 @@ class ExtractionWorkspace:
             raise WorkspaceError(f"Cannot read workspace manifest: {manifest_path}") from exc
         if manifest.get("schema_version") != SCHEMA_VERSION:
             raise WorkspaceError("Unsupported workspace manifest schema")
+        if manifest.get("algorithm_version") != ALGORITHM_VERSION:
+            raise WorkspaceError("Workspace was produced by an incompatible extraction algorithm")
         return cls(root_path, manifest)
 
     @property
