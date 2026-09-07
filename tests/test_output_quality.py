@@ -17,6 +17,18 @@ def test_sentence_with_one_relation_is_not_display_math():
     assert display_math_text_is_plausible(r"f(x) = \frac{1}{2} x^2")
 
 
+def test_prose_fragments_with_math_symbols_are_not_display_math():
+    assert not display_math_text_is_plausible(
+        "probability 1/2, generating a positive expected profit for firm 2. However,"
+    )
+    assert not display_math_text_is_plausible(
+        r"0.284 \times 57.14 = 16.23. This is higher than given"
+    )
+    assert not display_math_text_is_plausible(
+        "efficient sets can be ordered by revenue. These can be ordered as follows"
+    )
+
+
 def test_heading_depth_follows_explicit_section_numbering():
     value = "# **9.4.1 Expectation-Maximization (EM) Method**\n\n## **11.6.1.1 Analysts**"
     assert normalize_heading_structure(value) == (
