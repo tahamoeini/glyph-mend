@@ -1,8 +1,19 @@
 from pathlib import Path
+from zipfile import ZipFile
 
 from docx import Document
+from lxml import etree
 
 from pdf_sanitizer.docx_export import markdown_to_docx
+
+
+_W_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+
+
+def _page_break_count(path: Path) -> int:
+    with ZipFile(path) as archive:
+        root = etree.fromstring(archive.read("word/document.xml"))
+    return len(root.xpath('.//w:br[@w:type="page"]', namespaces=_W_NS))
 
 
 def test_markdown_to_docx_preserves_core_structure(tmp_path: Path):
@@ -55,6 +66,18 @@ More text.
     assert len(document.tables) == 1
     assert document.tables[0].cell(0, 0).text == "Name"
     assert document.tables[0].cell(1, 1).text == "1"
+    # Word is reflowing by default; source PDF page comments are metadata.
+    assert _page_break_count(output) == 0
+
+
+def test_source_page_breaks_are_explicit_opt_in(tmp_path: Path):
+    markdown = tmp_path / "pages.md"
+    markdown.write_text(
+        "<!-- page: 1 -->\n\nFirst.\n\n<!-- page: 2 -->\n\nSecond.",
+        encoding="utf-8",
+    )
+    output = markdown_to_docx(markdown, page_breaks=True)
+    assert _page_break_count(output) == 1
 
 
 def test_old_br_tags_are_flattened_during_docx_export(tmp_path: Path):
@@ -63,3 +86,44 @@ def test_old_br_tags_are_flattened_during_docx_export(tmp_path: Path):
     output = markdown_to_docx(markdown)
     document = Document(output)
     assert document.paragraphs[0].text == "REVENUE MANAGEMENT"
+
+
+def test_visual_placeholder_becomes_readable_caption_without_bbox(tmp_path: Path):
+    markdown = tmp_path / "visual.md"
+    markdown.write_text(
+        '[IMAGE_PLACEHOLDER page=62 bbox="59,347,396,370"]',
+        encoding="utf-8",
+    )
+    output = markdown_to_docx(markdown)
+    paragraph = Document(output).paragraphs[0]
+    assert paragraph.style.name == "Caption"
+    assert paragraph.text == "Image omitted from semantic extraction (source page 62)."
+    assert "bbox" not in paragraph.text
+
+
+def test_html_inline_semantics_become_word_run_formatting(tmp_path: Path):
+    markdown = tmp_path / "inline.md"
+    # The unmatched '*' before <sup> is deliberate. Older italic matching could swallow
+    # the tag and leave literal HTML in the generated Word document.
+    markdown.write_text(
+        'J(p*) = value <sup>2</sup>, <sub>t</sub>, and <u>important</u>.',
+        encoding="utf-8",
+    )
+    output = markdown_to_docx(markdown)
+    paragraph = Document(output).paragraphs[0]
+    assert "<sup>" not in paragraph.text
+    assert "<sub>" not in paragraph.text
+    assert "<u>" not in paragraph.text
+    assert any(run.text == "2" and run.font.superscript for run in paragraph.runs)
+    assert any(run.text == "t" and run.font.subscript for run in paragraph.runs)
+    assert any(run.text == "important" and run.underline for run in paragraph.runs)
+
+
+def test_inline_source_page_marker_is_invisible_in_word_text(tmp_path: Path):
+    markdown = tmp_path / "joined.md"
+    markdown.write_text(
+        "This is signifi<!-- page: 2 -->cant evidence.",
+        encoding="utf-8",
+    )
+    output = markdown_to_docx(markdown)
+    assert Document(output).paragraphs[0].text == "This is significant evidence."
