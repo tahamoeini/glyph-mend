@@ -12,7 +12,7 @@ from .workflow import combine_workspace, extract_pdf_resumable
 from .workspace import default_workspace_path
 
 
-_COMMANDS = {"extract", "combine", "md-to-docx"}
+_COMMANDS = {"extract", "combine", "md-to-docx", "gui"}
 
 
 def _add_extraction_options(parser: argparse.ArgumentParser) -> None:
@@ -100,7 +100,7 @@ def _add_extraction_options(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pdf-sanitizer",
-        description="Extract PDFs into restart-safe semantic Markdown and convert Markdown to DOCX.",
+        description="Extract PDFs into restart-safe semantic Markdown, use a desktop GUI, and convert Markdown to DOCX.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -126,6 +126,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not convert <!-- page: N --> markers into Word page breaks",
     )
+
+    subparsers.add_parser("gui", help="Launch the native desktop interface")
     return parser
 
 
@@ -238,6 +240,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(output)
         return 0
+    if args.command == "gui":
+        from .gui import main as gui_main
+
+        return gui_main()
     return 2
 
 
