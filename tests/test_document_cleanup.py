@@ -2,6 +2,7 @@ from pdf_sanitizer.document_cleanup import (
     cleanup_combined_markdown,
     normalize_extraction_punctuation,
     repair_cross_page_hyphenation,
+    repair_cross_page_paragraphs,
     strip_repeated_running_matter,
 )
 
@@ -28,7 +29,6 @@ def test_repeated_running_headers_and_edge_page_numbers_are_removed():
     assert "201" not in result
     assert "205" not in result
     assert result.count("Body paragraph for page") == 5
-    # Preserve one unnumbered occurrence in case the first is the actual section title.
     assert result.count("_Estimation and Forecasting_") == 1
 
 
@@ -107,6 +107,26 @@ def test_genuine_cross_page_compound_is_not_joined_without_evidence():
     )
     result = repair_cross_page_hyphenation(value)
     assert "price-\n\n<!-- page: 2 -->\n\nsensitive" in result
+
+
+def test_cross_page_prose_continuation_becomes_one_semantic_paragraph():
+    value = (
+        "This paragraph is deliberately long enough to represent ordinary body prose and ends with a comma,\n\n"
+        "<!-- page: 2 -->\n\n"
+        "continuing naturally on the next source page without starting a new paragraph."
+    )
+    result = repair_cross_page_paragraphs(value)
+    assert ", <!-- page: 2 --> continuing naturally" in result
+
+
+def test_cross_page_reflow_does_not_merge_real_paragraph_boundary():
+    value = (
+        "This is a complete paragraph with enough words to pass the length threshold.\n\n"
+        "<!-- page: 2 -->\n\n"
+        "another paragraph begins here."
+    )
+    result = repair_cross_page_paragraphs(value)
+    assert "\n\n<!-- page: 2 -->\n\n" in result
 
 
 def test_misencoded_low_comma_and_footnote_spacing_are_repaired():
