@@ -14,7 +14,14 @@ from .quality import assess_layout_markdown
 from .renderer import render_page_markdown
 from .sanitize import sanitize_markdown
 from .semantics import normalize_display_math_lines, normalize_task_lists
-from .workspace import ExtractionWorkspace, WorkspaceError, default_workspace_path
+from .workspace import ExtractionWorkspace, default_workspace_path
+
+
+def _empty_chunks(total: int) -> list[dict[str, Any]]:
+    return [
+        {"text": "", "page_boxes": [], "metadata": {"page_number": index + 1}}
+        for index in range(total)
+    ]
 
 
 def _render_fallback(page: Any, chunk: dict[str, Any], page_number: int, config: ExtractionConfig) -> str:
@@ -38,13 +45,10 @@ def _extract_checkpoint_chunks(
     progress: ProgressCallback | None,
     started: float,
 ) -> tuple[list[dict[str, Any]], int, int, int]:
-    """Extract one checkpoint range and repair pathological Layout pages in-place."""
+    """Extract one low-level page batch and repair pathological Layout pages in-place."""
 
     total = document.page_count
-    chunks: list[dict[str, Any]] = [
-        {"text": "", "page_boxes": [], "metadata": {"page_number": index + 1}}
-        for index in range(total)
-    ]
+    chunks = _empty_chunks(total)
     primary_layout = config.layout_mode != "legacy"
     batch_chunks, primary_capture = _invoke_markdown(
         document,
@@ -155,8 +159,8 @@ def extract_pdf_resumable(
 ) -> ExtractionResult:
     """Extract a PDF into persisted Markdown parts, resume safely, then combine them.
 
-    A completed part is skipped only when the source PDF fingerprint, extraction config,
-    page range, and part checksum all still match the workspace manifest.
+    A completed part is skipped only when the source PDF fingerprint, semantic extraction
+    config, page range, algorithm version, and part checksum still match the workspace.
     """
 
     started = perf_counter()
@@ -226,12 +230,26 @@ def extract_pdf_resumable(
                 "parts": workspace.expected_part_count,
             },
         )
+        emit_progress(
+            progress,
+            "layout-start",
+            "Running restart-safe batched layout/OCR extraction",
+            current=0,
+            total=document.page_count,
+            elapsed_seconds=perf_counter() - started,
+            details={
+                "layout_mode": config.layout_mode,
+                "layout_batch_pages": config.layout_batch_pages,
+                "checkpoint_pages": checkpoint_pages,
+            },
+        )
 
         total_noise = 0
         total_unknown = 0
         total_repaired = 0
         total_fallback = 0
         resumed_parts = 0
+        processed_parts = 0
 
         for part_index in range(1, workspace.expected_part_count + 1):
             start_page, end_page = workspace.expected_range(part_index)
@@ -250,7 +268,7 @@ def extract_pdf_resumable(
                 continue
 
             selected = list(range(start_page - 1, end_page))
-            batch_started = perf_counter()
+            checkpoint_started = perf_counter()
             emit_progress(
                 progress,
                 "checkpoint-start",
@@ -261,17 +279,38 @@ def extract_pdf_resumable(
                 details={"part": part_index, "start_page": start_page, "end_page": end_page},
             )
 
-            chunks, noise, unknown, repaired = _extract_checkpoint_chunks(
-                document,
-                pymupdf4llm,
-                config,
-                selected,
-                progress=progress,
-                started=started,
-            )
-            total_noise += noise
-            total_unknown += unknown
-            total_repaired += repaired
+            chunks = _empty_chunks(document.page_count)
+            for offset in range(0, len(selected), config.layout_batch_pages):
+                low_level_selected = selected[offset : offset + config.layout_batch_pages]
+                low_started = perf_counter()
+                low_chunks, noise, unknown, repaired = _extract_checkpoint_chunks(
+                    document,
+                    pymupdf4llm,
+                    config,
+                    low_level_selected,
+                    progress=progress,
+                    started=started,
+                )
+                for index in low_level_selected:
+                    chunks[index] = low_chunks[index]
+                total_noise += noise
+                total_unknown += unknown
+                total_repaired += repaired
+                emit_progress(
+                    progress,
+                    "layout",
+                    f"Layout/OCR processed pages {low_level_selected[0] + 1}-{low_level_selected[-1] + 1}",
+                    current=low_level_selected[-1] + 1,
+                    total=document.page_count,
+                    elapsed_seconds=perf_counter() - started,
+                    details={
+                        "checkpoint": part_index,
+                        "batch_seconds": round(perf_counter() - low_started, 3),
+                        "repaired_pages": repaired,
+                        "suppressed_native_noise": noise,
+                        "unexpected_native_diagnostics": unknown,
+                    },
+                )
 
             rendered_pages: list[str] = []
             for index in selected:
@@ -309,6 +348,7 @@ def extract_pdf_resumable(
                 "\n\n".join(page for page in rendered_pages if page.strip())
             )
             part_path = workspace.write_part(part_index, part_markdown)
+            processed_parts += 1
             emit_progress(
                 progress,
                 "checkpoint-write",
@@ -321,10 +361,25 @@ def extract_pdf_resumable(
                     "path": str(part_path),
                     "pages": f"{start_page}-{end_page}",
                     "chars": len(part_markdown),
-                    "seconds": round(perf_counter() - batch_started, 3),
+                    "seconds": round(perf_counter() - checkpoint_started, 3),
                 },
             )
 
+        emit_progress(
+            progress,
+            "layout-complete",
+            "All required checkpoint ranges are available",
+            current=document.page_count,
+            total=document.page_count,
+            elapsed_seconds=perf_counter() - started,
+            details={
+                "processed_parts": processed_parts,
+                "resumed_parts": resumed_parts,
+                "layout_repaired_pages": total_repaired,
+                "suppressed_native_noise": total_noise,
+                "unexpected_native_diagnostics": total_unknown,
+            },
+        )
         emit_progress(
             progress,
             "combine",
@@ -367,6 +422,7 @@ def extract_pdf_resumable(
                 "output": str(final_path),
                 "output_chars": len(markdown),
                 "checkpoint_parts": workspace.expected_part_count,
+                "processed_parts": processed_parts,
                 "resumed_parts": resumed_parts,
                 "fallback_pages": total_fallback,
                 "layout_repaired_pages": total_repaired,
@@ -375,7 +431,7 @@ def extract_pdf_resumable(
             },
         )
         return result
-    except (Exception, WorkspaceError) as exc:
+    except Exception as exc:
         emit_progress(
             progress,
             "error",
