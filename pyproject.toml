@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdf-sanitizer"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local-first PDF to restart-safe semantic Markdown extractor with desktop GUI and DOCX export."
 readme = "README.md"
 requires-python = ">=3.10"
