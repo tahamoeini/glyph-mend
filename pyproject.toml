@@ -16,7 +16,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "ruff>=0.12"]
+dev = [
+  "build>=1.2,<2",
+  "pytest>=8.3",
+  "ruff>=0.12",
+]
 
 [project.scripts]
 pdf-sanitizer = "pdf_sanitizer.cli:main"
