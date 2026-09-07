@@ -1,12 +1,12 @@
 # pdf-sanitizer
 
-A local-first **semantic PDF-to-Markdown extractor and sanitizer** for search, RAG, indexing, archival, migration, and human review.
+A local-first **semantic PDF-to-Markdown extractor and sanitizer** with restart-safe checkpoints and optional Markdown-to-DOCX export.
 
-It consolidates the useful PDF-processing ideas from [`pdf-tokenizer`](https://github.com/tahamoeini/pdf-tokenizer) and the ingestion path in [`article-writer`](https://github.com/tahamoeini/article-writer), then goes further in one deliberately narrow direction:
+It consolidates the useful PDF-processing ideas from [`pdf-tokenizer`](https://github.com/tahamoeini/pdf-tokenizer) and the ingestion path in [`article-writer`](https://github.com/tahamoeini/article-writer), then keeps one narrow contract:
 
 > **PDF in → faithful, deterministic, structure-aware Markdown out.**
 
-This is not merely text extraction. The goal is to use the most appropriate Markdown representation for content that has real structure, while refusing to invent semantics for visuals that cannot be reconstructed safely.
+DOCX is an export format layered on top of the Markdown. Chunking, embeddings, RAG, article generation, and other downstream concerns remain separate.
 
 ## Semantic output contract
 
@@ -16,58 +16,64 @@ This is not merely text extraction. The goal is to use the most appropriate Mark
 | Paragraphs | Markdown prose |
 | Ordered/unordered lists | Markdown lists |
 | Checkbox lists | GitHub task lists (`- [ ]`, `- [x]`) |
-| Bold/italic and other layout-supported text | Markdown formatting when recoverable by the extraction engine |
-| Monospaced/code regions | Fenced Markdown code blocks when detected |
-| Links | Markdown links when recoverable from the PDF |
-| Tables | GitHub-flavored Markdown tables |
-| Text-based display equations | GitHub/MathJax LaTeX blocks (`$$ ... $$`) |
-| Strong standalone equations left by OCR | Conservative LaTeX math blocks |
-| Superscript/subscript/fractions | Preserved semantically; common math forms normalized to LaTeX in equations |
+| Bold/italic/layout text | Markdown formatting when recoverable |
+| Monospaced/code regions | fenced code when detected |
+| Links | Markdown links when recoverable |
+| Real tables | GitHub-flavored Markdown tables |
+| Text-based display equations | GitHub/MathJax `$$ ... $$` blocks |
+| Strong standalone OCR equations | conservative LaTeX blocks |
+| Superscripts/subscripts/fractions | preserved; normalized in equations when deterministic |
 | Simple vector box/connector flows | Mermaid `flowchart` blocks |
-| Embedded raster images | `[IMAGE_PLACEHOLDER ...]` |
-| Complex/non-reconstructable vector graphics | `[GRAPHIC_PLACEHOLDER ...]` |
-| Scanned text pages | OCR text when OCR is available/enabled |
-| Headers/footers | Removed by default |
+| Raster images | `[IMAGE_PLACEHOLDER ...]` |
+| Ambiguous vector graphics | `[GRAPHIC_PLACEHOLDER ...]` |
+| Scanned text pages | OCR text when OCR is enabled/available |
+| Headers/footers | removed by default |
 | Page boundaries | `<!-- page: N -->` comments by default |
 
-The trust rule is simple:
+The trust hierarchy is intentionally conservative:
 
-1. **Native Markdown structure** when the PDF provides enough evidence.
-2. **Deterministic reconstruction** for tables, equations, task lists, and simple flows.
-3. **Faithful text preservation** when semantics are uncertain.
-4. **Explicit placeholders** when the content is genuinely visual.
+1. Native structure when evidence exists.
+2. Deterministic reconstruction for tables, equations, task lists, and simple flows.
+3. Readable text when structure is uncertain.
+4. Explicit placeholders for genuinely visual content.
 
-No summarization and no semantic guessing disguised as extraction.
+A suspicious table is therefore downgraded to readable prose rather than preserved as an impressive-looking grid of broken words.
 
-## Why this supersedes the older extraction paths
+## Processing architecture
 
-`pdf-tokenizer` already had useful OCR fallback, image handling, source tracking, and heuristic diagram work, but it also carried GUI/export/tokenization concerns and often reduced visual content to OCR text or generic image reporting.
-
-`article-writer` had a cleaner downstream ingestion philosophy, but its PDF path was primarily structured text extraction for indexing rather than a complete semantic PDF-to-Markdown representation.
-
-`pdf-sanitizer` is the canonical preprocessing layer instead:
+The default CLI path is restart-safe:
 
 ```text
 PDF
  ↓
-layout-aware extraction
+checkpoint range (for example pages 1-20)
  ↓
-table recovery
+layout/OCR extraction
  ↓
-equation / math reconstruction
+quality gate
+ ├─ healthy layout → keep
+ └─ pathological page-wide table → text-first native reconstruction
  ↓
-task-list normalization
+conservative regional tables
  ↓
-vector-flow reconstruction
- ↓
-visual classification + placeholders
+equations / task lists / flows / visual placeholders
  ↓
 structure-safe sanitization
  ↓
-Markdown
+part-0001-pages-0001-0020.md
+ ↓
+manifest.json updated atomically
+ ↓
+next checkpoint
+ ↓
+validated parts combined
+ ↓
+final Markdown
+ ↓ optional
+DOCX
 ```
 
-Chunking, embeddings, vector databases, article generation, and other downstream concerns should consume this Markdown rather than being coupled to PDF parsing.
+This avoids the old failure mode where a 700-page extraction crashed near the end and the only available recovery strategy was apparently to age one year and start again.
 
 ## Installation
 
@@ -75,30 +81,49 @@ Python 3.10+:
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\\Scripts\\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e .
 ```
 
-For OCR, install Tesseract and the language packs you need. OCR is only used when enabled and useful; ordinary text PDFs do not need it.
+For OCR, install Tesseract and the language packs you need. Ordinary native-text PDFs do not require OCR.
 
-> **Dependency licensing:** PyMuPDF and PyMuPDF4LLM have their own Artifex/AGPL/commercial licensing terms. Review those terms before choosing how you distribute a product that depends on them.
+> **Dependency licensing:** PyMuPDF and PyMuPDF4LLM have Artifex/AGPL/commercial licensing terms. Review them before distributing a product that depends on these libraries.
 
-## CLI
+## Extract PDF to Markdown
+
+Backward-compatible usage still works:
 
 ```bash
 pdf-sanitizer input.pdf
 ```
 
-This writes `input.md` next to the PDF. Progress logs go to **stderr**, so `--stdout` remains safe for piping Markdown into another command.
+It is equivalent to:
 
-Useful options:
+```bash
+pdf-sanitizer extract input.pdf
+```
+
+The default run creates:
+
+```text
+input.pdf
+input.md
+input.parts/
+  manifest.json
+  part-0001-pages-0001-0020.md
+  part-0002-pages-0021-0040.md
+  ...
+```
+
+The part files are deliberately kept after success. They are both recovery checkpoints and inspectable intermediate Markdown.
+
+Useful extraction options:
 
 ```bash
 pdf-sanitizer input.pdf -o clean.md
-pdf-sanitizer input.pdf --stdout
-pdf-sanitizer input.pdf --no-ocr
 pdf-sanitizer input.pdf --ocr-language eng+fas
 pdf-sanitizer input.pdf --force-ocr
+pdf-sanitizer input.pdf --no-ocr
 pdf-sanitizer input.pdf --no-tables
 pdf-sanitizer input.pdf --no-equations
 pdf-sanitizer input.pdf --no-task-lists
@@ -107,55 +132,132 @@ pdf-sanitizer input.pdf --no-placeholders
 pdf-sanitizer protected.pdf --password "..."
 ```
 
-## Progress logging
+### Checkpoints and automatic resume
 
-Normal CLI runs show low-noise milestones plus coarse page progress. Use `-v` for every page and `-vv` for per-page semantic details such as detected tables, equations, flows, and visual placeholders.
+By default one Markdown checkpoint is persisted every 20 pages:
 
 ```bash
-# Normal progress on stderr
-pdf-sanitizer input.pdf
+pdf-sanitizer input.pdf --checkpoint-pages 20
+```
 
-# Every page
+Choose a workspace explicitly:
+
+```bash
+pdf-sanitizer input.pdf -o clean.md --workspace clean.parts
+```
+
+If the process stops after pages 1-400, rerun the same command. Completed parts are reused after validating:
+
+- source PDF SHA-256 and size;
+- page count;
+- extraction configuration;
+- checkpoint size;
+- persisted part SHA-256 checksums.
+
+Only missing or corrupt parts are processed again.
+
+If the PDF or extraction options intentionally changed, start a fresh workspace:
+
+```bash
+pdf-sanitizer input.pdf --restart
+```
+
+`--restart` refuses to recursively delete arbitrary non-workspace directories. Humans already have enough ways to delete their own files.
+
+The old one-shot in-memory path remains available when useful:
+
+```bash
+pdf-sanitizer input.pdf --no-checkpoints
+```
+
+`--stdout` also uses the one-shot path so stdout remains a clean Markdown stream:
+
+```bash
+pdf-sanitizer input.pdf --stdout > clean.md
+```
+
+### Combine existing parts without re-extraction
+
+If every part exists but the run stopped before final assembly:
+
+```bash
+pdf-sanitizer combine input.parts -o input.md
+```
+
+If `-o` is omitted, the output path stored in `manifest.json` is used.
+
+Combination verifies every part and checksum before writing the final Markdown atomically.
+
+## Convert Markdown to DOCX
+
+DOCX conversion is intentionally a separate operation:
+
+```bash
+pdf-sanitizer md-to-docx input.md
+```
+
+or via the standalone installed command:
+
+```bash
+md-to-docx input.md
+```
+
+Specify an output path or title:
+
+```bash
+md-to-docx input.md -o input.docx
+md-to-docx input.md -o report.docx --title "Revenue Management"
+```
+
+The exporter maps sanitizer Markdown into Word structure:
+
+| Markdown | DOCX |
+| --- | --- |
+| headings | Word heading styles |
+| paragraphs | normal paragraphs |
+| bold/italic/code spans | formatted runs |
+| ordered/unordered lists | Word lists |
+| task lists | visible checkbox symbols |
+| GFM tables | Word tables |
+| blockquotes | quote style when available |
+| fenced code / Mermaid | monospaced code blocks |
+| `<!-- page: N -->` | Word page breaks by default |
+| `$$ ... $$` | centered LaTeX text in Cambria Math |
+
+Use `--no-page-breaks` if page markers should not create Word page breaks.
+
+The DOCX exporter does **not** pretend to convert arbitrary LaTeX into native Word OMML equations. It preserves LaTeX legibly rather than silently corrupting formulas.
+
+## Progress logging
+
+Normal runs show low-noise progress. Use `-v` for detailed progress and `-vv` for page-level semantic counts.
+
+```bash
 pdf-sanitizer input.pdf -v
-
-# Every page plus semantic detection details
 pdf-sanitizer input.pdf -vv
-
-# Errors only on the console
 pdf-sanitizer input.pdf --quiet
-
-# Persist every progress event to a text log
 pdf-sanitizer input.pdf --log-file extraction.log
-
-# Machine-readable JSON Lines progress
 pdf-sanitizer input.pdf --log-file extraction.jsonl --log-format json
 ```
 
-Progress stages include input validation, engine loading, PDF opening, layout/OCR extraction start and completion, per-page semantic processing, page-level safe fallbacks, final completion, and failures.
+Checkpointed runs add stages such as:
 
-A page event can include data such as:
+- `workspace`
+- `checkpoint-start`
+- `checkpoint-resume`
+- `checkpoint-write`
+- `layout-repair`
+- `page`
+- `page-fallback`
+- `combine`
+- `complete`
+- `error`
 
-```json
-{
-  "stage": "page",
-  "current": 12,
-  "total": 40,
-  "percent": 30.0,
-  "page": 12,
-  "elapsed_seconds": 0.18,
-  "details": {
-    "tables": 1,
-    "equations": 2,
-    "flows": 0,
-    "visual_placeholders": 1,
-    "output_chars": 3842
-  }
-}
-```
-
-Persistent log files receive **all** progress events even when console output is coarsened or `--quiet` is used.
+Progress logs go to stderr, not into Markdown content.
 
 ## Python API
+
+One-shot extraction remains available:
 
 ```python
 from pdf_sanitizer import ExtractionConfig, extract_pdf
@@ -164,143 +266,109 @@ result = extract_pdf(
     "input.pdf",
     config=ExtractionConfig(
         use_ocr=True,
-        ocr_language="eng+fas",
         extract_tables=True,
         extract_equations=True,
-        normalize_task_lists=True,
-        detect_vector_flows=True,
-        include_page_markers=True,
     ),
 )
-
 print(result.markdown)
 ```
 
-Library callers can consume typed progress events directly instead of scraping log text:
+For large files, prefer the resumable API:
 
 ```python
-from pdf_sanitizer import ProgressEvent, extract_pdf
+from pdf_sanitizer import ExtractionConfig, extract_pdf_resumable
 
-
-def on_progress(event: ProgressEvent) -> None:
-    if event.percent is not None:
-        print(f"{event.stage}: {event.percent:.0f}%")
-    else:
-        print(f"{event.stage}: {event.message}")
-
-
-result = extract_pdf("input.pdf", progress=on_progress)
+result = extract_pdf_resumable(
+    "input.pdf",
+    "input.md",
+    workspace_path="input.parts",
+    checkpoint_pages=20,
+    config=ExtractionConfig(ocr_language="eng"),
+)
 ```
 
-The progress callback contains no PDF text content. It reports operational metadata and counts, leaving telemetry/storage policy under the caller's control.
+Combine later without reopening the PDF:
 
-## Example output
+```python
+from pdf_sanitizer import combine_workspace
 
-````markdown
-<!-- page: 1 -->
-
-# Payment Model
-
-The terminal sends the transaction request to the switch.
-
-| Field | Meaning |
-| --- | --- |
-| STAN | System trace audit number |
-| RRN | Retrieval reference number |
-
-$$
-P_{success} = 1 - P_{timeout}
-$$
-
-- [x] Validate request
-- [ ] Complete settlement
-
-```mermaid
-flowchart LR
-    N1["POS"]
-    N2["Switch"]
-    N3["Issuer"]
-    N1 --- N2
-    N2 --- N3
+combine_workspace("input.parts", "input.md")
 ```
 
-[IMAGE_PLACEHOLDER page=1 bbox="72,420,540,690"]
-````
+Convert Markdown to DOCX:
+
+```python
+from pdf_sanitizer import markdown_to_docx
+
+markdown_to_docx("input.md", "input.docx")
+```
 
 ## Equation handling
 
-GitHub Markdown supports LaTeX math, so mathematical content should not be flattened into ordinary prose when the PDF provides enough evidence.
+GitHub Markdown supports LaTeX math, so mathematical content is preserved structurally when evidence is strong enough.
 
-The extractor uses two conservative paths:
+The extractor uses:
 
-- **Native text equations:** span-level text, math symbols, font hints, and superscript information are used to identify likely display equations and reconstruct common Unicode math as LaTeX.
-- **OCR/layout fallback:** a stricter standalone-line detector catches obvious equations such as `x = y + 2` when span-level structure is unavailable.
+- span-level math symbols, font hints, superscript metadata, and text geometry for native equations;
+- a stricter standalone-line detector for OCR/layout text;
+- conservative Unicode-to-LaTeX normalization for common Greek symbols, relations, fractions, superscripts, and subscripts.
 
-Common Greek symbols, relations, operators, fractions, superscripts, and subscripts are normalized where doing so is deterministic.
+Inline prose is not aggressively rewritten as math. Rasterized formulas without reliable recognition remain visual content rather than invented LaTeX.
 
-Inline prose is deliberately not aggressively rewritten into `$...$`. A false equation is worse than preserved plain text.
+## Table handling
 
-Image-only or highly graphical formulas are not hallucinated into LaTeX. They remain visual placeholders unless a future deterministic/local formula-recognition backend is added.
+Table extraction is deliberately independent from page-layout classification.
+
+The preferred order is:
+
+1. strict ruled-line evidence;
+2. line-based table evidence;
+3. bounded whitespace/text tables under conservative size and prose checks.
+
+Page-wide whitespace grids are rejected because justified paragraphs can otherwise be misread as 5-8 artificial columns. Genuine compact tables remain tables; prose remains prose.
 
 ## Structure-safe sanitization
 
 Sanitization is structural, not editorial. It:
 
-- uses Unicode **NFC**, not compatibility normalization that can destroy superscripts, subscripts, or fractions;
-- normalizes ligatures, line endings, zero-width/control characters, and extraction noise;
-- repairs obvious Latin prose line-wrap hyphenation;
-- protects fenced code, Mermaid, and other literal blocks from prose cleanup;
-- suppresses generated image links/binaries in favor of deterministic visual placeholders;
-- removes detected headers and footers by default;
-- avoids duplicate table/equation/diagram text when replacing a detected region;
-- preserves the actual claims and wording of the PDF rather than summarizing or rewriting them.
+- uses Unicode NFC rather than destructive compatibility normalization;
+- normalizes ligatures, zero-width/control characters, line endings, and extraction artifacts;
+- removes meaningless `<br>` layout debris from generated semantic Markdown;
+- repairs conservative Latin line-wrap hyphenation;
+- protects fenced code and Mermaid from prose cleanup;
+- avoids duplicate text when replacing tables, equations, and diagrams;
+- preserves the actual source claims instead of summarizing or rewriting them.
 
-It does **not** remove text because it looks like an instruction, prompt injection, opinion, or unwanted claim. Content filtering is a separate concern from faithful extraction.
+## Images, scans, and vector graphics
 
-## Tables
+Raster images become deterministic placeholders containing page/bounding-box coordinates.
 
-Tables are extracted through PyMuPDF table detection and emitted as GitHub-flavored Markdown. The extractor uses multiple table strategies, including a layout-independent fallback for ruled tables that newer layout analysis may classify as pictures.
+Simple vector rectangle/connector diagrams can become Mermaid when connector evidence exists. Connector direction is not invented.
 
-A final word-position fallback handles simple ruled tables when the primary table detector still fails.
+Full-page scans can use OCR text when available. Ambiguous graphics remain placeholders.
 
-Complex merged-cell tables may necessarily lose rowspan/colspan semantics because GitHub-flavored Markdown tables do not represent those features directly. The tool prefers faithful cell text over fabricated structure.
+## Workspace integrity
 
-## Flows and vector graphics
+`manifest.json` is not merely a progress note. It is the recovery contract. It records:
 
-Simple vector diagrams are reconstructed only when the page contains multiple labeled rectangle nodes and actual connector-line evidence. The result is Mermaid.
+- source fingerprint;
+- extraction configuration fingerprint;
+- page count;
+- checkpoint size;
+- each part's page range, filename, status, size, and SHA-256;
+- final combined output checksum.
 
-Connector direction is not invented. Until arrowhead direction can be established reliably, reconstructed links use Mermaid's undirected `---` edge.
-
-Everything more ambiguous stays a `[GRAPHIC_PLACEHOLDER ...]`.
-
-## Images and scans
-
-Raster images are not OCR-summarized into fake prose. They become deterministic placeholders containing page and bounding-box coordinates.
-
-Full-page scanned documents are treated differently: when OCR supplies meaningful page text, that text is preserved rather than replacing the entire page with one image placeholder.
-
-## What is preserved but not over-inferred
-
-Some PDF semantics are inherently ambiguous because PDF stores visual placement more reliably than logical document structure. The extractor therefore preserves content without pretending certainty for cases such as:
-
-- inline mathematical fragments embedded deeply in prose;
-- footnotes whose reference/definition relationship is not structurally recoverable;
-- arbitrary UML/BPMN/network/architecture diagrams;
-- charts whose data values are encoded only graphically;
-- merged/irregular tables whose cell spanning cannot be represented faithfully in GFM;
-- rasterized equations without a dedicated formula-recognition backend.
-
-These are explicit boundaries, not forgotten features.
+Part files and the manifest are written through temporary files and atomic replacement, so an interrupted write does not masquerade as a completed checkpoint.
 
 ## Safety and operational limits
 
 - No network calls or external AI APIs.
 - Does not execute PDF JavaScript, attachments, links, or embedded files.
-- Progress events do not contain extracted PDF text; only stages, counts, timing, paths, and error metadata.
+- Progress events contain operational metadata, not extracted document text.
 - Default input limit: 512 MB.
 - Default page limit: 2,000 pages.
 - Password-protected PDFs require an explicit password.
-- `--strict` turns page-level graceful fallback into fail-fast behavior.
+- `--strict` changes page-level graceful fallback into fail-fast behavior.
 
 ## Development
 
@@ -310,14 +378,12 @@ ruff check src tests
 pytest
 ```
 
-Regression coverage includes sanitization, semantic math conversion, task lists, table extraction, vector-flow reconstruction, progress reporting, and generated end-to-end PDFs.
+Regression coverage includes sanitization, math, task lists, conservative table extraction, vector-flow reconstruction, progress reporting, checkpoint integrity/resume, Markdown combination, DOCX export, and generated end-to-end PDFs.
 
 CI runs linting and tests on every push and pull request.
 
 ## Project boundary
 
-This repository is the **canonical PDF extractor/sanitizer**.
+`pdf-sanitizer` is the canonical PDF interpretation layer.
 
-It is not a tokenizer, chunker, vector database, RAG pipeline, article writer, GUI, or PDF editor. Those can consume its Markdown output.
-
-Keeping PDF interpretation in one well-tested layer is substantially less absurd than maintaining slightly different PDF parsers inside every downstream project.
+It is not a tokenizer, vector database, RAG pipeline, article writer, or PDF editor. The canonical artifact is Markdown. DOCX is an explicit export from that Markdown, while downstream systems consume the same Markdown instead of implementing yet another slightly different PDF parser.
