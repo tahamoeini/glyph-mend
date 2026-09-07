@@ -39,6 +39,8 @@ The first tab exposes the restart-safe PDF pipeline:
 
 `Extract / Resume` automatically reuses valid completed checkpoints. `Restart from Scratch` explicitly discards a compatible existing workspace after confirmation.
 
+When the extraction algorithm changes in a way that can alter Markdown, old workspaces are rejected by version rather than silently reused. `v0.3.2` uses extraction algorithm version 3.
+
 `Stop Safely` is cooperative. The current low-level engine operation may need to return first, but every already-written checkpoint remains reusable. The active incomplete checkpoint is simply retried on the next run.
 
 ## Progress and logs
@@ -59,9 +61,15 @@ The worker thread never updates Tk widgets directly; events cross a thread-safe 
 
 A completed workspace can be combined without reopening the PDF. The GUI can inspect `manifest.json`, show source/status/page/part information, and combine only after the normal checksum validation succeeds.
 
+Final assembly also performs document-level cleanup that cannot be done reliably from a single page alone, including repeated running-header/page-number removal and proven cross-page wrap-hyphen repair.
+
 ## Markdown → DOCX
 
-The DOCX tab converts an existing Markdown file independently of PDF extraction. It supports an optional document title and optional conversion of `<!-- page: N -->` markers into Word page breaks.
+The DOCX tab converts an existing Markdown file independently of PDF extraction. It supports an optional document title.
+
+Word uses **natural reflow by default**. Source `<!-- page: N -->` comments therefore do not create hard Word page breaks unless `Preserve source PDF page boundaries as hard Word page breaks` is explicitly enabled.
+
+For long documents, the GUI warns before creating hundreds of hard page breaks because that can produce a much longer and sparsely filled Word document. Visual placeholders are rendered as readable caption-style notices rather than raw parser coordinates.
 
 ## Architecture
 
