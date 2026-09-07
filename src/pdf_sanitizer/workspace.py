@@ -12,7 +12,7 @@ from .config import ExtractionConfig
 
 
 SCHEMA_VERSION = 1
-ALGORITHM_VERSION = 1
+ALGORITHM_VERSION = 2
 _OUTPUT_CONFIG_FIELDS = (
     "use_ocr",
     "force_ocr",
