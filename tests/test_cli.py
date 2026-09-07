@@ -8,6 +8,7 @@ def test_legacy_pdf_invocation_maps_to_extract():
 def test_explicit_subcommands_are_preserved():
     assert _normalize_argv(["combine", "input.parts"]) == ["combine", "input.parts"]
     assert _normalize_argv(["md-to-docx", "input.md"]) == ["md-to-docx", "input.md"]
+    assert _normalize_argv(["gui"]) == ["gui"]
 
 
 def test_extract_checkpoint_options_parse():
@@ -25,3 +26,8 @@ def test_extract_checkpoint_options_parse():
     assert args.command == "extract"
     assert args.checkpoint_pages == 25
     assert args.restart is True
+
+
+def test_gui_subcommand_parses_without_extraction_arguments():
+    args = build_parser().parse_args(["gui"])
+    assert args.command == "gui"
