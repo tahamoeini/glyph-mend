@@ -52,7 +52,7 @@ def test_corrupt_checkpoint_is_not_reused(tmp_path: Path):
     assert workspace.completed_part(1) is None
 
 
-def test_workspace_rejects_changed_config(tmp_path: Path):
+def test_workspace_rejects_changed_semantic_config(tmp_path: Path):
     source = tmp_path / "input.pdf"
     source.write_bytes(b"fake-pdf")
     root = tmp_path / "work.parts"
@@ -74,3 +74,33 @@ def test_workspace_rejects_changed_config(tmp_path: Path):
             config=ExtractionConfig(use_ocr=True),
             output=tmp_path / "out.md",
         )
+
+
+def test_workspace_allows_operational_option_changes(tmp_path: Path):
+    source = tmp_path / "input.pdf"
+    source.write_bytes(b"fake-pdf")
+    root = tmp_path / "work.parts"
+    ExtractionWorkspace.prepare(
+        root,
+        source=source,
+        page_count=2,
+        checkpoint_pages=2,
+        config=ExtractionConfig(use_ocr=False, layout_batch_pages=20, strict=False),
+        output=tmp_path / "out.md",
+    )
+
+    resumed = ExtractionWorkspace.prepare(
+        root,
+        source=source,
+        page_count=2,
+        checkpoint_pages=2,
+        config=ExtractionConfig(
+            use_ocr=False,
+            layout_batch_pages=5,
+            strict=True,
+            capture_engine_stderr=False,
+            max_file_mb=1024,
+        ),
+        output=tmp_path / "different-output.md",
+    )
+    assert resumed.root == root.resolve()
