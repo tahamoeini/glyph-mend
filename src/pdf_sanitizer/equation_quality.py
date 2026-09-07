@@ -27,6 +27,7 @@ _PROSE_CUE_RE = re.compile(
     r"can|could|would|should|is|are|was|were|and|with|from|into|than)\b",
     re.IGNORECASE,
 )
+_LONG_ALPHA_RUN_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]{14,}")
 _MATH_DENSITY_CHARS = set("=+-*/^_<>≤≥≠≈≡∑∏∫√∂∇∞()[]{}")
 
 
@@ -79,18 +80,26 @@ def display_math_text_is_plausible(value: str) -> bool:
     if _CAPTION_RE.match(text) and len(words) >= 2:
         return False
 
+    # Layout/OCR sometimes removes every space from a table/figure caption and then
+    # leaves one trailing relation sign. Without this guard strings such as
+    # "Binomialandnormalapproximation...withC=" look like compact equations even though
+    # they are plainly caption text.
+    if (
+        _LONG_ALPHA_RUN_RE.search(text)
+        and not advanced
+        and relations <= 1
+        and operators <= 1
+        and density < 0.06
+    ):
+        return False
+
     # Four consecutive natural-language words are strong evidence that the block is a
     # sentence fragment with some mathematics in it, not a standalone display equation.
-    # OCR-heavy formulas may contain short labels such as "if" or "max", but rarely a
-    # normal prose run of this length.
     if len(words) >= 5 and _PROSE_RUN_RE.search(text):
         return False
     if len(words) >= 6 and prose_cues >= 3:
         return False
 
-    # Long natural-language blocks should stay prose unless the symbol density is
-    # unmistakably mathematical. This catches cases such as a sentence ending in
-    # "... = 16.23. This is higher than given" even though it contains \times tokens.
     if len(words) >= 8 and density < 0.16:
         return False
     if len(words) >= 6 and density < 0.10:
@@ -119,9 +128,6 @@ def equation_overlay_is_plausible(equation: Any, existing_markdown: str) -> bool
     if not display_math_text_is_plausible(source or markdown):
         return False
 
-    # If the exact source is present, first check whether it is actually a fragment of
-    # a much longer prose line. Replacing such a fragment with display math was the
-    # source of duplicates like "(as Ci > R(..." appearing below the original sentence.
     if source and source in existing_markdown:
         for raw_line in existing_markdown.splitlines():
             if source not in raw_line:
@@ -133,16 +139,16 @@ def equation_overlay_is_plausible(equation: Any, existing_markdown: str) -> bool
                 return False
         return True
 
-    # OCR often changes only spacing: a candidate such as "ifpi=pe" may already be
-    # embedded in a longer extracted formula as "if pi = pe". Treating the compact
-    # fragment as a second display equation only duplicates damaged source text.
     source_compact = _compact_math_text(source)
     if len(source_compact) >= 5:
         for raw_line in existing_markdown.splitlines():
             line_compact = _compact_math_text(raw_line)
             if (
                 source_compact in line_compact
-                and len(line_compact) >= max(len(source_compact) + 8, int(len(source_compact) * 1.5))
+                and len(line_compact) >= max(
+                    len(source_compact) + 8,
+                    int(len(source_compact) * 1.5),
+                )
             ):
                 return False
 
@@ -154,9 +160,6 @@ def equation_overlay_is_plausible(equation: Any, existing_markdown: str) -> bool
     if len(source_tokens) < 4:
         return True
 
-    # PyMuPDF sometimes emits a second, slightly mangled equation-like interpretation
-    # of a prose/caption line. If most normalized words already occur together in one
-    # surrounding Markdown line, inserting another display block only duplicates text.
     for raw_line in existing_markdown.splitlines():
         line_cmp = _comparison_text(raw_line)
         if not line_cmp:
