@@ -3,8 +3,6 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from .sanitize import sanitize_markdown
-
 _PAGE_MARKER_RE = re.compile(r"(?m)^[ \t]*<!--\s*page:\s*(\d+)\s*-->[ \t]*$")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
 _EMPHASIS_RE = re.compile(r"[*_`]+")
@@ -64,12 +62,12 @@ def _edge_signature(line: str) -> tuple[str, bool] | None:
 
 
 def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str:
-    """Remove recurring page headers/footers after all page parts have been combined.
+    """Remove recurring page headers/footers after page parts have been combined.
 
-    Per-page geometry is useful but not sufficient for difficult books where a formula,
-    picture, or OCR block can be emitted before the printed running header. At document
-    level we can also use repetition: a short italic/all-caps edge line repeated across
-    many pages is strong evidence of running matter rather than body content.
+    Per-page geometry is useful but not sufficient for difficult books where formulas,
+    pictures, or OCR blocks can be emitted before the printed running header. At document
+    level repetition becomes strong evidence: a short italic/all-caps edge line repeated
+    on several pages is much more likely to be running matter than body prose.
     """
 
     prefix, pages = _split_pages(markdown)
@@ -123,7 +121,7 @@ def strip_repeated_running_matter(markdown: str, *, edge_lines: int = 20) -> str
                 if signature in repeated:
                     # A numbered candidate is unambiguously running matter. For an
                     # unnumbered italic/all-caps signature, preserve its first occurrence
-                    # because that may be the actual appendix/part title that later became
+                    # because it may be the actual appendix/part title that later became
                     # a running header.
                     if has_page_number or first_unpaginated_occurrence.get(signature) != (
                         page_number,
@@ -177,4 +175,4 @@ def cleanup_combined_markdown(markdown: str) -> str:
     value = strip_repeated_running_matter(markdown)
     value = repair_cross_page_hyphenation(value)
     value = normalize_extraction_punctuation(value)
-    return sanitize_markdown(value)
+    return value.strip()
