@@ -8,7 +8,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Pt, RGBColor
 
 
 _PAGE_MARKER_RE = re.compile(r"^\s*<!--\s*page:\s*(\d+)\s*-->\s*$", re.IGNORECASE)
@@ -18,8 +18,18 @@ _ORDERED_RE = re.compile(r"^(\s*)\d+[.)]\s+(.+)$")
 _BLOCKQUOTE_RE = re.compile(r"^\s*>\s?(.*)$")
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)\s*([^\s`]*)\s*$")
 _TABLE_SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
+_PLACEHOLDER_RE = re.compile(
+    r"^\[(IMAGE|GRAPHIC|VISUAL)_PLACEHOLDER(?:\s+page=(\d+))?(?:\s+bbox=\"([^\"]+)\")?\]$",
+    re.IGNORECASE,
+)
 _INLINE_RE = re.compile(
-    r"(\[[^\]]+\]\([^\s)]+\)|\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|(?<!\*)\*[^*\n]+\*(?!\*)|(?<!_)_[^_\n]+_(?!_))"
+    r"("
+    r"\[[^\]]+\]\([^\s)]+\)"
+    r"|<sup>.*?</sup>|<sub>.*?</sub>|<u>.*?</u>"
+    r"|\*\*[^*]+\*\*|__[^_]+__|`[^`]+`"
+    r"|(?<!\*)\*[^*\n]+\*(?!\*)|(?<!_)_[^_\n]+_(?!_)"
+    r")",
+    re.IGNORECASE,
 )
 
 
@@ -29,6 +39,41 @@ def _style_exists(document: Document, name: str) -> bool:
         return True
     except KeyError:
         return False
+
+
+def _configure_document(document: Document) -> None:
+    for section in document.sections:
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(0.85)
+        section.right_margin = Inches(0.85)
+
+    normal = document.styles["Normal"]
+    normal.font.name = "Calibri"
+    normal.font.size = Pt(10.5)
+    normal.paragraph_format.space_after = Pt(5)
+    normal.paragraph_format.line_spacing = 1.08
+
+    heading_sizes = {1: 16, 2: 14, 3: 12, 4: 11, 5: 10.5, 6: 10}
+    for level, size in heading_sizes.items():
+        name = f"Heading {level}"
+        if not _style_exists(document, name):
+            continue
+        style = document.styles[name]
+        style.font.name = "Calibri"
+        style.font.size = Pt(size)
+        style.font.bold = True
+        style.font.color.rgb = RGBColor(0, 0, 0)
+        style.paragraph_format.space_before = Pt(10 if level <= 2 else 7)
+        style.paragraph_format.space_after = Pt(4)
+        style.paragraph_format.keep_with_next = True
+
+    if _style_exists(document, "Caption"):
+        caption = document.styles["Caption"]
+        caption.font.name = "Calibri"
+        caption.font.size = Pt(9)
+        caption.font.italic = True
+        caption.font.color.rgb = RGBColor(80, 80, 80)
 
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
@@ -59,11 +104,21 @@ def _add_inline(paragraph, text: str) -> None:
         if match.start() > position:
             paragraph.add_run(text[position : match.start()])
         token = match.group(0)
+        lower = token.lower()
         if token.startswith("["):
             label_end = token.find("](")
             label = token[1:label_end]
             url = token[label_end + 2 : -1]
             _add_hyperlink(paragraph, label, url)
+        elif lower.startswith("<sup>"):
+            run = paragraph.add_run(token[5:-6])
+            run.font.superscript = True
+        elif lower.startswith("<sub>"):
+            run = paragraph.add_run(token[5:-6])
+            run.font.subscript = True
+        elif lower.startswith("<u>"):
+            run = paragraph.add_run(token[3:-4])
+            run.underline = True
         elif token.startswith(("**", "__")):
             run = paragraph.add_run(token[2:-2])
             run.bold = True
@@ -89,39 +144,40 @@ def _split_table_row(line: str) -> list[str]:
 
     cells: list[str] = []
     current: list[str] = []
-    escaped = False
     in_code = False
-    for char in value:
-        if escaped:
-            current.append(char)
-            escaped = False
-            continue
-        if char == "\\":
-            escaped = True
-            current.append(char)
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char == "\\" and index + 1 < len(value) and value[index + 1] == "|":
+            current.append("|")
+            index += 2
             continue
         if char == "`":
             in_code = not in_code
             current.append(char)
+            index += 1
             continue
         if char == "|" and not in_code:
             cells.append("".join(current).strip())
             current = []
         else:
             current.append(char)
+        index += 1
     cells.append("".join(current).strip())
     return cells
 
 
 def _is_table_separator(line: str) -> bool:
     cells = _split_table_row(line)
-    return bool(cells) and all(_TABLE_SEPARATOR_CELL_RE.fullmatch(cell.replace(" ", "")) for cell in cells)
+    return bool(cells) and all(
+        _TABLE_SEPARATOR_CELL_RE.fullmatch(cell.replace(" ", "")) for cell in cells
+    )
 
 
 def _looks_like_table(lines: list[str], index: int) -> bool:
     if index + 1 >= len(lines):
         return False
-    if "|" not in lines[index] or "|" not in lines[index + 1]:
+    if not lines[index].strip().startswith("|") or not lines[index + 1].strip().startswith("|"):
         return False
     return _is_table_separator(lines[index + 1])
 
@@ -142,6 +198,7 @@ def _consume_paragraph(lines: list[str], start: int) -> tuple[str, int]:
             or _BLOCKQUOTE_RE.match(line)
             or _FENCE_RE.match(line)
             or stripped == "$$"
+            or _PLACEHOLDER_RE.match(stripped)
             or _looks_like_table(lines, index)
         ):
             break
@@ -165,8 +222,11 @@ def _add_code_block(document: Document, lines: Iterable[str], language: str = ""
 def _add_math_block(document: Document, lines: Iterable[str]) -> None:
     paragraph = document.add_paragraph()
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.space_before = Pt(3)
+    paragraph.paragraph_format.space_after = Pt(6)
     run = paragraph.add_run("\n".join(lines).strip())
     run.font.name = "Cambria Math"
+    run.font.size = Pt(10.5)
 
 
 def _add_list_paragraph(document: Document, text: str, *, ordered: bool, indent_chars: int) -> None:
@@ -183,17 +243,49 @@ def _add_list_paragraph(document: Document, text: str, *, ordered: bool, indent_
     _add_inline(paragraph, text)
 
 
+def _add_placeholder(document: Document, match: re.Match[str]) -> None:
+    kind = match.group(1).capitalize()
+    page = match.group(2)
+    bbox = match.group(3)
+    details: list[str] = []
+    if page:
+        details.append(f"source page {page}")
+    if bbox:
+        details.append(f"bbox {bbox}")
+    suffix = f" ({'; '.join(details)})" if details else ""
+    paragraph = document.add_paragraph(style="Caption" if _style_exists(document, "Caption") else None)
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.add_run(f"{kind} omitted from semantic extraction{suffix}.")
+
+
+def _repeat_table_header(row) -> None:
+    tr_pr = row._tr.get_or_add_trPr()
+    header = OxmlElement("w:tblHeader")
+    header.set(qn("w:val"), "true")
+    tr_pr.append(header)
+
+
+def _style_table_text(table) -> None:
+    for row in table.rows:
+        for cell in row.cells:
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.space_after = Pt(2)
+                for run in paragraph.runs:
+                    run.font.size = Pt(9)
+
+
 def markdown_to_docx(
     markdown_path: str | Path,
     output_path: str | Path | None = None,
     *,
     title: str | None = None,
-    page_breaks: bool = True,
+    page_breaks: bool = False,
 ) -> Path:
-    """Convert sanitizer-style Markdown into a standalone DOCX file.
+    """Convert sanitizer-style Markdown into a readable standalone DOCX file.
 
-    The converter intentionally preserves unsupported semantics rather than discarding them:
-    LaTeX display math remains readable LaTeX in Cambria Math and Mermaid remains a code block.
+    Word is a reflowing format, so source-PDF page markers are metadata by default and
+    do not force hard page breaks. Set ``page_breaks=True`` only when reproducing source
+    page boundaries is explicitly more important than natural Word pagination.
     """
 
     source = Path(markdown_path).expanduser().resolve()
@@ -201,22 +293,15 @@ def markdown_to_docx(
         raise FileNotFoundError(source)
     if source.suffix.lower() not in {".md", ".markdown"}:
         raise ValueError(f"Expected a Markdown file: {source}")
-    output = (
-        Path(output_path).expanduser().resolve()
-        if output_path is not None
-        else source.with_suffix(".docx")
-    )
+    output = Path(output_path).expanduser().resolve() if output_path is not None else source.with_suffix(".docx")
     output.parent.mkdir(parents=True, exist_ok=True)
 
     text = source.read_text(encoding="utf-8")
-    # Sanitizer output should already be clean, but tolerate older generated files.
     text = re.sub(r"<br\s*/?>", " ", text, flags=re.IGNORECASE)
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
     document = Document()
-    normal = document.styles["Normal"]
-    normal.font.name = "Calibri"
-    normal.font.size = Pt(11)
+    _configure_document(document)
 
     if title:
         document.add_heading(title, level=0)
@@ -263,6 +348,12 @@ def markdown_to_docx(
             _add_math_block(document, math_lines)
             continue
 
+        placeholder = _PLACEHOLDER_RE.match(stripped)
+        if placeholder:
+            _add_placeholder(document, placeholder)
+            index += 1
+            continue
+
         heading = _HEADING_RE.match(line)
         if heading:
             level = min(6, len(heading.group(1)))
@@ -277,7 +368,7 @@ def markdown_to_docx(
             index += 2
             while index < len(lines):
                 candidate = lines[index]
-                if not candidate.strip() or "|" not in candidate:
+                if not candidate.strip() or not candidate.strip().startswith("|"):
                     break
                 rows.append(_split_table_row(candidate))
                 index += 1
@@ -291,11 +382,13 @@ def markdown_to_docx(
                 _add_inline(paragraph, value)
                 for run in paragraph.runs:
                     run.bold = True
+            _repeat_table_header(table.rows[0])
             for row in rows:
                 cells = table.add_row().cells
                 for column in range(width):
                     value = row[column] if column < len(row) else ""
                     _add_inline(cells[column].paragraphs[0], value)
+            _style_table_text(table)
             continue
 
         bullet = _BULLET_RE.match(line)
@@ -322,9 +415,7 @@ def markdown_to_docx(
 
         quote = _BLOCKQUOTE_RE.match(line)
         if quote:
-            paragraph = document.add_paragraph()
-            if _style_exists(document, "Intense Quote"):
-                paragraph.style = "Intense Quote"
+            paragraph = document.add_paragraph(style="Quote" if _style_exists(document, "Quote") else None)
             _add_inline(paragraph, quote.group(1))
             index += 1
             continue
