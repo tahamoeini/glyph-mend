@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from .config import ExtractionConfig
+from .document_cleanup import cleanup_combined_markdown
 
 
 SCHEMA_VERSION = 1
-ALGORITHM_VERSION = 2
+ALGORITHM_VERSION = 3
 _OUTPUT_CONFIG_FIELDS = (
     "use_ocr",
     "force_ocr",
@@ -347,7 +348,7 @@ class ExtractionWorkspace:
             if value:
                 pieces.append(value)
 
-        combined = "\n\n".join(pieces).strip()
+        combined = cleanup_combined_markdown("\n\n".join(pieces).strip())
         if combined:
             combined += "\n"
         _atomic_write_text(output_path, combined)
