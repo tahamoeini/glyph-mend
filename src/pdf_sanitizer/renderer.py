@@ -4,6 +4,7 @@ from time import perf_counter
 from typing import Any
 
 from .config import ExtractionConfig
+from .equation_quality import equation_overlay_is_plausible
 from .extractor import (
     _Replacement,
     _apply_replacements,
@@ -16,19 +17,12 @@ from .extractor import (
     _overlaps_any,
     _picture_boxes,
 )
-from .graphics import (
-    VectorDiagram,
-    detect_vector_diagrams,
-    format_bbox,
-    rect_area,
-)
+from .graphics import VectorDiagram, detect_vector_diagrams, format_bbox, rect_area
 from .progress import ProgressCallback, emit_progress
+from .running_matter import strip_running_matter
 from .sanitize import sanitize_markdown
-from .semantics import (
-    detect_display_equations,
-    normalize_display_math_lines,
-    normalize_task_lists,
-)
+from .semantics import detect_display_equations, normalize_display_math_lines, normalize_task_lists
+from .structure import normalize_document_structure
 from .tables import extract_tables
 
 
@@ -69,12 +63,19 @@ def render_page_markdown(
         diagrams = detect_vector_diagrams(page, excluded_bboxes=table_bboxes)
     diagram_bboxes = [item.bbox for item in diagrams]
 
+    equation_candidates = []
     equations = []
     if config.extract_equations:
-        equations = detect_display_equations(
+        equation_candidates = detect_display_equations(
             page,
             excluded_bboxes=table_bboxes + diagram_bboxes,
         )
+        equations = [
+            equation
+            for equation in equation_candidates
+            if equation_overlay_is_plausible(equation, text)
+        ]
+
     equation_bboxes = [item.bbox for item in equations]
     for equation in equations:
         span = _equation_span(text, page_boxes, equation.bbox, equation.source_text)
@@ -141,6 +142,19 @@ def render_page_markdown(
         output = normalize_display_math_lines(output)
     if config.normalize_task_lists:
         output = normalize_task_lists(output)
+
+    # Layout/OCR output can preserve printed page numbers and running chapter/book
+    # titles even when the user did not ask for them. Remove only geometry-backed edge
+    # matches, then normalize heading depth and residual false display-math artifacts.
+    output = strip_running_matter(
+        output,
+        page,
+        keep_headers=config.keep_headers,
+        keep_footers=config.keep_footers,
+    )
+    output = normalize_document_structure(output)
+    output = sanitize_markdown(output)
+
     if config.include_page_markers:
         marker = f"<!-- page: {page_number} -->"
         output = f"{marker}\n\n{output}" if output else marker
@@ -155,7 +169,9 @@ def render_page_markdown(
         elapsed_seconds=perf_counter() - page_started,
         details={
             "tables": len(tables),
+            "equation_candidates": len(equation_candidates),
             "equations": len(equations),
+            "rejected_equation_candidates": len(equation_candidates) - len(equations),
             "flows": len(diagrams),
             "visual_placeholders": placeholder_count,
             "output_chars": len(output),
