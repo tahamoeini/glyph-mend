@@ -25,6 +25,7 @@ function samplePdf() {
     )}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(pdf, "binary");
 }
+
 test("loads the complete local application shell", async ({ page }) => {
   await page.goto("/");
   await expect(
@@ -38,7 +39,30 @@ test("loads the complete local application shell", async ({ page }) => {
 
 test("extracts a PDF through the structured WASM worker", async ({ page }) => {
   const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("pageerror", (error) => {
+    errors.push(error.message);
+    console.log(`[pageerror] ${error.message}`);
+  });
+  page.on("console", (message) =>
+    console.log(`[browser:${message.type()}] ${message.text()}`),
+  );
+  page.on("requestfailed", (request) =>
+    console.log(
+      `[requestfailed] ${request.url()} ${request.failure()?.errorText || "unknown"}`,
+    ),
+  );
+  page.on("response", async (response) => {
+    const url = response.url();
+    if (/mupdf|\.wasm(?:\?|$)/i.test(url)) {
+      console.log(
+        `[asset] ${response.status()} ${response.headers()["content-type"] || "unknown"} ${url}`,
+      );
+    }
+  });
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) console.log(`[navigation] ${frame.url()}`);
+  });
+
   await page.goto("/");
   await page
     .locator("#pdfInput")
