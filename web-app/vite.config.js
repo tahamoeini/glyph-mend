@@ -6,9 +6,10 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 export default defineConfig({
   base: "./",
   worker: { format: "es" },
-  // Route only the bare `mupdf` import used by the extraction worker through a
-  // browser/Vite adapter. Deep imports inside the adapter are intentionally not
-  // aliased, so it can load the real MuPDF module after configuring Emscripten.
+  // Route only the extraction worker's bare `mupdf` import through a small
+  // adapter. The adapter loads MuPDF's browser runtime from raw sibling assets,
+  // keeping it out of Vite's dependency optimizer and preserving Emscripten's
+  // JS/WASM layout.
   resolve: {
     alias: [
       {
@@ -23,6 +24,9 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         { src: "node_modules/pdfjs-dist/wasm/*", dest: "wasm" },
+        { src: "node_modules/mupdf/dist/mupdf.js", dest: "mupdf" },
+        { src: "node_modules/mupdf/dist/mupdf-wasm.js", dest: "mupdf" },
+        { src: "node_modules/mupdf/dist/mupdf-wasm.wasm", dest: "mupdf" },
         {
           src: "node_modules/tesseract.js-core/*.wasm.js",
           dest: "tesseract-core",
@@ -35,7 +39,13 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["icon.svg", "wasm/*", "tesseract-core/*", "tessdata/*"],
+      includeAssets: [
+        "icon.svg",
+        "wasm/*",
+        "mupdf/*",
+        "tesseract-core/*",
+        "tessdata/*",
+      ],
       manifest: false,
       workbox: { maximumFileSizeToCacheInBytes: 20 * 1024 * 1024 },
     }),
