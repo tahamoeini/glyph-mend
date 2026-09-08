@@ -1,44 +1,50 @@
 # PDF Sanitizer Browser Edition
 
-A fully local browser variation of pdf-sanitizer.
+A separate browser-native edition that runs entirely on the user's device: no backend, account, upload, telemetry, or Python runtime.
 
-## Current capabilities
+## Complete browser workflow
 
-- No backend
-- Local PDF loading
-- PDF.js based page/text extraction
-- Page progress tracking
-- Browser Markdown generation
-- Local workspace persistence using IndexedDB
-- Markdown preview and export
+- Local PDF opening and source-page rendering with PDF.js.
+- Page-range extraction in a Web Worker, so long documents do not lock the interface.
+- Reading-order reconstruction from text coordinates, heading detection, and conservative aligned-text table detection.
+- Repeated header/footer/page-number cleanup and cross-page paragraph repair.
+- Editable Markdown, safe rendered preview, find, and extraction metrics.
+- Pause, cancel, checkpoint, resume, workspace import/export, and IndexedDB persistence.
+- Markdown, plain-text, and Word downloads. DOCX includes headings, lists, tables, inline styles, and native Office Math containers.
+- Installable offline PWA after its first successful load.
 
-## Architecture
+## Run it
 
-```
-PDF
- |
-PDF.js
- |
-Browser extraction engine
- |
-Markdown sanitizer
- |
-IndexedDB checkpoints
- |
-Local exports
+```bash
+cd web-app
+npm ci
+npm run dev
 ```
 
-## Brython decision
+For the deployable static build:
 
-Brython is useful for running Python syntax in the browser, but it does not make the existing CPython PDF/OCR/document-processing stack portable. The browser edition therefore uses JavaScript APIs and browser-compatible libraries.
+```bash
+npm run build
+npm run preview
+```
 
-Future options:
+The output is `web-app/dist/`. A local HTTP server is required because browsers restrict workers and service workers on `file://` URLs.
 
-- Web Workers
-- WASM processing modules
-- TypeScript migration
-- optional desktop wrapper
+## Privacy and limits
 
-## Scope
+Use a current Chrome, Edge, or Firefox. PDF bytes and checkpoints stay in browser storage. Clearing site data removes the saved workspace.
 
-This variation intentionally does not modify the Python backend. It is a separate browser implementation sharing concepts and output formats.
+This implements the complete browser-safe workflow, not fictional parity with native CPython. Scanned PDFs without a text layer need OCR; image-only equations and tables remain visual placeholders. The source viewer lets the user verify those regions instead of the app inventing content.
+
+Brython is intentionally not used. It cannot run the existing native PyMuPDF and Word-processing dependency stack. PDF.js, Web Workers, IndexedDB, and browser OOXML generation are the appropriate runtime.
+
+## Verify
+
+```bash
+npm test
+npm run build
+npx playwright install chromium
+npm run test:e2e
+```
+
+The Python package outside `web-app/` is unchanged.
