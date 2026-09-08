@@ -25,6 +25,7 @@ function samplePdf() {
     )}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(pdf, "binary");
 }
+
 test("loads the complete local application shell", async ({ page }) => {
   await page.goto("/");
   await expect(
@@ -38,22 +39,38 @@ test("loads the complete local application shell", async ({ page }) => {
 
 test("extracts a PDF through the structured WASM worker", async ({ page }) => {
   const errors = [];
+  let wasmResponse;
+
   page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => {
+    if (/\/mupdf\/mupdf-wasm\.wasm(?:\?|$)/.test(response.url())) {
+      wasmResponse = {
+        status: response.status(),
+        contentType: response.headers()["content-type"] || "",
+      };
+    }
+  });
+
   await page.goto("/");
-  await page
-    .locator("#pdfInput")
-    .setInputFiles({
-      name: "sample.pdf",
-      mimeType: "application/pdf",
-      buffer: samplePdf(),
-    });
+  await page.locator("#pdfInput").setInputFiles({
+    name: "sample.pdf",
+    mimeType: "application/pdf",
+    buffer: samplePdf(),
+  });
   await expect(page.locator("#workspace")).toBeVisible();
+
+  // This regression isolates MuPDF's native structured extraction and WASM
+  // loading. OCR has its own worker/runtime path and should not mask this test.
+  await page.locator("#useOcr").uncheck();
   await page.locator("#extractButton").click();
+
   await expect(page.locator("#statusText")).toContainText("complete", {
     timeout: 30000,
   });
   await expect(page.locator("#markdownEditor")).toContainText(
     "Browser Extraction Test",
   );
+  expect(wasmResponse).toMatchObject({ status: 200 });
+  expect(wasmResponse.contentType).toContain("application/wasm");
   expect(errors).toEqual([]);
 });
