@@ -39,45 +39,38 @@ test("loads the complete local application shell", async ({ page }) => {
 
 test("extracts a PDF through the structured WASM worker", async ({ page }) => {
   const errors = [];
-  page.on("pageerror", (error) => {
-    errors.push(error.message);
-    console.log(`[pageerror] ${error.message}`);
-  });
-  page.on("console", (message) =>
-    console.log(`[browser:${message.type()}] ${message.text()}`),
-  );
-  page.on("requestfailed", (request) =>
-    console.log(
-      `[requestfailed] ${request.url()} ${request.failure()?.errorText || "unknown"}`,
-    ),
-  );
-  page.on("response", async (response) => {
-    const url = response.url();
-    if (/mupdf|\.wasm(?:\?|$)/i.test(url)) {
-      console.log(
-        `[asset] ${response.status()} ${response.headers()["content-type"] || "unknown"} ${url}`,
-      );
+  let wasmResponse;
+
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => {
+    if (/\/mupdf\/mupdf-wasm\.wasm(?:\?|$)/.test(response.url())) {
+      wasmResponse = {
+        status: response.status(),
+        contentType: response.headers()["content-type"] || "",
+      };
     }
-  });
-  page.on("framenavigated", (frame) => {
-    if (frame === page.mainFrame()) console.log(`[navigation] ${frame.url()}`);
   });
 
   await page.goto("/");
-  await page
-    .locator("#pdfInput")
-    .setInputFiles({
-      name: "sample.pdf",
-      mimeType: "application/pdf",
-      buffer: samplePdf(),
-    });
+  await page.locator("#pdfInput").setInputFiles({
+    name: "sample.pdf",
+    mimeType: "application/pdf",
+    buffer: samplePdf(),
+  });
   await expect(page.locator("#workspace")).toBeVisible();
+
+  // This regression isolates MuPDF's native structured extraction and WASM
+  // loading. OCR has its own worker/runtime path and should not mask this test.
+  await page.locator("#useOcr").uncheck();
   await page.locator("#extractButton").click();
+
   await expect(page.locator("#statusText")).toContainText("complete", {
     timeout: 30000,
   });
   await expect(page.locator("#markdownEditor")).toContainText(
     "Browser Extraction Test",
   );
+  expect(wasmResponse).toMatchObject({ status: 200 });
+  expect(wasmResponse.contentType).toContain("application/wasm");
   expect(errors).toEqual([]);
 });
