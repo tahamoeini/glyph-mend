@@ -1,15 +1,14 @@
-// MuPDF's Emscripten loader normally resolves mupdf-wasm.wasm relative to the
-// JavaScript module URL. Vite may pre-bundle/hash that module, so the inferred
-// sibling URL can point at HTML instead of the WASM binary in dev.
+// Keep MuPDF's browser build outside Vite's dependency optimizer. MuPDF's
+// Emscripten glue expects mupdf.js, mupdf-wasm.js, and mupdf-wasm.wasm to stay
+// together. When Vite pre-bundles the package, that relationship can be broken
+// and the WASM request may resolve to the dev server's HTML fallback instead.
 //
-// Import the WASM as a first-class Vite asset and install MuPDF's supported
-// locateFile hook before dynamically importing the library. Relative node_modules
-// paths intentionally bypass MuPDF 1.28's package export map while still letting
-// Vite fingerprint and serve the assets in both dev and production.
-//
-// The dynamic import is intentional: ESM static imports run before this module
-// body, which would be too late to configure the Emscripten loader.
-import mupdfWasmUrl from "../node_modules/mupdf/dist/mupdf-wasm.wasm?url";
+// vite-plugin-static-copy serves these files from /mupdf in dev and copies them
+// to dist/mupdf for production. The runtime URL remains correct for sub-path
+// deployments because it is resolved relative to the worker module itself.
+const mupdfBaseUrl = new URL("../mupdf/", import.meta.url);
+const mupdfModuleUrl = new URL("mupdf.js", mupdfBaseUrl).href;
+const mupdfWasmUrl = new URL("mupdf-wasm.wasm", mupdfBaseUrl).href;
 
 globalThis.$libmupdf_wasm_Module = {
   ...(globalThis.$libmupdf_wasm_Module || {}),
@@ -18,7 +17,9 @@ globalThis.$libmupdf_wasm_Module = {
   },
 };
 
-const module = await import("../node_modules/mupdf/dist/mupdf.js");
+// Vite must not discover/pre-bundle this import at runtime; the copied MuPDF
+// browser module imports its sibling mupdf-wasm.js directly, exactly as shipped.
+const module = await import(/* @vite-ignore */ mupdfModuleUrl);
 const mupdf = module.default ?? module;
 
 export default mupdf;
