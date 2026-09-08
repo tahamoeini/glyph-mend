@@ -6,6 +6,10 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 export default defineConfig({
   base: "./",
   worker: { format: "es" },
+  // The extraction worker is created only after the user starts extraction.
+  // Pre-bundle its npm-only dependency up front so Vite does not discover it
+  // lazily and force a full-page reload in the middle of the first extraction.
+  optimizeDeps: { include: ["tesseract.js"] },
   // Route only the extraction worker's bare `mupdf` import through a small
   // adapter. The adapter loads MuPDF's browser runtime from raw sibling assets,
   // keeping it out of Vite's dependency optimizer and preserving Emscripten's
