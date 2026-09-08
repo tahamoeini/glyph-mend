@@ -1,5 +1,11 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {headingFor, normalizeText} from './cleanup.js';
+
+// This module is already a browser Worker, but PDF.js still requires its own
+// worker URL during document initialization. It may use its in-process fallback
+// here; the explicit URL prevents GlobalWorkerOptions failures in dev and builds.
+pdfjsLib.GlobalWorkerOptions.workerSrc=workerUrl;
 
 function median(values){const sorted=[...values].sort((a,b)=>a-b); return sorted[Math.floor(sorted.length/2)]||10;}
 function escapeMd(s){return s.replace(/([\\`*{}\[\]<>])/g,'\\$1');}
