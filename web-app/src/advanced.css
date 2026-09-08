@@ -1,1 +1,84 @@
-.advanced{padding:14px 0;border-bottom:1px solid #e8ebe8;font-size:12px}.advanced label{display:block;margin:10px 0}.advanced input:not([type=checkbox]){display:block;width:100%;padding:7px;margin-top:4px;border:1px solid #ccd4ce;border-radius:7px}.advanced p{color:#77837c;line-height:1.45}.log-view{overflow:hidden;background:#101713;color:#d5dfd9}.log-tools{height:46px;padding:7px 12px;display:flex;align-items:center;gap:8px;background:#1b2620}.log-tools span{flex:1}.log-tools select,.log-tools button{padding:5px 8px}.log-view pre{height:calc(100% - 46px);overflow:auto;margin:0;padding:16px;font:12px/1.55 "SFMono-Regular",Consolas,monospace;white-space:pre-wrap}.export-field,.export-check{display:block;font-size:12px;margin:10px 0}.export-field input{width:100%;padding:7px;margin-top:4px;border:1px solid #ccd4ce;border-radius:7px}
+.advanced {
+  padding: 14px 0;
+  border-bottom: 1px solid #e8ebe8;
+  font-size: 12px;
+}
+.advanced label {
+  display: block;
+  margin: 10px 0;
+}
+.advanced input:not([type="checkbox"]),
+.advanced select {
+  display: block;
+  width: 100%;
+  padding: 7px;
+  margin-top: 4px;
+  border: 1px solid #ccd4ce;
+  border-radius: 7px;
+  background: #fff;
+}
+.advanced p {
+  color: #77837c;
+  line-height: 1.45;
+}
+.log-view {
+  overflow: hidden;
+  background: #101713;
+  color: #d5dfd9;
+}
+.log-tools {
+  height: 46px;
+  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1b2620;
+}
+.log-tools span {
+  flex: 1;
+}
+.log-tools select,
+.log-tools button {
+  padding: 5px 8px;
+}
+.log-view pre {
+  height: calc(100% - 46px);
+  overflow: auto;
+  margin: 0;
+  padding: 16px;
+  font:
+    12px/1.55 "SFMono-Regular",
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+}
+.export-field,
+.export-check {
+  display: block;
+  font-size: 12px;
+  margin: 10px 0;
+}
+.export-field input {
+  width: 100%;
+  padding: 7px;
+  margin-top: 4px;
+  border: 1px solid #ccd4ce;
+  border-radius: 7px;
+}
+.source-visual-preview {
+  margin: 18px auto;
+  text-align: center;
+}
+.source-visual-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto 6px;
+}
+.source-visual-preview figcaption {
+  color: #66736b;
+  font-size: 12px;
+}
+.quality-issue {
+  color: #9c352d;
+}

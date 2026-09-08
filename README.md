@@ -1,5 +1,10 @@
 # pdf-sanitizer
 
+> **Primary edition:** the backend-free [`web-app/`](web-app/README.md) now includes
+> structured MuPDF-WASM extraction, bundled OCR, restart-safe browser workspaces,
+> source-visual preservation, native Word equations, logs, quality gates, and offline
+> installation. The Python package remains available as the legacy reference edition.
+
 A local-first **semantic PDF-to-Markdown extractor and sanitizer** with restart-safe checkpoints and optional Markdown-to-DOCX export.
 
 It consolidates the useful PDF-processing ideas from [`pdf-tokenizer`](https://github.com/tahamoeini/pdf-tokenizer) and the ingestion path in [`article-writer`](https://github.com/tahamoeini/article-writer), then keeps one narrow contract:
