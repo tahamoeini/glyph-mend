@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Sanitizer Browser Edition</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <h1>PDF Sanitizer Browser Edition</h1>
+    <p>Local-only browser prototype. No backend.</p>
+
+    <input id="pdfInput" type="file" accept="application/pdf" />
+    <button id="inspectButton">Inspect PDF</button>
+
+    <section id="output">
+      <h2>Status</h2>
+      <pre id="log">Ready</pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
