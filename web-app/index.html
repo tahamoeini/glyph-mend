@@ -1,101 +1,37 @@
 <!doctype html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#17211d">
-  <meta name="description" content="Private, offline-first PDF conversion.">
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/src/style.css">
-  <title>PDF Sanitizer — Browser Edition</title>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#17211d"><meta name="description" content="Private, offline-first PDF conversion.">
+  <link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/src/style.css"><link rel="stylesheet" href="/src/advanced.css"><title>PDF Sanitizer — Browser Edition</title>
 </head>
-
 <body>
-  <header class="topbar"><a class="brand" href="#">PDF <span>Sanitizer</span></a>
-    <div class="privacy"><i></i> Local processing only</div><button id="installButton" class="quiet hidden">Install
-      app</button>
-  </header>
+  <header class="topbar"><a class="brand" href="#">PDF <span>Sanitizer</span></a><div class="privacy"><i></i> Local processing only</div><button id="installButton" class="quiet hidden">Install app</button></header>
   <main>
     <section id="welcome" class="welcome">
-      <div>
-        <p class="eyebrow">Browser edition</p>
-        <h1>Turn a PDF into useful, editable content.</h1>
-        <p class="lede">Extract, clean, review, and export without uploading the document anywhere.</p>
-      </div>
-      <label id="dropZone" class="drop-zone"><input id="pdfInput" type="file" accept="application/pdf,.pdf"><strong>Drop
-          a PDF here</strong><span>or choose a file · processed on this device</span></label>
-      <div class="welcome-actions"><button id="restoreButton" class="quiet">Resume saved workspace</button><label
-          class="quiet file-button">Import workspace<input id="workspaceInput" type="file"
-            accept="application/json,.json"></label></div>
+      <div><p class="eyebrow">Browser edition</p><h1>Turn a PDF into useful, editable content.</h1><p class="lede">Extract, clean, review, and export without uploading the document anywhere.</p></div>
+      <label id="dropZone" class="drop-zone"><input id="pdfInput" type="file" accept="application/pdf,.pdf"><strong>Drop a PDF here</strong><span>or choose a file · processed on this device</span></label>
+      <div class="welcome-actions"><button id="restoreButton" class="quiet">Resume saved workspace</button><label class="quiet file-button">Import workspace<input id="workspaceInput" type="file" accept="application/json,.json"></label><label class="quiet file-button">Open Markdown<input id="markdownInput" type="file" accept="text/markdown,.md,.markdown"></label></div>
     </section>
     <section id="workspace" class="workspace hidden">
       <aside class="sidebar panel">
-        <div class="file-summary">
-          <div class="pdf-badge">PDF</div>
-          <div><strong id="fileName"></strong><span id="fileMeta"></span></div>
-        </div>
-        <fieldset>
-          <legend>Pages</legend><label><input type="radio" name="rangeMode" value="all" checked> All
-            pages</label><label><input type="radio" name="rangeMode" value="custom"> Custom range</label><input
-            id="pageRange" placeholder="1-5, 8, 12-20" disabled>
-        </fieldset>
-        <fieldset>
-          <legend>Cleanup</legend><label><input id="removeHeaders" type="checkbox" checked> Remove repeated
-            headers/footers</label><label><input id="joinParagraphs" type="checkbox" checked> Join page-broken
-            paragraphs</label><label><input id="detectHeadings" type="checkbox" checked> Detect numbered
-            headings</label><label><input id="detectTables" type="checkbox" checked> Detect aligned text
-            tables</label><label><input id="preserveMarkers" type="checkbox" checked> Keep source page markers</label>
-        </fieldset>
-        <button id="extractButton" class="primary">Extract document</button><button id="pauseButton"
-          class="quiet hidden">Pause</button><button id="cancelButton" class="danger hidden">Cancel</button>
-        <div class="progress-wrap">
-          <div><span id="statusText">Ready</span><span id="progressText">0%</span></div><progress id="progress"
-            max="100" value="0"></progress>
-        </div>
-        <details>
-          <summary>Workspace</summary><button id="exportWorkspaceButton" class="text-button">Export
-            checkpoint</button><button id="clearWorkspaceButton" class="text-button danger-text">Forget saved
-            data</button>
-        </details>
+        <div class="file-summary"><div class="pdf-badge">PDF</div><div><strong id="fileName"></strong><span id="fileMeta"></span></div></div>
+        <fieldset><legend>Pages</legend><label><input type="radio" name="rangeMode" value="all" checked> All pages</label><label><input type="radio" name="rangeMode" value="custom"> Custom range</label><input id="pageRange" placeholder="1-5, 8, 12-20" disabled></fieldset>
+        <fieldset><legend>Semantic output</legend><label><input id="removeHeaders" type="checkbox" checked> Remove repeated headers</label><label><input id="removeFooters" type="checkbox" checked> Remove repeated footers</label><label><input id="joinParagraphs" type="checkbox" checked> Join page-broken paragraphs</label><label><input id="detectHeadings" type="checkbox" checked> Detect headings</label><label><input id="detectTables" type="checkbox" checked> Extract text tables</label><label><input id="extractEquations" type="checkbox" checked> Preserve detected equations</label><label><input id="taskLists" type="checkbox" checked> Normalize checkbox lists</label><label><input id="flows" type="checkbox" checked> Preserve vector-flow notices</label><label><input id="placeholders" type="checkbox" checked> Keep visual placeholders</label><label><input id="preserveMarkers" type="checkbox" checked> Keep source page markers</label></fieldset>
+        <details class="advanced"><summary>Advanced</summary><label>Password<input id="pdfPassword" type="password" autocomplete="off" placeholder="For encrypted PDFs"></label><label>Maximum pages<input id="maxPages" type="number" min="1" max="10000" value="2000"></label><label>Checkpoint interval<input id="checkpointPages" type="number" min="1" max="500" value="20"></label><label><input id="strict" type="checkbox"> Stop on first page error</label><p>OCR fallback, forced OCR, OCR language/DPI, and native layout modes require the Python edition.</p></details>
+        <button id="extractButton" class="primary">Extract document</button><button id="pauseButton" class="quiet hidden">Pause</button><button id="cancelButton" class="danger hidden">Cancel</button>
+        <div class="progress-wrap"><div><span id="statusText">Ready</span><span id="progressText">0%</span></div><progress id="progress" max="100" value="0"></progress></div>
+        <details><summary>Workspace</summary><button id="exportWorkspaceButton" class="text-button">Export checkpoint</button><button id="clearWorkspaceButton" class="text-button danger-text">Forget saved data</button></details>
       </aside>
       <section class="editor panel">
-        <div class="tabs" role="tablist"><button class="tab active" data-tab="markdown">Markdown</button><button
-            class="tab" data-tab="preview">Rendered preview</button><button class="tab" data-tab="source">Source
-            page</button></div>
-        <div class="toolbar"><label class="search"><span>⌕</span><input id="searchInput" type="search"
-              placeholder="Find in output"></label><span id="documentStats"></span></div>
-        <textarea id="markdownEditor" class="tab-view" spellcheck="false" aria-label="Extracted Markdown"></textarea>
-        <article id="renderedPreview" class="tab-view prose hidden"></article>
-        <div id="sourcePreview" class="tab-view source-view hidden">
-          <div class="page-controls"><button id="previousPage" aria-label="Previous page">←</button><label>Page <input
-                id="previewPage" type="number" min="1" value="1"></label><button id="nextPage"
-              aria-label="Next page">→</button><button id="zoomOut" aria-label="Zoom out">−</button><button id="zoomIn"
-              aria-label="Zoom in">+</button></div>
-          <div class="canvas-wrap"><canvas id="pdfCanvas"></canvas></div>
-        </div>
+        <div class="tabs" role="tablist"><button class="tab active" data-tab="markdown">Markdown</button><button class="tab" data-tab="preview">Rendered preview</button><button class="tab" data-tab="source">Source page</button><button class="tab" data-tab="log">Activity log</button></div>
+        <div class="toolbar"><label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="Find in output"></label><span id="documentStats"></span></div>
+        <textarea id="markdownEditor" class="tab-view" spellcheck="false" aria-label="Extracted Markdown"></textarea><article id="renderedPreview" class="tab-view prose hidden"></article>
+        <div id="sourcePreview" class="tab-view source-view hidden"><div class="page-controls"><button id="previousPage" aria-label="Previous page">←</button><label>Page <input id="previewPage" type="number" min="1" value="1"></label><button id="nextPage" aria-label="Next page">→</button><button id="zoomOut" aria-label="Zoom out">−</button><button id="zoomIn" aria-label="Zoom in">+</button></div><div class="canvas-wrap"><canvas id="pdfCanvas"></canvas></div></div>
+        <div id="activityLog" class="tab-view log-view hidden"><div class="log-tools"><label>Level <select id="logLevel"><option value="info">Normal</option><option value="debug">Verbose</option></select></label><span></span><button id="downloadLog">Download log</button><button id="clearLog">Clear</button></div><pre id="logOutput"></pre></div>
       </section>
-      <aside class="exports panel">
-        <p class="eyebrow">Export</p>
-        <h2>Download locally</h2><button id="downloadMarkdown" disabled><strong>Markdown</strong><span>Semantic source
-            with page provenance</span></button><button id="downloadDocx" disabled><strong>Word
-            document</strong><span>Headings, tables, lists, and equations</span></button><button id="downloadText"
-          disabled><strong>Plain text</strong><span>Clean text without Markdown syntax</span></button>
-        <hr>
-        <div class="quality"><strong>Extraction report</strong>
-          <dl id="qualityReport">
-            <div>
-              <dt>Pages processed</dt>
-              <dd>0</dd>
-            </div>
-          </dl>
-        </div>
-      </aside>
+      <aside class="exports panel"><p class="eyebrow">Export</p><h2>Download locally</h2><label class="export-field">Word title<input id="docxTitle" placeholder="Defaults to filename"></label><label class="export-check"><input id="docxPageBreaks" type="checkbox"> Preserve source page boundaries</label><button id="downloadMarkdown" disabled><strong>Markdown</strong><span>Semantic source with page provenance</span></button><button id="downloadDocx" disabled><strong>Word document</strong><span>Headings, tables, lists, and equations</span></button><button id="downloadText" disabled><strong>Plain text</strong><span>Clean text without Markdown syntax</span></button><button id="downloadReport" disabled><strong>Extraction report</strong><span>Machine-readable JSON audit summary</span></button><hr><div class="quality"><strong>Extraction report</strong><dl id="qualityReport"><div><dt>Pages processed</dt><dd>0</dd></div></dl></div></aside>
     </section>
-  </main>
-  <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="/src/app.js"></script>
-</body>
-
-</html>
+  </main><div id="toast" role="status" aria-live="polite"></div><script type="module" src="/src/app.js"></script>
+</body></html>

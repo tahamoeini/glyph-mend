@@ -1,407 +1,55 @@
-import * as pdfjsLib from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import DOMPurify from "dompurify";
-import { marked } from "marked";
-import { registerSW } from "virtual:pwa-register";
-import {
-  cleanupDocument,
-  documentMetrics,
-  parsePageRange,
-  plainText,
-} from "./cleanup.js";
-import {
-  clearWorkspace,
-  deserializeWorkspace,
-  loadWorkspace,
-  saveWorkspace,
-  serializeWorkspace,
-} from "./workspace-db.js";
-import { download, stem } from "./download.js";
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-registerSW({ immediate: true });
-const $ = (id) => document.getElementById(id);
-const state = {
-  fileName: "",
-  fileSize: 0,
-  pdfBytes: null,
-  pdf: null,
-  pageCount: 0,
-  pages: {},
-  markdown: "",
-  worker: null,
-  running: false,
-  paused: false,
-  previewScale: 1.2,
-  options: {},
-};
-const optionIds = [
-  "removeHeaders",
-  "joinParagraphs",
-  "detectHeadings",
-  "detectTables",
-  "preserveMarkers",
-];
-function toast(message, error = false) {
-  const el = $("toast");
-  el.textContent = message;
-  el.className = error ? "show error" : "show";
-  setTimeout(() => (el.className = ""), 3500);
+import * as pdfjsLib from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import DOMPurify from 'dompurify';
+import {marked} from 'marked';
+import {registerSW} from 'virtual:pwa-register';
+import {cleanupDocument,documentMetrics,parsePageRange,plainText} from './cleanup.js';
+import {appendStoredLog,clearWorkspace,deserializeWorkspace,loadWorkspace,savePage,saveResult,serializeWorkspace,startWorkspace} from './workspace-db.js';
+import {download,stem} from './download.js';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc=workerUrl;
+registerSW({immediate:true});
+const $=id=>document.getElementById(id);
+const state={fileName:'',fileSize:0,pdfBytes:null,pdf:null,pageCount:0,pages:{},markdown:'',worker:null,running:false,previewScale:1.2,options:{},logs:[],warnings:[],startedAt:null};
+const optionIds=['removeHeaders','removeFooters','joinParagraphs','detectHeadings','detectTables','extractEquations','taskLists','flows','placeholders','preserveMarkers','strict'];
+
+function toast(message,error=false){const el=$('toast');el.textContent=message;el.className=error?'show error':'show';setTimeout(()=>el.className='',3500);}
+function log(stage,message,details={},level='info',store=true){const event={time:new Date().toISOString(),level,stage,message,details};state.logs.push(event);if(store)appendStoredLog(event).catch(()=>{});renderLog();}
+function renderLog(){const verbose=$('logLevel')?.value==='debug';$('logOutput').textContent=state.logs.filter(e=>verbose||e.level!=='debug').map(e=>`${e.time} [${e.level.toUpperCase()}] [${e.stage}] ${e.message}${Object.keys(e.details||{}).length?` ${JSON.stringify(e.details)}`:''}`).join('\n');$('logOutput').scrollTop=$('logOutput').scrollHeight;}
+function setStatus(message,done=0,total=0){$('statusText').textContent=message;const pct=total?Math.round(done/total*100):0;$('progress').value=pct;$('progressText').textContent=`${pct}%`;}
+function options(){return Object.fromEntries(optionIds.map(id=>[id,$(id).checked]));}
+function setWorking(value){state.running=value;$('extractButton').disabled=value;$('pauseButton').classList.toggle('hidden',!value);$('cancelButton').classList.toggle('hidden',!value);}
+function activateWorkspace(){$('welcome').classList.add('hidden');$('workspace').classList.remove('hidden');$('fileName').textContent=state.fileName;$('fileMeta').textContent=`${state.pageCount} pages · ${(state.fileSize/1048576).toFixed(1)} MB`;updateOutput();renderLog();}
+function wasmUrl(){return new URL('./wasm/',location.href).href;}
+
+async function preparePdf(buffer){await state.pdf?.destroy?.();state.pdf=await pdfjsLib.getDocument({data:new Uint8Array(buffer.slice(0)),isEvalSupported:false,wasmUrl:wasmUrl(),password:$('pdfPassword').value||undefined}).promise;state.pageCount=state.pdf.numPages;$('previewPage').max=state.pageCount;}
+async function openFile(file){if(!file)return;if(file.type&&file.type!=='application/pdf'&&!/\.pdf$/i.test(file.name))return toast('Choose a PDF file.',true);try{setStatus('Opening PDF…');const bytes=await file.arrayBuffer();Object.assign(state,{fileName:file.name,fileSize:file.size,pdfBytes:bytes,pages:{},markdown:'',logs:[],warnings:[],startedAt:new Date().toISOString()});await preparePdf(bytes);const max=Number($('maxPages').value)||2000;if(state.pageCount>max)throw new Error(`PDF has ${state.pageCount} pages; configured maximum is ${max}.`);await startWorkspace({fileName:state.fileName,fileSize:state.fileSize,pageCount:state.pageCount,markdown:'',options:{},warnings:[]},bytes);log('validate','PDF opened',{name:file.name,bytes:file.size,pages:state.pageCount});activateWorkspace();renderSource(1);toast('PDF opened locally.');}catch(error){log('error','Could not open PDF',{error:error.message},'error');toast(`Could not open PDF: ${error.message}`,true);}}
+function selectedPages(){const custom=document.querySelector('input[name=rangeMode]:checked').value==='custom';return custom?parsePageRange($('pageRange').value,state.pageCount):Array.from({length:state.pageCount},(_,i)=>i+1);}
+async function extract(){if(!state.pdfBytes)return;let wanted;try{wanted=selectedPages();}catch(error){return toast(error.message,true);}const remaining=wanted.filter(page=>!state.pages[page]);if(!remaining.length){finalize(wanted);return toast('Selected pages are already extracted.');}state.options=options();state.startedAt=new Date().toISOString();setWorking(true);setStatus('Starting extraction…',wanted.length-remaining.length,wanted.length);log('extract-start','Starting browser extraction',{selectedPages:wanted.length,resumedPages:wanted.length-remaining.length,checkpointPages:Number($('checkpointPages').value)||20,options:state.options});
+  const worker=new Worker(new URL('./extract-worker.js',import.meta.url),{type:'module'});state.worker=worker;
+  worker.onmessage=async({data})=>{if(data.type==='page'){const checkpoint={page:data.page,text:data.text,bodySize:data.bodySize};state.pages[data.page]=checkpoint;savePage(checkpoint).catch(error=>log('checkpoint-error',error.message,{page:data.page},'error'));const done=wanted.filter(page=>state.pages[page]).length;setStatus(`Extracting page ${data.page}`,done,wanted.length);log('page-complete',`Extracted page ${data.page}`,{characters:data.text.length,percent:Math.round(done/wanted.length*100)},'debug');if(done%(Number($('checkpointPages').value)||20)===0)log('checkpoint-write','Checkpoint interval completed',{pages:done});}
+    if(data.type==='page-error'){state.warnings.push(data);log('page-error',`Skipped page ${data.page}`,{error:data.message},'warning');}
+    if(data.type==='done'){worker.terminate();state.worker=null;setWorking(false);finalize(wanted);await persist();log('complete','Extraction complete',{processed:Object.keys(state.pages).length,warnings:state.warnings.length,seconds:(Date.now()-Date.parse(state.startedAt))/1000});toast('Extraction complete.');}
+    if(data.type==='error'){worker.terminate();state.worker=null;setWorking(false);setStatus('Extraction failed');log('fatal',data.message,{},'error');toast(data.message,true);}};
+  const bytes=state.pdfBytes.slice(0);worker.postMessage({type:'extract',buffer:bytes,pages:remaining,options:state.options,password:$('pdfPassword').value},[bytes]);
 }
-function setStatus(message, done, total) {
-  $("statusText").textContent = message;
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  $("progress").value = pct;
-  $("progressText").textContent = `${pct}%`;
-}
-function options() {
-  return Object.fromEntries(optionIds.map((id) => [id, $(id).checked]));
-}
-function setWorking(value) {
-  state.running = value;
-  $("extractButton").disabled = value;
-  $("pauseButton").classList.toggle("hidden", !value);
-  $("cancelButton").classList.toggle("hidden", !value);
-}
-function activateWorkspace() {
-  $("welcome").classList.add("hidden");
-  $("workspace").classList.remove("hidden");
-  $("fileName").textContent = state.fileName;
-  $("fileMeta").textContent =
-    `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`;
-  updateOutput();
-}
-async function preparePdf(buffer) {
-  state.pdf = await pdfjsLib.getDocument({
-    data: new Uint8Array(buffer.slice(0)),
-    isEvalSupported: false,
-  }).promise;
-  state.pageCount = state.pdf.numPages;
-  $("previewPage").max = state.pageCount;
-}
-async function openFile(file) {
-  if (!file) return;
-  if (
-    file.type &&
-    file.type !== "application/pdf" &&
-    !/\.pdf$/i.test(file.name)
-  )
-    return toast("Choose a PDF file.", true);
-  try {
-    setStatus("Opening PDF…", 0, 0);
-    const bytes = await file.arrayBuffer();
-    state.fileName = file.name;
-    state.fileSize = file.size;
-    state.pdfBytes = bytes;
-    state.pages = {};
-    state.markdown = "";
-    await preparePdf(bytes);
-    await persist();
-    activateWorkspace();
-    renderSource(1);
-    toast("PDF opened locally.");
-  } catch (e) {
-    toast(`Could not open PDF: ${e.message}`, true);
-  }
-}
-function selectedPages() {
-  const custom =
-    document.querySelector("input[name=rangeMode]:checked").value === "custom";
-  return custom
-    ? parsePageRange($("pageRange").value, state.pageCount)
-    : Array.from({ length: state.pageCount }, (_, i) => i + 1);
-}
-async function extract() {
-  if (!state.pdfBytes) return;
-  let wanted;
-  try {
-    wanted = selectedPages();
-  } catch (e) {
-    return toast(e.message, true);
-  }
-  const remaining = wanted.filter((p) => !state.pages[p]);
-  if (!remaining.length) {
-    finalize(wanted);
-    return toast("The selected pages are already extracted.");
-  }
-  state.options = options();
-  state.paused = false;
-  setWorking(true);
-  setStatus(
-    "Starting extraction…",
-    wanted.length - remaining.length,
-    wanted.length,
-  );
-  const worker = new Worker(new URL("./extract-worker.js", import.meta.url), {
-    type: "module",
-  });
-  state.worker = worker;
-  worker.onmessage = async ({ data }) => {
-    if (data.type === "page") {
-      state.pages[data.page] = {
-        page: data.page,
-        text: data.text,
-        bodySize: data.bodySize,
-      };
-      const done = wanted.filter((p) => state.pages[p]).length;
-      setStatus(`Extracting page ${data.page}`, done, wanted.length);
-      if (done % 5 === 0 || done === wanted.length) await persist();
-    }
-    if (data.type === "done") {
-      worker.terminate();
-      state.worker = null;
-      setWorking(false);
-      finalize(wanted);
-      await persist();
-      toast("Extraction complete.");
-    }
-    if (data.type === "error") {
-      worker.terminate();
-      state.worker = null;
-      setWorking(false);
-      setStatus("Extraction failed", 0, 0);
-      toast(data.message, true);
-    }
-  };
-  const workerBytes = state.pdfBytes.slice(0);
-  worker.postMessage(
-    {
-      type: "extract",
-      buffer: workerBytes,
-      pages: remaining,
-      options: state.options,
-    },
-    [workerBytes],
-  );
-}
-function stop(cancel = false) {
-  state.worker?.terminate();
-  state.worker = null;
-  setWorking(false);
-  state.paused = !cancel;
-  setStatus(cancel ? "Cancelled" : "Paused", 0, 0);
-  if (cancel) state.pages = {};
-  persist();
-  updateOutput();
-}
-function finalize(
-  wanted = Object.keys(state.pages)
-    .map(Number)
-    .sort((a, b) => a - b),
-) {
-  const pages = wanted.map((p) => state.pages[p]).filter(Boolean);
-  state.markdown = cleanupDocument(pages, state.options || options());
-  updateOutput();
-}
-function updateOutput() {
-  if (state.markdown && !$("markdownEditor").matches(":focus"))
-    $("markdownEditor").value = state.markdown;
-  const enabled = !!state.markdown;
-  ["downloadMarkdown", "downloadDocx", "downloadText"].forEach(
-    (id) => ($(id).disabled = !enabled),
-  );
-  const m = documentMetrics(state.markdown);
-  $("documentStats").textContent = enabled
-    ? `${m.words.toLocaleString()} words · ${Object.keys(state.pages).length} pages`
-    : "";
-  $("qualityReport").innerHTML =
-    `<div><dt>Pages processed</dt><dd>${Object.keys(state.pages).length}</dd></div><div><dt>Headings</dt><dd>${m.headings}</dd></div><div><dt>Tables</dt><dd>${m.tables}</dd></div><div><dt>Equations</dt><dd>${m.equations}</dd></div><div><dt>Visual placeholders</dt><dd>${m.visuals}</dd></div>`;
-  renderMarkdown();
-}
-function renderMarkdown() {
-  const html = marked.parse(
-    state.markdown || "*Extract a document to begin.*",
-    { gfm: true, breaks: false },
-  );
-  $("renderedPreview").innerHTML = DOMPurify.sanitize(html);
-}
-async function renderSource(pageNumber) {
-  if (!state.pdf) return;
-  const number = Math.max(
-    1,
-    Math.min(state.pageCount, Number(pageNumber) || 1),
-  );
-  $("previewPage").value = number;
-  const page = await state.pdf.getPage(number),
-    viewport = page.getViewport({ scale: state.previewScale }),
-    canvas = $("pdfCanvas"),
-    ctx = canvas.getContext("2d");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  await page.render({ canvasContext: ctx, viewport }).promise;
-}
-async function persist() {
-  if (!state.pdfBytes) return;
-  await saveWorkspace({
-    fileName: state.fileName,
-    fileSize: state.fileSize,
-    pageCount: state.pageCount,
-    pdfBytes: state.pdfBytes,
-    pages: state.pages,
-    markdown: state.markdown,
-    options: state.options,
-  });
-}
-async function restore(value) {
-  value ||= await loadWorkspace();
-  if (!value) return toast("No saved workspace was found.", true);
-  Object.assign(state, value);
-  await preparePdf(state.pdfBytes);
-  optionIds.forEach((id) => {
-    if (id in (state.options || {})) $(id).checked = state.options[id];
-  });
-  activateWorkspace();
-  renderSource(1);
-  toast("Workspace restored.");
-}
-function save(kind) {
-  const base = stem(state.fileName);
-  if (kind === "md")
-    download(
-      new Blob([state.markdown], { type: "text/markdown;charset=utf-8" }),
-      `${base}.md`,
-    );
-  if (kind === "txt")
-    download(
-      new Blob([plainText(state.markdown)], {
-        type: "text/plain;charset=utf-8",
-      }),
-      `${base}.txt`,
-    );
-  if (kind === "workspace") {
-    const snapshot = {
-      fileName: state.fileName,
-      fileSize: state.fileSize,
-      pageCount: state.pageCount,
-      pdfBytes: state.pdfBytes,
-      pages: state.pages,
-      markdown: state.markdown,
-      options: state.options,
-    };
-    download(
-      new Blob([serializeWorkspace(snapshot)], { type: "application/json" }),
-      `${base}.pdfsanitizer.json`,
-    );
-  }
-}
-async function saveDocx() {
-  try {
-    $("downloadDocx").disabled = true;
-    $("downloadDocx").querySelector("span").textContent = "Building document…";
-    const { markdownToDocx } = await import("./docx-export.js");
-    download(
-      await markdownToDocx(state.markdown, stem(state.fileName)),
-      `${stem(state.fileName)}.docx`,
-    );
-    toast("Word document created.");
-  } catch (e) {
-    toast(`DOCX export failed: ${e.message}`, true);
-  } finally {
-    $("downloadDocx").disabled = false;
-    $("downloadDocx").querySelector("span").textContent =
-      "Headings, tables, lists, and equations";
-  }
-}
-function bind() {
-  $("pdfInput").onchange = (e) => openFile(e.target.files[0]);
-  const dz = $("dropZone");
-  ["dragenter", "dragover"].forEach((n) =>
-    dz.addEventListener(n, (e) => {
-      e.preventDefault();
-      dz.classList.add("dragging");
-    }),
-  );
-  ["dragleave", "drop"].forEach((n) =>
-    dz.addEventListener(n, (e) => {
-      e.preventDefault();
-      dz.classList.remove("dragging");
-    }),
-  );
-  dz.addEventListener("drop", (e) => openFile(e.dataTransfer.files[0]));
-  document
-    .querySelectorAll("input[name=rangeMode]")
-    .forEach(
-      (el) =>
-        (el.onchange = () => ($("pageRange").disabled = el.value !== "custom")),
-    );
-  $("extractButton").onclick = extract;
-  $("pauseButton").onclick = () => stop(false);
-  $("cancelButton").onclick = () => stop(true);
-  $("restoreButton").onclick = () => restore();
-  $("clearWorkspaceButton").onclick = async () => {
-    if (confirm("Remove the saved browser workspace?")) {
-      await clearWorkspace();
-      toast("Saved workspace removed.");
-    }
-  };
-  $("exportWorkspaceButton").onclick = () => save("workspace");
-  $("workspaceInput").onchange = async (e) => {
-    try {
-      restore(deserializeWorkspace(await e.target.files[0].text()));
-    } catch (err) {
-      toast(err.message, true);
-    }
-  };
-  $("markdownEditor").oninput = (e) => {
-    state.markdown = e.target.value;
-    updateOutput();
-    clearTimeout(state.saveTimer);
-    state.saveTimer = setTimeout(persist, 700);
-  };
-  document.querySelectorAll(".tab").forEach(
-    (tab) =>
-      (tab.onclick = () => {
-        document
-          .querySelectorAll(".tab")
-          .forEach((t) => t.classList.toggle("active", t === tab));
-        document
-          .querySelectorAll(".tab-view")
-          .forEach((v) => v.classList.add("hidden"));
-        $(
-          {
-            markdown: "markdownEditor",
-            preview: "renderedPreview",
-            source: "sourcePreview",
-          }[tab.dataset.tab],
-        ).classList.remove("hidden");
-        if (tab.dataset.tab === "source") renderSource($("previewPage").value);
-      }),
-  );
-  $("previewPage").onchange = (e) => renderSource(e.target.value);
-  $("previousPage").onclick = () =>
-    renderSource(Number($("previewPage").value) - 1);
-  $("nextPage").onclick = () =>
-    renderSource(Number($("previewPage").value) + 1);
-  $("zoomOut").onclick = () => {
-    state.previewScale = Math.max(0.5, state.previewScale - 0.2);
-    renderSource($("previewPage").value);
-  };
-  $("zoomIn").onclick = () => {
-    state.previewScale = Math.min(3, state.previewScale + 0.2);
-    renderSource($("previewPage").value);
-  };
-  $("searchInput").oninput = (e) => {
-    const value = e.target.value;
-    if (!value) return;
-    const editor = $("markdownEditor"),
-      at = editor.value
-        .toLowerCase()
-        .indexOf(value.toLowerCase(), editor.selectionEnd);
-    if (at >= 0) {
-      editor.focus();
-      editor.setSelectionRange(at, at + value.length);
-    }
-  };
-  $("downloadMarkdown").onclick = () => save("md");
-  $("downloadText").onclick = () => save("txt");
-  $("downloadDocx").onclick = saveDocx;
-  let installPrompt;
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    installPrompt = e;
-    $("installButton").classList.remove("hidden");
-  });
-  $("installButton").onclick = async () => {
-    await installPrompt?.prompt();
-  };
+function stop(cancel=false){state.worker?.terminate();state.worker=null;setWorking(false);setStatus(cancel?'Cancelled':'Paused');if(cancel)state.pages={};log(cancel?'cancel':'pause',cancel?'Extraction cancelled':'Extraction paused',{preservedPages:Object.keys(state.pages).length});persist();updateOutput();}
+function finalize(wanted=Object.keys(state.pages).map(Number).sort((a,b)=>a-b)){state.markdown=cleanupDocument(wanted.map(page=>state.pages[page]).filter(Boolean),state.options||options());updateOutput();}
+function updateOutput(){if(state.markdown&&!$('markdownEditor').matches(':focus'))$('markdownEditor').value=state.markdown;const enabled=!!state.markdown;['downloadMarkdown','downloadDocx','downloadText','downloadReport'].forEach(id=>$(id).disabled=!enabled);const m=documentMetrics(state.markdown);state.metrics=m;$('documentStats').textContent=enabled?`${m.words.toLocaleString()} words · ${Object.keys(state.pages).length} pages`:'';$('qualityReport').innerHTML=`<div><dt>Pages processed</dt><dd>${Object.keys(state.pages).length}</dd></div><div><dt>Warnings</dt><dd>${state.warnings.length}</dd></div><div><dt>Headings</dt><dd>${m.headings}</dd></div><div><dt>Tables</dt><dd>${m.tables}</dd></div><div><dt>Equations</dt><dd>${m.equations}</dd></div><div><dt>Visual placeholders</dt><dd>${m.visuals}</dd></div>`;renderMarkdown();}
+function renderMarkdown(){$('renderedPreview').innerHTML=DOMPurify.sanitize(marked.parse(state.markdown||'*Extract a document to begin.*',{gfm:true}));}
+async function renderSource(pageNumber){if(!state.pdf)return;const number=Math.max(1,Math.min(state.pageCount,Number(pageNumber)||1));$('previewPage').value=number;try{const page=await state.pdf.getPage(number),viewport=page.getViewport({scale:state.previewScale}),canvas=$('pdfCanvas'),ctx=canvas.getContext('2d');canvas.width=viewport.width;canvas.height=viewport.height;await page.render({canvasContext:ctx,viewport}).promise;page.cleanup();}catch(error){log('render-error',`Could not render page ${number}`,{error:error.message},'error');}}
+async function persist(){if(state.pdfBytes)await saveResult({fileName:state.fileName,fileSize:state.fileSize,pageCount:state.pageCount,markdown:state.markdown,options:state.options,warnings:state.warnings});}
+async function restore(value){value ||= await loadWorkspace();if(!value)return toast('No saved workspace was found.',true);Object.assign(state,value);state.logs=value.logs||[];state.warnings=value.warnings||[];await preparePdf(state.pdfBytes);if(value.exportedAt){await startWorkspace({fileName:state.fileName,fileSize:state.fileSize,pageCount:state.pageCount,markdown:state.markdown,options:state.options,warnings:state.warnings},state.pdfBytes);await Promise.all(Object.values(state.pages).map(savePage));}optionIds.forEach(id=>{if(id in (state.options||{}))$(id).checked=state.options[id];});activateWorkspace();renderSource(1);log('resume','Workspace restored',{completedPages:Object.keys(state.pages).length});toast('Workspace restored.');}
+function snapshot(){return {fileName:state.fileName,fileSize:state.fileSize,pageCount:state.pageCount,pdfBytes:state.pdfBytes,pages:state.pages,markdown:state.markdown,options:state.options,warnings:state.warnings,logs:state.logs};}
+function report(){return {schema:1,createdAt:new Date().toISOString(),document:{name:state.fileName,bytes:state.fileSize,pages:state.pageCount},processedPages:Object.keys(state.pages).map(Number),options:state.options,metrics:state.metrics,warnings:state.warnings,events:state.logs};}
+function save(kind){const base=stem(state.fileName||'document.pdf');if(kind==='md')download(new Blob([state.markdown],{type:'text/markdown;charset=utf-8'}),`${base}.md`);if(kind==='txt')download(new Blob([plainText(state.markdown)],{type:'text/plain;charset=utf-8'}),`${base}.txt`);if(kind==='workspace')download(new Blob([serializeWorkspace(snapshot())],{type:'application/json'}),`${base}.pdfsanitizer.json`);if(kind==='report')download(new Blob([JSON.stringify(report(),null,2)],{type:'application/json'}),`${base}.report.json`);if(kind==='log')download(new Blob([state.logs.map(e=>`${e.time} [${e.level.toUpperCase()}] [${e.stage}] ${e.message} ${JSON.stringify(e.details||{})}`).join('\n')],{type:'text/plain'}),`${base}.log`);}
+async function saveDocx(){try{$('downloadDocx').disabled=true;$('downloadDocx').querySelector('span').textContent='Building document…';const {markdownToDocx}=await import('./docx-export.js');download(await markdownToDocx(state.markdown,$('docxTitle').value||stem(state.fileName),{pageBreaks:$('docxPageBreaks').checked}),`${stem(state.fileName||'document.pdf')}.docx`);log('docx','Word document created',{pageBreaks:$('docxPageBreaks').checked});toast('Word document created.');}catch(error){log('docx-error',error.message,{},'error');toast(`DOCX export failed: ${error.message}`,true);}finally{$('downloadDocx').disabled=false;$('downloadDocx').querySelector('span').textContent='Headings, tables, lists, and equations';}}
+
+function bind(){$('pdfInput').onchange=e=>openFile(e.target.files[0]);const dz=$('dropZone');['dragenter','dragover'].forEach(n=>dz.addEventListener(n,e=>{e.preventDefault();dz.classList.add('dragging');}));['dragleave','drop'].forEach(n=>dz.addEventListener(n,e=>{e.preventDefault();dz.classList.remove('dragging');}));dz.addEventListener('drop',e=>openFile(e.dataTransfer.files[0]));document.querySelectorAll('input[name=rangeMode]').forEach(el=>el.onchange=()=>$('pageRange').disabled=el.value!=='custom');
+  $('extractButton').onclick=extract;$('pauseButton').onclick=()=>stop(false);$('cancelButton').onclick=()=>stop(true);$('restoreButton').onclick=()=>restore();$('clearWorkspaceButton').onclick=async()=>{if(confirm('Remove the saved browser workspace?')){await clearWorkspace();state.logs=[];renderLog();toast('Saved workspace removed.');}};$('exportWorkspaceButton').onclick=()=>save('workspace');
+  $('workspaceInput').onchange=async e=>{try{await restore(deserializeWorkspace(await e.target.files[0].text()));}catch(error){toast(error.message,true);}};$('markdownInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;Object.assign(state,{fileName:file.name.replace(/\.md$/i,'.pdf'),fileSize:0,pageCount:0,pdfBytes:null,pdf:null,pages:{},markdown:await file.text(),logs:[],warnings:[]});activateWorkspace();log('markdown-open','Markdown opened for review and DOCX export',{name:file.name});};$('markdownEditor').oninput=e=>{state.markdown=e.target.value;updateOutput();clearTimeout(state.saveTimer);state.saveTimer=setTimeout(persist,700);};
+  document.querySelectorAll('.tab').forEach(tab=>tab.onclick=()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===tab));document.querySelectorAll('.tab-view').forEach(v=>v.classList.add('hidden'));$({markdown:'markdownEditor',preview:'renderedPreview',source:'sourcePreview',log:'activityLog'}[tab.dataset.tab]).classList.remove('hidden');if(tab.dataset.tab==='source')renderSource($('previewPage').value);});
+  $('previewPage').onchange=e=>renderSource(e.target.value);$('previousPage').onclick=()=>renderSource(Number($('previewPage').value)-1);$('nextPage').onclick=()=>renderSource(Number($('previewPage').value)+1);$('zoomOut').onclick=()=>{state.previewScale=Math.max(.5,state.previewScale-.2);renderSource($('previewPage').value);};$('zoomIn').onclick=()=>{state.previewScale=Math.min(3,state.previewScale+.2);renderSource($('previewPage').value);};$('searchInput').oninput=e=>{const value=e.target.value;if(!value)return;const editor=$('markdownEditor'),at=editor.value.toLowerCase().indexOf(value.toLowerCase(),editor.selectionEnd);if(at>=0){editor.focus();editor.setSelectionRange(at,at+value.length);}};
+  $('downloadMarkdown').onclick=()=>save('md');$('downloadText').onclick=()=>save('txt');$('downloadReport').onclick=()=>save('report');$('downloadLog').onclick=()=>save('log');$('downloadDocx').onclick=saveDocx;$('clearLog').onclick=()=>{state.logs=[];renderLog();};$('logLevel').onchange=renderLog;let installPrompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installButton').classList.remove('hidden');});$('installButton').onclick=()=>installPrompt?.prompt();
 }
 bind();
