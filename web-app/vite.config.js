@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { viteStaticCopy } from "vite-plugin-static-copy";
@@ -5,19 +6,23 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 export default defineConfig({
   base: "./",
   worker: { format: "es" },
-  // MuPDF resolves mupdf-wasm.wasm relative to its own ESM module URL. Vite's
-  // dev dependency pre-bundler moves mupdf.js into node_modules/.vite/deps,
-  // where the sibling WASM file does not exist, so the dev server falls back
-  // to index.html and WebAssembly receives "<!do" instead of a WASM binary.
-  optimizeDeps: { exclude: ["mupdf"] },
+  // Route only the bare `mupdf` import used by the extraction worker through a
+  // browser/Vite adapter. Deep imports inside the adapter are intentionally not
+  // aliased, so it can load the real MuPDF module after configuring Emscripten.
+  resolve: {
+    alias: [
+      {
+        find: /^mupdf$/,
+        replacement: fileURLToPath(
+          new URL("./src/mupdf-vite.js", import.meta.url),
+        ),
+      },
+    ],
+  },
   plugins: [
     viteStaticCopy({
       targets: [
         { src: "node_modules/pdfjs-dist/wasm/*", dest: "wasm" },
-        {
-          src: "node_modules/mupdf/dist/mupdf-wasm.wasm",
-          dest: "assets",
-        },
         {
           src: "node_modules/tesseract.js-core/*.wasm.js",
           dest: "tesseract-core",
@@ -30,13 +35,7 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: [
-        "icon.svg",
-        "wasm/*",
-        "assets/mupdf-wasm.wasm",
-        "tesseract-core/*",
-        "tessdata/*",
-      ],
+      includeAssets: ["icon.svg", "wasm/*", "tesseract-core/*", "tessdata/*"],
       manifest: false,
       workbox: { maximumFileSizeToCacheInBytes: 20 * 1024 * 1024 },
     }),
