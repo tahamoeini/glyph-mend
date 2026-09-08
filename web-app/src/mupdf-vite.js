@@ -3,10 +3,13 @@
 // sibling URL can point at HTML instead of the WASM binary in dev.
 //
 // Import the WASM as a first-class Vite asset and install MuPDF's supported
-// locateFile hook before dynamically importing the library. The dynamic import
-// is intentional: ESM static imports run before this module body, which would be
-// too late to configure the Emscripten loader.
-import mupdfWasmUrl from "mupdf/dist/mupdf-wasm.wasm?url";
+// locateFile hook before dynamically importing the library. Relative node_modules
+// paths intentionally bypass MuPDF 1.28's package export map while still letting
+// Vite fingerprint and serve the assets in both dev and production.
+//
+// The dynamic import is intentional: ESM static imports run before this module
+// body, which would be too late to configure the Emscripten loader.
+import mupdfWasmUrl from "../node_modules/mupdf/dist/mupdf-wasm.wasm?url";
 
 globalThis.$libmupdf_wasm_Module = {
   ...(globalThis.$libmupdf_wasm_Module || {}),
@@ -15,7 +18,7 @@ globalThis.$libmupdf_wasm_Module = {
   },
 };
 
-const module = await import("mupdf/dist/mupdf.js");
+const module = await import("../node_modules/mupdf/dist/mupdf.js");
 const mupdf = module.default ?? module;
 
 export default mupdf;
