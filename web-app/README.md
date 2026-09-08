@@ -1,44 +1,44 @@
 # PDF Sanitizer Browser Edition
 
-A fully client-side HTML/CSS/JavaScript variation of pdf-sanitizer.
+A fully local browser variation of pdf-sanitizer.
 
-## Goals
+## Current capabilities
 
-- Run locally in a browser.
-- No backend.
-- No server processing.
-- Keep the existing Python project untouched.
-- Share compatible concepts with the main project where practical.
+- No backend
+- Local PDF loading
+- PDF.js based page/text extraction
+- Page progress tracking
+- Browser Markdown generation
+- Local workspace persistence using IndexedDB
+- Markdown preview and export
 
 ## Architecture
 
 ```
-Browser
- ├── HTML UI
- ├── CSS styling
- ├── JavaScript application layer
- ├── Web Workers for heavy tasks
- ├── IndexedDB local workspace
- └── WASM/browser libraries
+PDF
+ |
+PDF.js
+ |
+Browser extraction engine
+ |
+Markdown sanitizer
+ |
+IndexedDB checkpoints
+ |
+Local exports
 ```
 
 ## Brython decision
 
-Brython is interesting for Python-in-browser experiments, but it is not the default choice for this project. The current extraction pipeline depends on Python libraries and native tooling that do not naturally move into a browser sandbox.
+Brython is useful for running Python syntax in the browser, but it does not make the existing CPython PDF/OCR/document-processing stack portable. The browser edition therefore uses JavaScript APIs and browser-compatible libraries.
 
-The browser edition should use JavaScript/TypeScript as the runtime and reuse concepts, formats, and algorithms rather than trying to execute the existing Python application directly.
+Future options:
 
-Brython can be evaluated later for small scripting/plugin scenarios.
+- Web Workers
+- WASM processing modules
+- TypeScript migration
+- optional desktop wrapper
 
-## Current scope
+## Scope
 
-Initial MVP:
-
-- load PDF locally
-- render pages
-- inspect Markdown
-- convert Markdown preview
-- export local artifacts
-- run lightweight client-side sanitization
-
-Advanced extraction features will require browser-compatible implementations or WASM ports.
+This variation intentionally does not modify the Python backend. It is a separate browser implementation sharing concepts and output formats.
