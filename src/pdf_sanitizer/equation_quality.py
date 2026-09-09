@@ -80,16 +80,17 @@ def display_math_text_is_plausible(value: str) -> bool:
     if _CAPTION_RE.match(text) and len(words) >= 2:
         return False
 
-    # Layout/OCR sometimes removes every space from a table/figure caption and then
-    # leaves one trailing relation sign. Without this guard strings such as
-    # "Binomialandnormalapproximation...withC=" look like compact equations even though
-    # they are plainly caption text.
+    # Layout/OCR sometimes removes spaces from a caption or prose fragment. Long
+    # alphabetic runs plus only sparse relation/operator punctuation are stronger
+    # evidence of collapsed prose than of a standalone display equation. A second
+    # relation sign can occur in captions/list fragments (for example, two attribute
+    # assignments), so do not let that alone defeat the prose guard.
     if (
         _LONG_ALPHA_RUN_RE.search(text)
         and not advanced
-        and relations <= 1
         and operators <= 1
-        and density < 0.06
+        and density < 0.08
+        and (relations <= 1 or (relations <= 2 and text.count(",") >= 2))
     ):
         return False
 

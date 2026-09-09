@@ -1,10 +1,10 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
-import { ocrMarkdownEntries } from "./ocr-layout.js";
+import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 
 const MATH_SYMBOLS = /[=<>+−×÷≠≤≥≈∑∏∫√∂∇∈∉⊂⊆∞α-ωΑ-Ω]/gu;
 const FORMULA_CUE =
-  /(?:as follows|given by|defined by|equal to|is then|is therefore|we have|condition(?:s)?|constraint(?:s)?|objective|profit function|demand function|probability is|solution is)\s*[:.]?$/i;
+  /(?:as follows|given by|defined by|equal to|is then|is therefore|we have|equation(?: is| follows)?|condition(?:s)?|constraint(?:s)?|objective|profit function|demand function|probability is|solution is)\s*[:.]?$/i;
 let ocrWorker;
 let mupdf;
 let ocrProgressPage;
@@ -114,12 +114,10 @@ function tableFor(block, bodySize) {
   const cells = rows.flat();
   const shortRatio =
     cells.filter((cell) => cell.split(/\s+/).length <= 8).length / cells.length;
-  const numericRatio =
-    cells.filter((cell) => /\d/.test(cell)).length / cells.length;
-  const proseRatio =
-    cells.filter((cell) =>
-      /\b(?:the|and|that|with|from|which|this)\b/i.test(cell),
-    ).length / cells.length;
+  const numericRatio = cells.filter((cell) => /\d/.test(cell)).length / cells.length;
+  const proseRatio = cells.filter((cell) =>
+    /\b(?:the|and|that|with|from|which|this)\b/i.test(cell),
+  ).length / cells.length;
   if (shortRatio < 0.65 || (numericRatio < 0.12 && proseRatio > 0.28))
     return null;
   return rows;
@@ -134,6 +132,58 @@ function markdownTable(rows) {
     `| ${normalized[0].map(() => "---").join(" | ")} |`,
     ...normalized.slice(1).map((row) => `| ${row.join(" | ")} |`),
   ].join("\n");
+}
+
+function jsonFallbackBlocks(structured) {
+  try {
+    const data = JSON.parse(structured.asJSON());
+    return (data.blocks || [])
+      .filter((value) => value.type === "text")
+      .map((value) => {
+        const lines = (value.lines || [])
+          .map((item) => {
+            const text = normalizeText(item.text || "");
+            if (!text) return null;
+            const bbox = rect(item.bbox || value.bbox);
+            const size =
+              Number(item.font?.size) || Math.max(6, bbox[3] - bbox[1]);
+            const width = Math.max(1, bbox[2] - bbox[0]);
+            const characters = [...text];
+            const advance = width / Math.max(1, characters.length);
+            return {
+              bbox,
+              text,
+              size,
+              sizes: [size],
+              chars: characters.map((character, index) => ({
+                value: character,
+                x0: bbox[0] + index * advance,
+                x1: bbox[0] + (index + 1) * advance,
+              })),
+            };
+          })
+          .filter(Boolean);
+        if (!lines.length) return null;
+        const sizes = lines.flatMap((item) => item.sizes);
+        return {
+          bbox: value.bbox
+            ? rect(value.bbox)
+            : [
+                Math.min(...lines.map((item) => item.bbox[0])),
+                Math.min(...lines.map((item) => item.bbox[1])),
+                Math.max(...lines.map((item) => item.bbox[2])),
+                Math.max(...lines.map((item) => item.bbox[3])),
+              ],
+          lines,
+          sizes,
+          maxSize: Math.max(...sizes),
+          size: median(sizes),
+        };
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 function readStructuredPage(page) {
@@ -157,7 +207,11 @@ function readStructuredPage(page) {
       const xs = points.filter((_, index) => index % 2 === 0);
       line.text += value;
       line.sizes.push(size);
-      line.chars.push({ value, x0: Math.min(...xs), x1: Math.max(...xs) });
+      line.chars.push({
+        value,
+        x0: xs.length ? Math.min(...xs) : line.bbox[0],
+        x1: xs.length ? Math.max(...xs) : line.bbox[2],
+      });
     },
     endLine() {
       line.text = normalizeText(line.text);
@@ -183,7 +237,13 @@ function readStructuredPage(page) {
       vectors.push({ bbox: rect(bbox), flags });
     },
   });
+
+  // The walker exposes the richest geometry, but some PDFs/versions can still
+  // yield structured JSON while producing no text callbacks. Recover that text
+  // before deciding the page is OCR-only or empty.
+  if (!blocks.length) blocks.push(...jsonFallbackBlocks(structured));
   structured.destroy?.();
+
   const device = new mupdf.Device({
     fillPath(path, _evenOdd, ctm) {
       try {
@@ -217,6 +277,8 @@ function readStructuredPage(page) {
 
 function cropPage(page, bbox, scale = 2) {
   const target = bbox.map((value) => Math.round(value * scale));
+  if (target[2] <= target[0] || target[3] <= target[1])
+    throw new Error("Invalid visual crop bounds.");
   const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, target, false);
   pixmap.clear(255);
   const device = new mupdf.DrawDevice(mupdf.Matrix.scale(scale, scale), pixmap);
@@ -227,6 +289,16 @@ function cropPage(page, bbox, scale = 2) {
   const height = pixmap.getHeight();
   pixmap.destroy?.();
   return { data, width, height };
+}
+
+function paddedBbox(bbox, pageBounds, padding = 0) {
+  const [left, top, right, bottom] = pageBounds;
+  return [
+    Math.max(left, bbox[0] - padding),
+    Math.max(top, bbox[1] - padding),
+    Math.min(right, bbox[2] + padding),
+    Math.min(bottom, bbox[3] + padding),
+  ];
 }
 
 function gapFormulaCandidates(blocks, vectors, pageBounds, bodySize) {
@@ -242,7 +314,10 @@ function gapFormulaCandidates(blocks, vectors, pageBounds, bodySize) {
     if (gap < bodySize * 1.45 || gap > (bottom - top) * 0.18) continue;
     const y0 = before.bbox[3] + 1;
     const y1 = after.bbox[1] - 1;
-    if (y0 < top + (bottom - top) * 0.08 || y1 > bottom - (bottom - top) * 0.08)
+    if (
+      y0 < top + (bottom - top) * 0.08 ||
+      y1 > bottom - (bottom - top) * 0.08
+    )
       continue;
     const vector = vectors.some(
       (item) =>
@@ -316,15 +391,6 @@ function sourceMarker(pageNumber, asset) {
   return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"]`;
 }
 
-function needsScannedVisualFallback(ocrData) {
-  const text = ocrData?.text || "";
-  if (/^\s*(?:figure|fig\.|table)\s+\d+(?:\.\d+)?\b/im.test(text))
-    return true;
-  return text
-    .split("\n")
-    .some((line) => line.length < 160 && mathScore(line) >= 7);
-}
-
 async function recognizePage(page, options, paths) {
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
@@ -347,6 +413,8 @@ async function recognizePage(page, options, paths) {
   );
   ocrProgressPage = options.page;
   const result = await ocrWorker.recognize(image.data, {}, { text: true, blocks: true });
+  result.data._rasterWidth = image.width;
+  result.data._rasterHeight = image.height;
   return result.data;
 }
 
@@ -362,6 +430,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   const assets = [];
   const entries = [];
   const edges = { headers: [], footers: [] };
+  let ocrCandidates = [];
 
   let ocrApplied = false;
   let ocrData;
@@ -378,12 +447,14 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       { ...options, page: pageNumber },
       ocrPaths,
     );
+    const lines = ocrLines(ocrData);
+    const detected =
+      options.preserveVisuals === false
+        ? { candidates: [], excludeRanges: [] }
+        : ocrVisualCandidates(ocrData, lines, pageBounds);
+    ocrCandidates = detected.candidates;
     ocrApplied = true;
-    entries.push(
-      ...ocrMarkdownEntries(ocrData, escapeMd, {
-        extractEquations: options.extractEquations,
-      }),
-    );
+    entries.push(...ocrMarkdownEntries(ocrData, escapeMd));
   }
 
   for (const block of (ocrApplied ? [] : blocks).sort(
@@ -436,26 +507,26 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         continue;
       }
       try {
-        const pixmap = value.image.toPixmap();
+        const bbox = paddedBbox(
+          value.bbox,
+          pageBounds,
+          Math.max(4, bodySize * 0.55),
+        );
+        const rendered = cropPage(page, bbox, 2.25);
         const asset = {
           id: `p${pageNumber}-image-${index + 1}`,
           kind: "image",
-          bbox: value.bbox,
-          data: new Uint8Array(pixmap.asPNG()),
-          width: pixmap.getWidth(),
-          height: pixmap.getHeight(),
+          bbox,
+          ...rendered,
         };
-        pixmap.destroy?.();
         assets.push(asset);
-        entries.push({
-          y: value.bbox[1],
-          markdown: sourceMarker(pageNumber, asset),
-        });
+        entries.push({ y: bbox[1], markdown: sourceMarker(pageNumber, asset) });
       } catch {
-        /* Text extraction remains usable when an exotic image cannot be decoded. */
+        /* text extraction remains usable when an image cannot be rendered */
       }
       value.image.destroy?.();
     }
+
     for (const candidate of gapFormulaCandidates(
       blocks,
       vectors,
@@ -463,21 +534,25 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       bodySize,
     )) {
       try {
-        const rendered = cropPage(page, candidate.bbox);
+        const bbox = paddedBbox(
+          candidate.bbox,
+          pageBounds,
+          Math.max(4, bodySize * 0.65),
+        );
+        const rendered = cropPage(page, bbox, 2.35);
         const asset = {
           id: `p${pageNumber}-equation-${assets.filter((item) => item.kind === "equation").length + 1}`,
           ...candidate,
+          bbox,
           ...rendered,
         };
         assets.push(asset);
-        entries.push({
-          y: candidate.y,
-          markdown: sourceMarker(pageNumber, asset),
-        });
+        entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
       } catch {
-        /* The quality report records an unpreserved suspicious gap. */
+        /* quality metrics retain the suspicious gap */
       }
     }
+
     if (options.flows !== false)
       for (const candidate of vectorGraphicCandidates(
         vectors,
@@ -493,49 +568,63 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         )
           continue;
         try {
-          const rendered = cropPage(page, candidate.bbox);
+          const bbox = paddedBbox(
+            candidate.bbox,
+            pageBounds,
+            Math.max(4, bodySize * 0.55),
+          );
+          const rendered = cropPage(page, bbox, 2.25);
           const asset = {
             id: `p${pageNumber}-graphic-${assets.filter((item) => item.kind === "graphic").length + 1}`,
             ...candidate,
+            bbox,
             ...rendered,
           };
           assets.push(asset);
-          entries.push({
-            y: candidate.y,
-            markdown: sourceMarker(pageNumber, asset),
-          });
+          entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
         } catch {
-          /* Reported through raw vector counts. */
+          /* reported through raw vector counts */
         }
       }
 
-    // MuPDF does not expose the page-sized raster used by many scanned PDFs as
-    // an image block. Preserve a page rendition only when OCR identifies a
-    // figure, table, or equation cue; adding it to every OCR page duplicates
-    // the document and conceals a failed semantic reconstruction.
-    if (ocrApplied && !assets.length && needsScannedVisualFallback(ocrData)) {
+    // A scanned PDF often contains one page-sized raster but exposes no image
+    // block through structured text. Retain a compact page rendition in that
+    // case so tables, formulas, and illustrations are not silently lost from
+    // the DOCX/ZIP exports while OCR supplies the editable reading text.
+    if (ocrApplied && !assets.length) {
       try {
         const rendered = cropPage(page, pageBounds, 1.25);
         const asset = {
-          id: `p${pageNumber}-scanned-page`,
-          kind: "scanned-page",
-          bbox: pageBounds,
+          id: `p${pageNumber}-${candidate.kind}-${count}`,
+          ...candidate,
+          bbox,
           ...rendered,
         };
         assets.push(asset);
-        entries.push({
-          y: pageBounds[3] + 1,
-          markdown: sourceMarker(pageNumber, asset),
+        entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
+      } catch {
+        /* OCR text remains available even if a local visual crop fails */
+      }
+    }
+
+    if (ocrApplied && !assets.length) {
+      try {
+        const rendered = cropPage(page, pageBounds, 1.15);
+        assets.push({
+          id: `p${pageNumber}-source-page`,
+          kind: "source-page",
+          bbox: pageBounds,
+          ...rendered,
         });
       } catch {
-        /* OCR text remains available if the fallback page cannot be rasterized. */
+        /* OCR text remains available if the source-page fallback cannot render */
       }
     }
   }
 
   entries.sort((a, b) => a.y - b.y);
   const text = entries.map((entry) => entry.markdown).join("\n\n");
-  const candidates = gapFormulaCandidates(
+  const nativeCandidates = gapFormulaCandidates(
     blocks,
     vectors,
     pageBounds,
@@ -551,7 +640,9 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     preservedEquationFallbacks: assets.filter(
       (asset) => asset.kind === "equation",
     ).length,
-    suspiciousGaps: candidates.length,
+    suspiciousGaps:
+      nativeCandidates.length +
+      ocrCandidates.filter((candidate) => candidate.kind === "equation").length,
     ocrApplied,
   };
   return { text, bodySize, assets, edges, quality };

@@ -7,7 +7,9 @@ function lineText(line) {
 function lineBox(line) {
   const box = line?.bbox || {};
   return {
+    x0: Number(box.x0 ?? box.left ?? 0),
     y0: Number(box.y0 ?? box.top ?? 0),
+    x1: Number(box.x1 ?? box.right ?? box.x0 ?? box.left ?? 0),
     y1: Number(box.y1 ?? box.bottom ?? box.y0 ?? box.top ?? 0),
   };
 }
@@ -21,24 +23,51 @@ function flattenLines(blocks) {
 function fallbackLines(text = "") {
   return text.split("\n").map((value, index) => ({
     text: lineText({ text: value }),
+    x0: 0,
     y0: index * 2,
+    x1: 0,
     y1: index * 2 + 1,
+    confidence: null,
   }));
 }
 
+function upperRatio(text) {
+  const letters = [...text].filter((character) => /\p{L}/u.test(character));
+  return (
+    letters.filter((character) => character === character.toUpperCase()).length /
+    Math.max(1, letters.length)
+  );
+}
+
 function headingLevel(text) {
-  const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+\S/.exec(text);
-  if (numbered) return Math.min(6, numbered[1].split(".").length);
-  if (/^(?:chapter|appendix|part)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text))
-    return 1;
+  const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+(.+)$/.exec(text);
+  if (numbered) {
+    const number = numbered[1];
+    const title = numbered[2].trim();
+    const titleWithoutPage = title.replace(/\s+\d{1,4}\s*$/, "").trim();
+    const words = titleWithoutPage.split(/\s+/);
+    if (
+      !titleWithoutPage ||
+      titleWithoutPage.length > 130 ||
+      words.length > 16 ||
+      /[.!?;:]$/.test(titleWithoutPage) ||
+      /^[^:]{1,55}:\s+\S/.test(titleWithoutPage)
+    )
+      return null;
+
+    if (!number.includes(".") && upperRatio(titleWithoutPage) < 0.72) return null;
+    return Math.min(6, number.split(".").length);
+  }
+
+  if (/^(?:chapter|appendix|part)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) return 1;
   if (/^(?:contents|list of (?:figures|tables)|preface|references|index)$/i.test(text))
     return 1;
+
   const letters = [...text].filter((character) => /\p{L}/u.test(character));
   const upper =
     letters.filter((character) => character === character.toUpperCase()).length /
     Math.max(1, letters.length);
-  // OCR commonly returns publisher catalogues and table rows in all caps. Treat
-  // only a short, punctuation-free display line as an unnumbered heading.
+
   return text.length <= 60 &&
     text.split(/\s+/).length <= 7 &&
     !/[,;/:]/.test(text) &&
@@ -61,54 +90,134 @@ function equationText(text) {
 }
 
 function joinLines(lines) {
-  return lines.reduce((text, line) => {
-    const value = line.text;
-    if (!text) return value;
-    if (/-$/.test(text) && /^\p{Ll}/u.test(value))
-      return `${text.slice(0, -1)}${value}`;
-    return `${text} ${value}`;
-  }, "");
+  return normalizeText(
+    lines.reduce((text, line) => {
+      const value = line.text;
+      if (!text) return value;
+      if (/-$/.test(text) && /^\p{Ll}/u.test(value))
+        return `${text.slice(0, -1)}${value}`;
+      return `${text} ${value}`;
+    }, ""),
+  );
+}
+
+function escapeOcr(text, escapeMarkdown) {
+  // OCR is not a mathematical parser. In particular, isolated dollar signs can
+  // otherwise turn OCR noise into Markdown display-math delimiters.
+  return escapeMarkdown(text).replace(/\$/g, "\\$");
+}
+
+function looksLikeContents(lines) {
+  const entries = lines.filter((line) =>
+    /^\d+(?:\.\d+){0,5}\.?\s+.+\s+\d{1,4}$/.test(line.text),
+  ).length;
+  return lines.some((line) => /^contents$/i.test(line.text)) && entries >= 4;
+}
+
+function isExcluded(line, ranges) {
+  return (ranges || []).some((range) => {
+    const overlaps = line.y0 < range.y1 && line.y1 > range.y0;
+    if (!overlaps) return false;
+    if (
+      range.keepCaption &&
+      /^(?:figure|fig\.|table)\s+\d+(?:\.\d+)*(?:[.:]|\b)/i.test(line.text)
+    )
+      return false;
+    return true;
+  });
+}
+
+export function ocrLines(data) {
+  const structuredLines = flattenLines(data?.blocks)
+    .map((line) => ({
+      text: lineText(line),
+      ...lineBox(line),
+      confidence: Number.isFinite(Number(line?.confidence))
+        ? Number(line.confidence)
+        : null,
+    }))
+    .filter((line) => line.text);
+
+  return (structuredLines.length ? structuredLines : fallbackLines(data?.text))
+    .filter((line) => line.text)
+    .sort((left, right) => left.y0 - right.y0 || left.x0 - right.x0);
 }
 
 export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
-  const structuredLines = flattenLines(data.blocks)
-    .map((line) => ({ text: lineText(line), ...lineBox(line) }))
-    .filter((line) => line.text);
-  const lines = (structuredLines.length
-    ? structuredLines
-    : fallbackLines(data.text)
-  )
-    .filter((line) => line.text)
-    .sort((left, right) => left.y0 - right.y0);
+  const allLines = ocrLines(data);
+  if (!allLines.length) return [];
+  const lines = allLines.filter((line) => !isExcluded(line, options.excludeRanges));
   if (!lines.length) return [];
 
-  const heights = lines.map((line) => Math.max(1, line.y1 - line.y0));
-  const medianHeight = heights.sort((a, b) => a - b)[Math.floor(heights.length / 2)];
+  const heights = allLines.map((line) => Math.max(1, line.y1 - line.y0));
+  const medianHeight = [...heights].sort((a, b) => a - b)[
+    Math.floor(heights.length / 2)
+  ];
+  const minX = Math.min(...allLines.map((line) => line.x0));
+  const maxX = Math.max(...allLines.map((line) => line.x1));
+  const measuredBottom = Math.max(...allLines.map((line) => line.y1), 1);
+  const measuredTop = Math.min(...allLines.map((line) => line.y0), 0);
+  const suppliedHeight = Number(options.rawHeight);
+  const rawTop = Number.isFinite(suppliedHeight) && suppliedHeight > 0 ? 0 : measuredTop;
+  const rawBottom = Number.isFinite(suppliedHeight) && suppliedHeight > 0
+    ? suppliedHeight
+    : measuredBottom;
+  const rawHeight = Math.max(1, rawBottom - rawTop);
+  const pageBounds = options.pageBounds;
+  const mapY = (value) => {
+    if (!Array.isArray(pageBounds)) return value;
+    return (
+      pageBounds[1] +
+      ((value - rawTop) / rawHeight) * (pageBounds[3] - pageBounds[1])
+    );
+  };
+  const pageWidth = Math.max(1, maxX - minX);
+  const tocLike = looksLikeContents(allLines);
   const entries = [];
   let paragraph = [];
+
   const flushParagraph = () => {
     if (!paragraph.length) return;
     entries.push({
-      y: paragraph[0].y0,
-      markdown: escapeMarkdown(joinLines(paragraph)),
+      y: mapY(paragraph[0].y0),
+      markdown: escapeOcr(joinLines(paragraph), escapeMarkdown),
     });
     paragraph = [];
   };
+
   for (const line of lines) {
     const level = headingLevel(line.text);
     const previous = paragraph.at(-1);
+    const numberedList = /^\d+[.)]\s+\S/.test(line.text) && !level;
+    const suppressTocHeading =
+      tocLike && /^\d+(?:\.\d+){0,5}\.?\s+.+\s+\d{1,4}$/.test(line.text);
+
     if (options.extractEquations !== false && equationText(line.text)) {
       flushParagraph();
       entries.push({ y: line.y0, markdown: `$$\n${line.text}\n$$` });
       continue;
     }
-    if (level) {
+
+    if (level && !suppressTocHeading) {
       flushParagraph();
-      entries.push({ y: line.y0, markdown: `${"#".repeat(level)} ${escapeMarkdown(line.text)}` });
+      entries.push({
+        y: mapY(line.y0),
+        markdown: `${"#".repeat(level)} ${escapeOcr(line.text, escapeMarkdown)}`,
+      });
       continue;
     }
-    if (previous && line.y0 - previous.y1 > medianHeight * 0.85)
+
+    if (numberedList && paragraph.length) flushParagraph();
+
+    const first = paragraph[0];
+    const columnShift =
+      first && Math.abs(line.x0 - first.x0) > Math.max(medianHeight * 3, pageWidth * 0.16);
+    if (
+      previous &&
+      (line.y0 - previous.y1 > medianHeight * 0.9 || columnShift)
+    )
       flushParagraph();
+
     paragraph.push(line);
   }
   flushParagraph();
