@@ -108,13 +108,26 @@ export function headingFor(line, fontSize, bodySize) {
     /^\d{4}\b/.test(value)
   )
     return null;
-  const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+\S/.exec(value);
-  if (numbered) return Math.min(6, numbered[1].split(".").length);
-  if (/^chapter\s+(?:\d+|[ivxlcdm]+)\b/i.test(value)) return 1;
   const letters = [...value].filter((char) => /\p{L}/u.test(char));
   const uppercase =
     letters.filter((char) => char === char.toUpperCase()).length /
     Math.max(1, letters.length);
+  const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+\S/.exec(value);
+  if (numbered) {
+    const title = value.slice(numbered[1].length).replace(/^\.\s*/, "").trim();
+    const level = numbered[1].split(".").length;
+    const numberedTitle =
+      /^[A-Z]/.test(title) &&
+      !/[.!?;:]$/.test(title) &&
+      !/\b(?:is|are|was|were|has|have|will|should|must|include)\b/i.test(title);
+    if (
+      numberedTitle &&
+      (level > 1 || fontSize >= bodySize * 1.12 || uppercase > 0.72)
+    )
+      return Math.min(6, level);
+    return null;
+  }
+  if (/^chapter\s+(?:\d+|[ivxlcdm]+)\b/i.test(value)) return 1;
   const titleLike =
     uppercase > 0.72 ||
     words.every((word) =>

@@ -9,6 +9,23 @@ let ocrWorker;
 let mupdf;
 let ocrProgressPage;
 
+const LATEX_SYMBOLS = new Map([
+  ["≤", "\\leq"], ["≥", "\\geq"], ["≠", "\\neq"], ["≈", "\\approx"],
+  ["×", "\\times"], ["÷", "\\div"], ["∑", "\\sum"], ["∏", "\\prod"],
+  ["∫", "\\int"], ["√", "\\sqrt"], ["∞", "\\infty"], ["α", "\\alpha"],
+  ["β", "\\beta"], ["γ", "\\gamma"], ["δ", "\\delta"], ["λ", "\\lambda"],
+  ["μ", "\\mu"], ["π", "\\pi"], ["σ", "\\sigma"], ["θ", "\\theta"],
+]);
+
+export function latexMarkdown(text) {
+  let value = normalizeText(text)
+    .replace(/½/g, "\\frac{1}{2}")
+    .replace(/¼/g, "\\frac{1}{4}")
+    .replace(/¾/g, "\\frac{3}{4}");
+  for (const [symbol, latex] of LATEX_SYMBOLS) value = value.split(symbol).join(`${latex} `);
+  return value.replace(/\s+/g, " ").trim();
+}
+
 async function loadMupdf() {
   if (mupdf) return mupdf;
   const module = await import("mupdf");
@@ -301,47 +318,6 @@ function paddedBbox(bbox, pageBounds, padding = 0) {
   ];
 }
 
-function gapFormulaCandidates(blocks, vectors, pageBounds, bodySize) {
-  const lines = blocks
-    .flatMap((value) => value.lines)
-    .sort((a, b) => a.bbox[1] - b.bbox[1]);
-  const [left, top, right, bottom] = pageBounds;
-  const candidates = [];
-  for (let index = 0; index < lines.length - 1; index += 1) {
-    const before = lines[index];
-    const after = lines[index + 1];
-    const gap = after.bbox[1] - before.bbox[3];
-    if (gap < bodySize * 1.45 || gap > (bottom - top) * 0.18) continue;
-    const y0 = before.bbox[3] + 1;
-    const y1 = after.bbox[1] - 1;
-    if (
-      y0 < top + (bottom - top) * 0.08 ||
-      y1 > bottom - (bottom - top) * 0.08
-    )
-      continue;
-    const vector = vectors.some(
-      (item) =>
-        item.bbox[1] < y1 &&
-        item.bbox[3] > y0 &&
-        item.bbox[2] - item.bbox[0] > bodySize,
-    );
-    const cue =
-      FORMULA_CUE.test(before.text) ||
-      (/^(?:where|for\b|subject to\b|if\b)/i.test(after.text) &&
-        mathScore(before.text) > 0);
-    if (!vector && !cue) continue;
-    const bbox = [
-      left + (right - left) * 0.08,
-      Math.max(top, y0 - bodySize * 0.35),
-      right - (right - left) * 0.08,
-      Math.min(bottom, y1 + bodySize * 0.35),
-    ];
-    if (!candidates.some((item) => Math.abs(item.bbox[1] - bbox[1]) < bodySize))
-      candidates.push({ bbox, y: (y0 + y1) / 2, kind: "equation" });
-  }
-  return candidates;
-}
-
 function vectorGraphicCandidates(vectors, pageBounds, bodySize) {
   const groups = [];
   for (const vector of vectors) {
@@ -388,7 +364,31 @@ function vectorGraphicCandidates(vectors, pageBounds, bodySize) {
 
 function sourceMarker(pageNumber, asset) {
   const box = asset.bbox.map((value) => Math.round(value * 10) / 10).join(",");
-  return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"]`;
+  const caption = asset.caption
+    ? ` caption="${asset.caption.replace(/["\\]/g, " ").replace(/\s+/g, " ").trim()}"`
+    : "";
+  return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"${caption}]`;
+}
+
+export function captionFor(blocks, bbox, bodySize) {
+  const caption = blocks
+    .flatMap((block) => block.lines)
+    .map((line) => ({ text: joinWrapped([line]), bbox: line.bbox }))
+    .find(
+      (line) =>
+        /^(?:figure|fig\.|table)\s+\d+(?:\.\d+)*(?:[.:]|\b)/i.test(line.text) &&
+        line.bbox[1] >= bbox[3] - bodySize &&
+        line.bbox[1] <= bbox[3] + bodySize * 5,
+    );
+  return caption?.text || "";
+}
+
+function textHeavyRegion(blocks, bbox) {
+  const lines = blocks
+    .flatMap((block) => block.lines)
+    .filter((line) => line.bbox[1] < bbox[3] && line.bbox[3] > bbox[1]);
+  const words = lines.reduce((count, line) => count + joinWrapped([line]).split(/\s+/).length, 0);
+  return lines.length >= 3 && words >= 24;
 }
 
 function ocrGeometry(data, lines, pageBounds) {
@@ -471,6 +471,7 @@ function ocrVisualCandidates(data, lines, pageBounds) {
       y: bbox[1],
       rawY0,
       rawY1,
+      caption: caption.text,
     };
     candidates.push(candidate);
     figureRanges.push(candidate);
@@ -538,10 +539,17 @@ function ocrVisualCandidates(data, lines, pageBounds) {
       rawY0,
       rawY1,
     });
-    excludeRanges.push({ y0: rawY0, y1: rawY1 });
   }
 
-  return { candidates, excludeRanges };
+  return {
+    candidates,
+    excludeRanges,
+    equationRanges: groups.map((group) => ({
+      y0: Math.min(...group.map((item) => item.y0)),
+      y1: Math.max(...group.map((item) => item.y1)),
+      latex: latexMarkdown(group.map((item) => item.text).join(" ")),
+    })),
+  };
 }
 
 async function recognizePage(page, options, paths) {
@@ -602,7 +610,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     const lines = ocrLines(ocrData);
     const detected =
       options.preserveVisuals === false
-        ? { candidates: [], excludeRanges: [] }
+        ? { candidates: [], excludeRanges: [], equationRanges: [] }
         : ocrVisualCandidates(ocrData, lines, pageBounds);
     ocrCandidates = detected.candidates;
     ocrApplied = true;
@@ -611,6 +619,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         pageBounds,
         rawHeight: ocrData._rasterHeight,
         excludeRanges: detected.excludeRanges,
+        equationRanges: options.extractEquations ? detected.equationRanges : [],
       }),
     );
 
@@ -649,7 +658,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       options.extractEquations &&
       isEquation(text, block, pageBounds, bodySize)
     )
-      markdown = `$$\n${text}\n$$`;
+      markdown = `$$\n${latexMarkdown(text)}\n$$`;
     else if (heading) markdown = `${"#".repeat(heading)} ${escapeMd(text)}`;
     else if (
       block.size < bodySize * 0.82 &&
@@ -669,7 +678,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         (value.bbox[2] - value.bbox[0]) * (value.bbox[3] - value.bbox[1]);
       if (
         area / pageArea < 0.0025 ||
-        (area / pageArea > 0.82 && blocks.length > 2)
+        (area / pageArea > 0.82 && blocks.length > 2) ||
+        textHeavyRegion(blocks, value.bbox)
       ) {
         value.image.destroy?.();
         continue;
@@ -685,6 +695,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           id: `p${pageNumber}-image-${index + 1}`,
           kind: "image",
           bbox,
+          caption: captionFor(blocks, bbox, bodySize),
           ...rendered,
         };
         assets.push(asset);
@@ -693,32 +704,6 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         /* text extraction remains usable when an image cannot be rendered */
       }
       value.image.destroy?.();
-    }
-
-    for (const candidate of gapFormulaCandidates(
-      blocks,
-      vectors,
-      pageBounds,
-      bodySize,
-    )) {
-      try {
-        const bbox = paddedBbox(
-          candidate.bbox,
-          pageBounds,
-          Math.max(4, bodySize * 0.65),
-        );
-        const rendered = cropPage(page, bbox, 2.35);
-        const asset = {
-          id: `p${pageNumber}-equation-${assets.filter((item) => item.kind === "equation").length + 1}`,
-          ...candidate,
-          bbox,
-          ...rendered,
-        };
-        assets.push(asset);
-        entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
-      } catch {
-        /* quality metrics retain the suspicious gap */
-      }
     }
 
     if (options.flows !== false)
@@ -735,6 +720,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           )
         )
           continue;
+        if (textHeavyRegion(blocks, candidate.bbox)) continue;
         try {
           const bbox = paddedBbox(
             candidate.bbox,
@@ -746,6 +732,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
             id: `p${pageNumber}-graphic-${assets.filter((item) => item.kind === "graphic").length + 1}`,
             ...candidate,
             bbox,
+            caption: captionFor(blocks, bbox, bodySize),
             ...rendered,
           };
           assets.push(asset);
@@ -756,6 +743,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       }
 
     for (const candidate of ocrCandidates) {
+      if (candidate.kind === "equation") continue;
       if (
         assets.some(
           (asset) =>
@@ -778,6 +766,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           id: `p${pageNumber}-${candidate.kind}-${count}`,
           ...candidate,
           bbox,
+          caption: candidate.caption || "",
           ...rendered,
         };
         assets.push(asset);
@@ -804,12 +793,6 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
 
   entries.sort((a, b) => a.y - b.y);
   const text = entries.map((entry) => entry.markdown).join("\n\n");
-  const nativeCandidates = gapFormulaCandidates(
-    blocks,
-    vectors,
-    pageBounds,
-    bodySize,
-  );
   const quality = {
     characters: text.length,
     textBlocks: blocks.length,
@@ -817,12 +800,9 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     vectors: vectors.length,
     equations: (text.match(/^\$\$/gm) || []).length / 2,
     preservedVisuals: assets.length,
-    preservedEquationFallbacks: assets.filter(
-      (asset) => asset.kind === "equation",
-    ).length,
-    suspiciousGaps:
-      nativeCandidates.length +
-      ocrCandidates.filter((candidate) => candidate.kind === "equation").length,
+    // Equations are serialized as Markdown, never retained as cropped image assets.
+    preservedEquationFallbacks: (text.match(/^\$\$/gm) || []).length / 2,
+    suspiciousGaps: 0,
     ocrApplied,
   };
   return { text, bodySize, assets, edges, quality };

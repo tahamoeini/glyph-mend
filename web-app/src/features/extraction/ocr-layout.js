@@ -57,7 +57,16 @@ function headingLevel(text) {
 
     // A single leading integer is also normal numbered-list syntax. Treat it as
     // a heading only when the title itself carries strong chapter-title evidence.
+    // A bare number introduces both lists and headings. Do not promote a sentence-like
+    // list item merely because OCR put it on its own line.
     if (!number.includes(".") && upperRatio(titleWithoutPage) < 0.72) return null;
+    if (
+      /[.!?;:]$/.test(titleWithoutPage) ||
+      /\b(?:is|are|was|were|has|have|will|should|must|include)\b/i.test(
+        titleWithoutPage,
+      )
+    )
+      return null;
     return Math.min(6, number.split(".").length);
   }
   if (/^(?:chapter|appendix)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) return 1;
@@ -73,7 +82,9 @@ function joinLines(lines) {
     lines.reduce((text, line) => {
       const value = line.text;
       if (!text) return value;
-      if (/-$/.test(text) && /^\p{Ll}/u.test(value))
+      // A line-ending hyphen followed by a lowercase continuation is OCR/layout
+      // wrapping, not a semantic hyphen. Keep true compounds such as "X-ray".
+      if (/\p{L}-$/u.test(text) && /^\p{Ll}/u.test(value))
         return `${text.slice(0, -1)}${value}`;
       return `${text} ${value}`;
     }, ""),
@@ -151,6 +162,7 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
   };
   const pageWidth = Math.max(1, maxX - minX);
   const tocLike = looksLikeContents(allLines);
+  const equationRanges = options.equationRanges || [];
   const entries = [];
   let paragraph = [];
 
@@ -164,6 +176,20 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
   };
 
   for (const line of lines) {
+    const equation = equationRanges.find(
+      (range) => line.y0 >= range.y0 && line.y1 <= range.y1,
+    );
+    if (equation) {
+      flushParagraph();
+      if (!equation.emitted) {
+        equation.emitted = true;
+        entries.push({
+          y: mapY(equation.y0),
+          markdown: `$$\n${equation.latex}\n$$`,
+        });
+      }
+      continue;
+    }
     const level = headingLevel(line.text);
     const previous = paragraph.at(-1);
     const numberedList = /^\d+[.)]\s+\S/.test(line.text) && !level;

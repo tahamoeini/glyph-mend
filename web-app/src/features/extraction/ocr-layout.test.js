@@ -128,3 +128,41 @@ it("escapes OCR dollar signs so diagram noise cannot become display math", () =>
   expect(entries.map((entry) => entry.markdown).join("\n")).not.toMatch(/^\$\$$/m);
   expect(entries.map((entry) => entry.markdown).join("\n")).toContain("\\$100");
 });
+
+it("serializes detected OCR equations as LaTeX Markdown and repairs line wraps", () => {
+  const ranges = [{ y0: 40, y1: 65, latex: "p \\leq q + 1" }];
+  const entries = ocrMarkdownEntries(
+    {
+      blocks: [
+        {
+          paragraphs: [
+            {
+              lines: [
+                { text: "over-", bbox: { x0: 10, y0: 10, x1: 70, y1: 25 } },
+                { text: "booking is common.", bbox: { x0: 10, y0: 26, x1: 180, y1: 39 } },
+                { text: "p ≤ q + 1", bbox: { x0: 100, y0: 40, x1: 220, y1: 65 } },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    identity,
+    { equationRanges: ranges },
+  );
+  expect(entries.map((entry) => entry.markdown)).toEqual([
+    "overbooking is common.",
+    "$$\np \\leq q + 1\n$$",
+  ]);
+});
+
+it("keeps sentence-like numbered OCR lines out of heading syntax", () => {
+  const entries = ocrMarkdownEntries(
+    { text: "1. This is a numbered instruction.\n\n1.2 Revenue Controls", blocks: null },
+    identity,
+  );
+  expect(entries.map((entry) => entry.markdown)).toEqual([
+    "1. This is a numbered instruction.",
+    "## 1.2 Revenue Controls",
+  ]);
+});
