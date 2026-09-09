@@ -90,10 +90,20 @@ function looksLikeContents(lines) {
   const entries = lines.filter((line) =>
     /^\d+(?:\.\d+){0,5}\.?\s+.+\s+\d{1,4}$/.test(line.text),
   ).length;
-  return (
-    lines.some((line) => /^contents$/i.test(line.text)) &&
-    entries >= 4
-  );
+  return lines.some((line) => /^contents$/i.test(line.text)) && entries >= 4;
+}
+
+function isExcluded(line, ranges) {
+  return (ranges || []).some((range) => {
+    const overlaps = line.y0 < range.y1 && line.y1 > range.y0;
+    if (!overlaps) return false;
+    if (
+      range.keepCaption &&
+      /^(?:figure|fig\.|table)\s+\d+(?:\.\d+)*(?:[.:]|\b)/i.test(line.text)
+    )
+      return false;
+    return true;
+  });
 }
 
 export function ocrLines(data) {
@@ -112,17 +122,19 @@ export function ocrLines(data) {
 }
 
 export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
-  const lines = ocrLines(data);
+  const allLines = ocrLines(data);
+  if (!allLines.length) return [];
+  const lines = allLines.filter((line) => !isExcluded(line, options.excludeRanges));
   if (!lines.length) return [];
 
-  const heights = lines.map((line) => Math.max(1, line.y1 - line.y0));
+  const heights = allLines.map((line) => Math.max(1, line.y1 - line.y0));
   const medianHeight = [...heights].sort((a, b) => a - b)[
     Math.floor(heights.length / 2)
   ];
-  const minX = Math.min(...lines.map((line) => line.x0));
-  const maxX = Math.max(...lines.map((line) => line.x1));
-  const rawBottom = Math.max(...lines.map((line) => line.y1), 1);
-  const rawTop = Math.min(...lines.map((line) => line.y0), 0);
+  const minX = Math.min(...allLines.map((line) => line.x0));
+  const maxX = Math.max(...allLines.map((line) => line.x1));
+  const rawBottom = Math.max(...allLines.map((line) => line.y1), 1);
+  const rawTop = Math.min(...allLines.map((line) => line.y0), 0);
   const rawHeight = Math.max(1, rawBottom - rawTop);
   const pageBounds = options.pageBounds;
   const mapY = (value) => {
@@ -133,7 +145,7 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
     );
   };
   const pageWidth = Math.max(1, maxX - minX);
-  const tocLike = looksLikeContents(lines);
+  const tocLike = looksLikeContents(allLines);
   const entries = [];
   let paragraph = [];
 
