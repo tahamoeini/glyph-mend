@@ -1,4 +1,3 @@
-import mupdf from "mupdf";
 import { createWorker as createOcrWorker } from "tesseract.js";
 import tesseractWorkerUrl from "tesseract.js/dist/worker.min.js?url";
 import { headingFor, normalizeText } from "./cleanup.js";
@@ -7,6 +6,14 @@ const MATH_SYMBOLS = /[=<>+−×÷≠≤≥≈∑∏∫√∂∇∈∉⊂⊆∞�
 const FORMULA_CUE =
   /(?:as follows|given by|defined by|equal to|is then|is therefore|we have|condition(?:s)?|constraint(?:s)?|objective|profit function|demand function|probability is|solution is)\s*[:.]?$/i;
 let ocrWorker;
+let mupdf;
+
+async function loadMupdf() {
+  if (mupdf) return mupdf;
+  const module = await import("mupdf");
+  mupdf = module.default ?? module;
+  return mupdf;
+}
 
 function rect(value) {
   if (Array.isArray(value)) return value;
@@ -521,6 +528,9 @@ if (typeof self !== "undefined")
     if (data.type !== "extract") return;
     let document;
     try {
+      self.postMessage({ type: "worker-started" });
+      await loadMupdf();
+      self.postMessage({ type: "engine-ready", engine: "mupdf-wasm" });
       document = mupdf.Document.openDocument(
         new Uint8Array(data.buffer),
         "application/pdf",
@@ -534,6 +544,7 @@ if (typeof self !== "undefined")
         const pageNumber = data.pages[index];
         let page;
         try {
+          self.postMessage({ type: "page-start", page: pageNumber });
           page = document.loadPage(pageNumber - 1);
           const result = await pageMarkdown(
             page,

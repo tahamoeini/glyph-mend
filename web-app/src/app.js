@@ -232,14 +232,41 @@ function runBatch(batch, wanted) {
     const finish = (error) => {
       if (settled) return;
       settled = true;
+      clearTimeout(startupTimeout);
       worker.terminate();
       state.worker = null;
       state.abortBatch = null;
       error ? reject(error) : resolve();
     };
+    const startupTimeout = setTimeout(
+      () =>
+        finish(
+          new Error(
+            "The extraction engine did not start within 45 seconds. Verify that /mupdf/mupdf.js and /mupdf/mupdf-wasm.wasm are deployed and reload the application.",
+          ),
+        ),
+      45000,
+    );
     state.abortBatch = (reason) =>
       finish(Object.assign(new Error(reason), { aborted: true }));
     worker.onmessage = ({ data }) => {
+      if (data.type === "worker-started") {
+        log("worker-start", "Extraction worker started", {}, "debug");
+        return;
+      }
+      if (data.type === "engine-ready") {
+        clearTimeout(startupTimeout);
+        log("engine-ready", "MuPDF WebAssembly engine loaded", {}, "debug");
+        return;
+      }
+      if (data.type === "page-start") {
+        setStatus(
+          `Reading page ${data.page}`,
+          wanted.filter((page) => state.pages[page]).length,
+          wanted.length,
+        );
+        return;
+      }
       if (data.type === "page") {
         const checkpoint = {
           page: data.page,
