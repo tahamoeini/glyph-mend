@@ -39,7 +39,8 @@ md-to-docx             Markdown-to-Word export
 ```text
 web-app/src/
   app.js                    UI entry point and state orchestration
-  features/extraction/      MuPDF/OCR worker and Markdown reconstruction
+  mupdf-vite.js             MuPDF static-asset adapter for Vite
+  features/extraction/      OCR worker and Markdown reconstruction
   features/export/          DOCX export
   storage/                  IndexedDB workspace persistence
   shared/                   Download utilities

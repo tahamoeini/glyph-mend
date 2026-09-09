@@ -53,8 +53,9 @@ restrict workers and service workers on `file://` URLs.
 ```text
 src/
   app.js                    Browser entry point and UI orchestration
+  mupdf-vite.js             Build adapter for MuPDF's sibling JS/WASM assets
   features/
-    extraction/             MuPDF/OCR worker, cleanup, and tests
+    extraction/             OCR worker, cleanup, and tests
     export/                 DOCX conversion and tests
   storage/                  IndexedDB workspace persistence and tests
   shared/                   Download helpers
