@@ -58,6 +58,11 @@ describe("cleanup", () => {
       "continues <!-- page: 2 --> onto",
     );
   });
+
+  it("does not report ordinary compound words as broken wrap hyphens", () => {
+    const audit = qualityAudit([], "single-resource capacity-control", []);
+    expect(audit.issues.some((issue) => issue.code === "WRAP_HYPHENS")).toBe(false);
+  });
   it("keeps page provenance when requested", () =>
     expect(
       cleanupDocument([{ page: 2, text: "Hello" }], { preserveMarkers: true }),

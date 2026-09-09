@@ -413,7 +413,7 @@ function ocrGeometry(data, lines, pageBounds) {
   };
 }
 
-function looksLikeOcrEquation(text) {
+export function looksLikeOcrEquation(text) {
   if (
     !text ||
     text.length > 220 ||
@@ -422,11 +422,15 @@ function looksLikeOcrEquation(text) {
     return false;
   const words = text.split(/\s+/).length;
   if (words > 24) return false;
+  const mathSymbols = (text.match(MATH_SYMBOLS) || []).length;
+  const hasRelation = /[=<>≤≥≠≈]/.test(text);
+  if (!hasRelation || mathSymbols === 0) return false;
   const prose =
     /\b(?:the|and|that|this|with|from|where|which|then|than|for|are|was|were|have|has|into|when)\b/i.test(
       text,
     );
-  return mathScore(text) >= (prose ? 7 : 3);
+  if (prose && words > 5 && mathSymbols < 4) return false;
+  return mathScore(text) >= (prose ? 7 : 4);
 }
 
 function ocrVisualCandidates(data, lines, pageBounds) {
@@ -503,7 +507,8 @@ function ocrVisualCandidates(data, lines, pageBounds) {
       previous &&
       FORMULA_CUE.test(previous.text) &&
       item.text.length <= 220 &&
-      item.text.split(/\s+/).length <= 28;
+      item.text.split(/\s+/).length <= 28 &&
+      /[=<>≤≥≠≈+−×÷∑∏∫√]/.test(item.text);
     if (looksLikeOcrEquation(item.text) || cued) equationLines.push(item);
   }
 
@@ -776,19 +781,6 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       }
     }
 
-    if (ocrApplied && !assets.length) {
-      try {
-        const rendered = cropPage(page, pageBounds, 1.15);
-        assets.push({
-          id: `p${pageNumber}-source-page`,
-          kind: "source-page",
-          bbox: pageBounds,
-          ...rendered,
-        });
-      } catch {
-        /* OCR text remains available if the source-page fallback cannot render */
-      }
-    }
   }
 
   entries.sort((a, b) => a.y - b.y);

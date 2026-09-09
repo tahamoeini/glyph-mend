@@ -228,7 +228,7 @@ export function qualityAudit(pages, markdown, warnings = []) {
     )
     .map((page) => page.page);
   const damagedHyphens = (
-    markdown.match(/\p{L}{2,}-\s*(?:<!--\s*page:[^>]+-->\s*)?\p{Ll}{2,}/gu) ||
+    markdown.match(/\p{L}{2,}-\n+(?:<!--\s*page:[^>]+-->\s*)?\p{Ll}{2,}/gu) ||
     []
   ).length;
   const leakedRunning = (
