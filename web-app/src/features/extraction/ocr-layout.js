@@ -18,6 +18,14 @@ function flattenLines(blocks = []) {
   );
 }
 
+function fallbackLines(text = "") {
+  return text.split("\n").map((value, index) => ({
+    text: lineText({ text: value }),
+    y0: index * 2,
+    y1: index * 2 + 1,
+  }));
+}
+
 function headingLevel(text) {
   const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+\S/.exec(text);
   if (numbered) return Math.min(6, numbered[1].split(".").length);
@@ -44,14 +52,16 @@ function joinLines(lines) {
 }
 
 export function ocrMarkdownEntries(data, escapeMarkdown) {
-  const lines = flattenLines(data.blocks)
+  const structuredLines = flattenLines(data.blocks)
     .map((line) => ({ text: lineText(line), ...lineBox(line) }))
+    .filter((line) => line.text);
+  const lines = (structuredLines.length
+    ? structuredLines
+    : fallbackLines(data.text)
+  )
     .filter((line) => line.text)
     .sort((left, right) => left.y0 - right.y0);
-  if (!lines.length) {
-    const text = normalizeText(data.text || "");
-    return text ? [{ y: 0, markdown: escapeMarkdown(text) }] : [];
-  }
+  if (!lines.length) return [];
 
   const heights = lines.map((line) => Math.max(1, line.y1 - line.y0));
   const medianHeight = heights.sort((a, b) => a - b)[Math.floor(heights.length / 2)];

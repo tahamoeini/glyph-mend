@@ -29,3 +29,19 @@ it("preserves numbered OCR headings and paragraph boundaries", () => {
     "A new paragraph begins here.",
   ]);
 });
+
+it("reconstructs structure from plain OCR text when JSON blocks are unavailable", () => {
+  const entries = ocrMarkdownEntries(
+    {
+      text: "2. OVERBOOKING\n\nAn overview of the model.\n\n2.1 Introduction\n\nCapacity is limited.",
+      blocks: null,
+    },
+    identity,
+  );
+  expect(entries.map((entry) => entry.markdown)).toEqual([
+    "# 2. OVERBOOKING",
+    "An overview of the model.",
+    "## 2.1 Introduction",
+    "Capacity is limited.",
+  ]);
+});
