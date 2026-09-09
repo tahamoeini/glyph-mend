@@ -1,10 +1,10 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
-import { ocrMarkdownEntries } from "./ocr-layout.js";
+import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 
 const MATH_SYMBOLS = /[=<>+−×÷≠≤≥≈∑∏∫√∂∇∈∉⊂⊆∞α-ωΑ-Ω]/gu;
 const FORMULA_CUE =
-  /(?:as follows|given by|defined by|equal to|is then|is therefore|we have|condition(?:s)?|constraint(?:s)?|objective|profit function|demand function|probability is|solution is)\s*[:.]?$/i;
+  /(?:as follows|given by|defined by|equal to|is then|is therefore|we have|equation(?: is| follows)?|condition(?:s)?|constraint(?:s)?|objective|profit function|demand function|probability is|solution is)\s*[:.]?$/i;
 let ocrWorker;
 let mupdf;
 let ocrProgressPage;
@@ -114,12 +114,10 @@ function tableFor(block, bodySize) {
   const cells = rows.flat();
   const shortRatio =
     cells.filter((cell) => cell.split(/\s+/).length <= 8).length / cells.length;
-  const numericRatio =
-    cells.filter((cell) => /\d/.test(cell)).length / cells.length;
-  const proseRatio =
-    cells.filter((cell) =>
-      /\b(?:the|and|that|with|from|which|this)\b/i.test(cell),
-    ).length / cells.length;
+  const numericRatio = cells.filter((cell) => /\d/.test(cell)).length / cells.length;
+  const proseRatio = cells.filter((cell) =>
+    /\b(?:the|and|that|with|from|which|this)\b/i.test(cell),
+  ).length / cells.length;
   if (shortRatio < 0.65 || (numericRatio < 0.12 && proseRatio > 0.28))
     return null;
   return rows;
@@ -217,6 +215,8 @@ function readStructuredPage(page) {
 
 function cropPage(page, bbox, scale = 2) {
   const target = bbox.map((value) => Math.round(value * scale));
+  if (target[2] <= target[0] || target[3] <= target[1])
+    throw new Error("Invalid visual crop bounds.");
   const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, target, false);
   pixmap.clear(255);
   const device = new mupdf.DrawDevice(mupdf.Matrix.scale(scale, scale), pixmap);
@@ -227,6 +227,16 @@ function cropPage(page, bbox, scale = 2) {
   const height = pixmap.getHeight();
   pixmap.destroy?.();
   return { data, width, height };
+}
+
+function paddedBbox(bbox, pageBounds, padding = 0) {
+  const [left, top, right, bottom] = pageBounds;
+  return [
+    Math.max(left, bbox[0] - padding),
+    Math.max(top, bbox[1] - padding),
+    Math.min(right, bbox[2] + padding),
+    Math.min(bottom, bbox[3] + padding),
+  ];
 }
 
 function gapFormulaCandidates(blocks, vectors, pageBounds, bodySize) {
@@ -242,7 +252,10 @@ function gapFormulaCandidates(blocks, vectors, pageBounds, bodySize) {
     if (gap < bodySize * 1.45 || gap > (bottom - top) * 0.18) continue;
     const y0 = before.bbox[3] + 1;
     const y1 = after.bbox[1] - 1;
-    if (y0 < top + (bottom - top) * 0.08 || y1 > bottom - (bottom - top) * 0.08)
+    if (
+      y0 < top + (bottom - top) * 0.08 ||
+      y1 > bottom - (bottom - top) * 0.08
+    )
       continue;
     const vector = vectors.some(
       (item) =>
@@ -316,6 +329,159 @@ function sourceMarker(pageNumber, asset) {
   return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"]`;
 }
 
+function ocrGeometry(data, lines, pageBounds) {
+  if (!lines.some((line) => line.x1 > line.x0 && line.y1 > line.y0)) return null;
+  const measuredWidth = Math.max(...lines.map((line) => line.x1), 1);
+  const measuredHeight = Math.max(...lines.map((line) => line.y1), 1);
+  const rawWidth = Math.max(1, Number(data?._rasterWidth) || measuredWidth);
+  const rawHeight = Math.max(1, Number(data?._rasterHeight) || measuredHeight);
+  const [left, top, right, bottom] = pageBounds;
+  const pageWidth = right - left;
+  const pageHeight = bottom - top;
+  const x = (value) => left + (value / rawWidth) * pageWidth;
+  const y = (value) => top + (value / rawHeight) * pageHeight;
+  return {
+    rawWidth,
+    rawHeight,
+    x,
+    y,
+    box(line) {
+      return [x(line.x0), y(line.y0), x(line.x1), y(line.y1)];
+    },
+  };
+}
+
+function looksLikeOcrEquation(text) {
+  if (
+    !text ||
+    text.length > 220 ||
+    /^(?:figure|fig\.|table|chapter|source|note|proof)\b/i.test(text)
+  )
+    return false;
+  const words = text.split(/\s+/).length;
+  if (words > 24) return false;
+  const prose =
+    /\b(?:the|and|that|this|with|from|where|which|then|than|for|are|was|were|have|has|into|when)\b/i.test(
+      text,
+    );
+  return mathScore(text) >= (prose ? 7 : 3);
+}
+
+function ocrVisualCandidates(data, lines, pageBounds) {
+  const geometry = ocrGeometry(data, lines, pageBounds);
+  if (!geometry) return { candidates: [], excludeRanges: [] };
+  const lineHeight = median(lines.map((line) => Math.max(1, line.y1 - line.y0)));
+  const [left, top, right, bottom] = pageBounds;
+  const pageWidth = right - left;
+  const pageHeight = bottom - top;
+  const candidates = [];
+  const excludeRanges = [];
+  const figureRanges = [];
+  const captionPattern = /^(?:figure|fig\.|table)\s+\d+(?:\.\d+)*(?:[.:]|\b)/i;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const caption = lines[index];
+    if (!captionPattern.test(caption.text)) continue;
+    let rawY0 = Math.max(0, caption.y0 - geometry.rawHeight * 0.62);
+    for (let cursor = 0; cursor < index - 1; cursor += 1) {
+      const current = lines[cursor];
+      const next = lines[cursor + 1];
+      if (next.y0 < rawY0) continue;
+      if (
+        next.y0 - current.y1 > lineHeight * 1.9 &&
+        next.y0 < caption.y0 - lineHeight * 3
+      ) {
+        rawY0 = next.y0;
+        break;
+      }
+    }
+    const rawY1 = Math.min(geometry.rawHeight, caption.y1 + lineHeight * 0.7);
+    const bbox = [
+      left + pageWidth * 0.035,
+      Math.max(top, geometry.y(rawY0) - pageHeight * 0.012),
+      right - pageWidth * 0.035,
+      Math.min(bottom, geometry.y(rawY1) + pageHeight * 0.012),
+    ];
+    if (bbox[3] - bbox[1] < pageHeight * 0.06) continue;
+    const candidate = {
+      kind: "graphic",
+      bbox,
+      y: bbox[1],
+      rawY0,
+      rawY1,
+    };
+    candidates.push(candidate);
+    figureRanges.push(candidate);
+
+    // Keep the caption as editable text, but suppress short/low-confidence OCR
+    // fragments inside the visual. This removes diagram gibberish without
+    // deleting ordinary prose that happens to sit near a figure crop.
+    for (const line of lines) {
+      if (line.y0 < rawY0 || line.y1 > rawY1 || captionPattern.test(line.text))
+        continue;
+      const wordCount = line.text.split(/\s+/).length;
+      const lowConfidence = line.confidence != null && line.confidence < 72;
+      const diagramLike =
+        line.text.length < 110 &&
+        (wordCount <= 7 || mathScore(line.text) > 0 || lowConfidence);
+      if (diagramLike)
+        excludeRanges.push({ y0: line.y0, y1: line.y1, keepCaption: true });
+    }
+  }
+
+  const equationLines = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (
+      figureRanges.some(
+        (range) => line.y0 < range.rawY1 && line.y1 > range.rawY0,
+      )
+    )
+      continue;
+    const previous = lines[index - 1];
+    const cued =
+      previous &&
+      FORMULA_CUE.test(previous.text) &&
+      line.text.length <= 220 &&
+      line.text.split(/\s+/).length <= 28;
+    if (looksLikeOcrEquation(line.text) || cued) equationLines.push(line);
+  }
+
+  const groups = [];
+  for (const line of equationLines) {
+    const previousGroup = groups.at(-1);
+    if (
+      previousGroup &&
+      line.y0 - previousGroup.at(-1).y1 <= lineHeight * 1.7
+    )
+      previousGroup.push(line);
+    else groups.push([line]);
+  }
+  for (const group of groups) {
+    const rawY0 = Math.max(0, Math.min(...group.map((line) => line.y0)) - lineHeight * 0.9);
+    const rawY1 = Math.min(
+      geometry.rawHeight,
+      Math.max(...group.map((line) => line.y1)) + lineHeight * 0.9,
+    );
+    const bbox = [
+      left + pageWidth * 0.065,
+      geometry.y(rawY0),
+      right - pageWidth * 0.065,
+      geometry.y(rawY1),
+    ];
+    candidates.push({
+      kind: "equation",
+      bbox,
+      y: bbox[1],
+      rawY0,
+      rawY1,
+    });
+    excludeRanges.push({ y0: rawY0, y1: rawY1 });
+  }
+
+  return { candidates, excludeRanges };
+}
+
 async function recognizePage(page, options, paths) {
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
@@ -338,6 +504,8 @@ async function recognizePage(page, options, paths) {
   );
   ocrProgressPage = options.page;
   const result = await ocrWorker.recognize(image.data, {}, { text: true, blocks: true });
+  result.data._rasterWidth = image.width;
+  result.data._rasterHeight = image.height;
   return result.data;
 }
 
@@ -353,6 +521,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   const assets = [];
   const entries = [];
   const edges = { headers: [], footers: [] };
+  let ocrCandidates = [];
 
   let ocrApplied = false;
   if (
@@ -368,8 +537,28 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       { ...options, page: pageNumber },
       ocrPaths,
     );
+    const lines = ocrLines(ocrData);
+    const detected = options.preserveVisuals === false
+      ? { candidates: [], excludeRanges: [] }
+      : ocrVisualCandidates(ocrData, lines, pageBounds);
+    ocrCandidates = detected.candidates;
     ocrApplied = true;
-    entries.push(...ocrMarkdownEntries(ocrData, escapeMd));
+    entries.push(
+      ...ocrMarkdownEntries(ocrData, escapeMd, {
+        pageBounds,
+        rawHeight: ocrData._rasterHeight,
+        excludeRanges: detected.excludeRanges,
+      }),
+    );
+
+    const rawHeight = Math.max(
+      1,
+      Number(ocrData._rasterHeight) || Math.max(...lines.map((line) => line.y1), 1),
+    );
+    for (const line of lines) {
+      if (line.y0 <= rawHeight * 0.09) edges.headers.push(line.text);
+      if (line.y1 >= rawHeight * 0.92) edges.footers.push(line.text);
+    }
   }
 
   for (const block of (ocrApplied ? [] : blocks).sort(
@@ -422,26 +611,29 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         continue;
       }
       try {
-        const pixmap = value.image.toPixmap();
+        // Render the image in page space instead of exporting the raw embedded
+        // raster. Page-space rendering keeps masks, transforms, vector overlays,
+        // and a small safety margin so figures are not clipped at their bounds.
+        const bbox = paddedBbox(
+          value.bbox,
+          pageBounds,
+          Math.max(4, bodySize * 0.55),
+        );
+        const rendered = cropPage(page, bbox, 2.25);
         const asset = {
           id: `p${pageNumber}-image-${index + 1}`,
           kind: "image",
-          bbox: value.bbox,
-          data: new Uint8Array(pixmap.asPNG()),
-          width: pixmap.getWidth(),
-          height: pixmap.getHeight(),
+          bbox,
+          ...rendered,
         };
-        pixmap.destroy?.();
         assets.push(asset);
-        entries.push({
-          y: value.bbox[1],
-          markdown: sourceMarker(pageNumber, asset),
-        });
+        entries.push({ y: bbox[1], markdown: sourceMarker(pageNumber, asset) });
       } catch {
         /* Text extraction remains usable when an exotic image cannot be decoded. */
       }
       value.image.destroy?.();
     }
+
     for (const candidate of gapFormulaCandidates(
       blocks,
       vectors,
@@ -449,21 +641,25 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       bodySize,
     )) {
       try {
-        const rendered = cropPage(page, candidate.bbox);
+        const bbox = paddedBbox(
+          candidate.bbox,
+          pageBounds,
+          Math.max(4, bodySize * 0.65),
+        );
+        const rendered = cropPage(page, bbox, 2.35);
         const asset = {
           id: `p${pageNumber}-equation-${assets.filter((item) => item.kind === "equation").length + 1}`,
           ...candidate,
+          bbox,
           ...rendered,
         };
         assets.push(asset);
-        entries.push({
-          y: candidate.y,
-          markdown: sourceMarker(pageNumber, asset),
-        });
+        entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
       } catch {
         /* The quality report records an unpreserved suspicious gap. */
       }
     }
+
     if (options.flows !== false)
       for (const candidate of vectorGraphicCandidates(
         vectors,
@@ -479,49 +675,78 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         )
           continue;
         try {
-          const rendered = cropPage(page, candidate.bbox);
+          const bbox = paddedBbox(
+            candidate.bbox,
+            pageBounds,
+            Math.max(4, bodySize * 0.55),
+          );
+          const rendered = cropPage(page, bbox, 2.25);
           const asset = {
             id: `p${pageNumber}-graphic-${assets.filter((item) => item.kind === "graphic").length + 1}`,
             ...candidate,
+            bbox,
             ...rendered,
           };
           assets.push(asset);
-          entries.push({
-            y: candidate.y,
-            markdown: sourceMarker(pageNumber, asset),
-          });
+          entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
         } catch {
           /* Reported through raw vector counts. */
         }
       }
 
-    // A scanned PDF often contains one page-sized raster but exposes no image
-    // block through structured text. Retain a compact page rendition in that
-    // case so tables, formulas, and illustrations are not silently lost from
-    // the DOCX/ZIP exports while OCR supplies the editable reading text.
-    if (ocrApplied && !assets.length) {
+    for (const candidate of ocrCandidates) {
+      if (
+        assets.some(
+          (asset) =>
+            asset.kind !== "source-page" &&
+            asset.bbox[1] < candidate.bbox[3] &&
+            asset.bbox[3] > candidate.bbox[1],
+        )
+      )
+        continue;
       try {
-        const rendered = cropPage(page, pageBounds, 1.25);
+        const bbox = paddedBbox(candidate.bbox, pageBounds, 4);
+        const rendered = cropPage(
+          page,
+          bbox,
+          candidate.kind === "equation" ? 2.6 : 2.25,
+        );
+        const count = assets.filter((item) => item.kind === candidate.kind).length + 1;
         const asset = {
-          id: `p${pageNumber}-scanned-page`,
-          kind: "scanned-page",
-          bbox: pageBounds,
+          id: `p${pageNumber}-${candidate.kind}-${count}`,
+          ...candidate,
+          bbox,
           ...rendered,
         };
         assets.push(asset);
-        entries.push({
-          y: pageBounds[3] + 1,
-          markdown: sourceMarker(pageNumber, asset),
+        entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
+      } catch {
+        /* OCR text remains available even if a local visual crop fails. */
+      }
+    }
+
+    // Keep a source-page rendition for OCR-only pages that have no detected local
+    // visual. It remains available in the workspace/ZIP for verification, but it
+    // is deliberately not inserted inline into Markdown/DOCX, avoiding a second
+    // full-page image followed by duplicated OCR text.
+    if (ocrApplied && !assets.length) {
+      try {
+        const rendered = cropPage(page, pageBounds, 1.15);
+        assets.push({
+          id: `p${pageNumber}-source-page`,
+          kind: "source-page",
+          bbox: pageBounds,
+          ...rendered,
         });
       } catch {
-        /* OCR text remains available if the fallback page cannot be rasterized. */
+        /* OCR text remains available if the source-page fallback cannot render. */
       }
     }
   }
 
   entries.sort((a, b) => a.y - b.y);
   const text = entries.map((entry) => entry.markdown).join("\n\n");
-  const candidates = gapFormulaCandidates(
+  const nativeCandidates = gapFormulaCandidates(
     blocks,
     vectors,
     pageBounds,
@@ -537,7 +762,9 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     preservedEquationFallbacks: assets.filter(
       (asset) => asset.kind === "equation",
     ).length,
-    suspiciousGaps: candidates.length,
+    suspiciousGaps:
+      nativeCandidates.length +
+      ocrCandidates.filter((candidate) => candidate.kind === "equation").length,
     ocrApplied,
   };
   return { text, bodySize, assets, edges, quality };
