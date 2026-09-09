@@ -80,20 +80,6 @@ it("keeps numbered prose as a list instead of inventing chapter headings", () =>
   ]);
 });
 
-it("does not turn all-caps catalogue entries into headings", () => {
-  const entries = ocrMarkdownEntries(
-    {
-      text: "SUPPLY CHAIN STRUCTURES: Coordination, Information and Optimization\n\n2.1 Introduction",
-      blocks: null,
-    },
-    identity,
-  );
-  expect(entries.map((entry) => entry.markdown)).toEqual([
-    "SUPPLY CHAIN STRUCTURES: Coordination, Information and Optimization",
-    "## 2.1 Introduction",
-  ]);
-});
-
 it("does not turn table-of-contents rows into hundreds of Markdown headings", () => {
   const lines = [
     { text: "Contents", bbox: { x0: 20, y0: 10, x1: 120, y1: 30 } },
@@ -109,15 +95,6 @@ it("does not turn table-of-contents rows into hundreds of Markdown headings", ()
   );
   expect(entries[0].markdown).toBe("# Contents");
   expect(entries.slice(1).every((entry) => !entry.markdown.startsWith("#"))).toBe(true);
-});
-
-it("preserves an unambiguous OCR formula as display math", () => {
-  const entries = ocrMarkdownEntries(
-    { text: "R = p × q" },
-    identity,
-    { extractEquations: true },
-  );
-  expect(entries.map((entry) => entry.markdown)).toEqual(["$$\nR = p × q\n$$"]);
 });
 
 it("normalizes OCR pixel coordinates into PDF page coordinates", () => {

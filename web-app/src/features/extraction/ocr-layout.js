@@ -55,38 +55,17 @@ function headingLevel(text) {
     )
       return null;
 
+    // A single leading integer is also normal numbered-list syntax. Treat it as
+    // a heading only when the title itself carries strong chapter-title evidence.
     if (!number.includes(".") && upperRatio(titleWithoutPage) < 0.72) return null;
     return Math.min(6, number.split(".").length);
   }
-
-  if (/^(?:chapter|appendix|part)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) return 1;
+  if (/^(?:chapter|appendix)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) return 1;
   if (/^(?:contents|list of (?:figures|tables)|preface|references|index)$/i.test(text))
     return 1;
-
-  const letters = [...text].filter((character) => /\p{L}/u.test(character));
-  const upper =
-    letters.filter((character) => character === character.toUpperCase()).length /
-    Math.max(1, letters.length);
-
-  return text.length <= 60 &&
-    text.split(/\s+/).length <= 7 &&
-    !/[,;/:]/.test(text) &&
-    upper > 0.9
+  return text.length <= 90 && text.split(/\s+/).length <= 14 && upperRatio(text) > 0.82
     ? 1
     : null;
-}
-
-function equationText(text) {
-  if (text.length > 180 || /\b(?:figure|table|source|note)\b/i.test(text))
-    return false;
-  const symbols = (text.match(/[=<>+−×÷≠≤≥≈∑∏∫√]/gu) || []).length;
-  const words = (text.match(/\p{L}{3,}/gu) || []).length;
-  const variables = (text.match(/(?:^|\s)[A-Za-z](?:[_^]\S+)?(?=\s|$)/g) || [])
-    .length;
-  return (
-    text.split(/\s+/).length <= 18 &&
-    ((symbols >= 2 && words <= 4) || (symbols >= 1 && variables >= 2 && words <= 2))
-  );
 }
 
 function joinLines(lines) {
@@ -137,7 +116,6 @@ export function ocrLines(data) {
         : null,
     }))
     .filter((line) => line.text);
-
   return (structuredLines.length ? structuredLines : fallbackLines(data?.text))
     .filter((line) => line.text)
     .sort((left, right) => left.y0 - right.y0 || left.x0 - right.x0);
@@ -191,12 +169,6 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
     const numberedList = /^\d+[.)]\s+\S/.test(line.text) && !level;
     const suppressTocHeading =
       tocLike && /^\d+(?:\.\d+){0,5}\.?\s+.+\s+\d{1,4}$/.test(line.text);
-
-    if (options.extractEquations !== false && equationText(line.text)) {
-      flushParagraph();
-      entries.push({ y: line.y0, markdown: `$$\n${line.text}\n$$` });
-      continue;
-    }
 
     if (level && !suppressTocHeading) {
       flushParagraph();

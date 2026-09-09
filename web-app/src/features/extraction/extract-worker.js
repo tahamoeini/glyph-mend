@@ -391,6 +391,159 @@ function sourceMarker(pageNumber, asset) {
   return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"]`;
 }
 
+function ocrGeometry(data, lines, pageBounds) {
+  if (!lines.some((line) => line.x1 > line.x0 && line.y1 > line.y0)) return null;
+  const measuredWidth = Math.max(...lines.map((line) => line.x1), 1);
+  const measuredHeight = Math.max(...lines.map((line) => line.y1), 1);
+  const rawWidth = Math.max(1, Number(data?._rasterWidth) || measuredWidth);
+  const rawHeight = Math.max(1, Number(data?._rasterHeight) || measuredHeight);
+  const [left, top, right, bottom] = pageBounds;
+  const pageWidth = right - left;
+  const pageHeight = bottom - top;
+  const x = (value) => left + (value / rawWidth) * pageWidth;
+  const y = (value) => top + (value / rawHeight) * pageHeight;
+  return {
+    rawWidth,
+    rawHeight,
+    x,
+    y,
+    box(line) {
+      return [x(line.x0), y(line.y0), x(line.x1), y(line.y1)];
+    },
+  };
+}
+
+function looksLikeOcrEquation(text) {
+  if (
+    !text ||
+    text.length > 220 ||
+    /^(?:figure|fig\.|table|chapter|source|note|proof)\b/i.test(text)
+  )
+    return false;
+  const words = text.split(/\s+/).length;
+  if (words > 24) return false;
+  const prose =
+    /\b(?:the|and|that|this|with|from|where|which|then|than|for|are|was|were|have|has|into|when)\b/i.test(
+      text,
+    );
+  return mathScore(text) >= (prose ? 7 : 3);
+}
+
+function ocrVisualCandidates(data, lines, pageBounds) {
+  const geometry = ocrGeometry(data, lines, pageBounds);
+  if (!geometry) return { candidates: [], excludeRanges: [] };
+  const lineHeight = median(lines.map((line) => Math.max(1, line.y1 - line.y0)));
+  const [left, top, right, bottom] = pageBounds;
+  const pageWidth = right - left;
+  const pageHeight = bottom - top;
+  const candidates = [];
+  const excludeRanges = [];
+  const figureRanges = [];
+  const captionPattern = /^(?:figure|fig\.|table)\s+\d+(?:\.\d+)*(?:[.:]|\b)/i;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const caption = lines[index];
+    if (!captionPattern.test(caption.text)) continue;
+    let rawY0 = Math.max(0, caption.y0 - geometry.rawHeight * 0.62);
+    for (let cursor = 0; cursor < index - 1; cursor += 1) {
+      const current = lines[cursor];
+      const next = lines[cursor + 1];
+      if (next.y0 < rawY0) continue;
+      if (
+        next.y0 - current.y1 > lineHeight * 1.9 &&
+        next.y0 < caption.y0 - lineHeight * 3
+      ) {
+        rawY0 = next.y0;
+        break;
+      }
+    }
+    const rawY1 = Math.min(geometry.rawHeight, caption.y1 + lineHeight * 0.7);
+    const bbox = [
+      left + pageWidth * 0.035,
+      Math.max(top, geometry.y(rawY0) - pageHeight * 0.012),
+      right - pageWidth * 0.035,
+      Math.min(bottom, geometry.y(rawY1) + pageHeight * 0.012),
+    ];
+    if (bbox[3] - bbox[1] < pageHeight * 0.06) continue;
+    const candidate = {
+      kind: "graphic",
+      bbox,
+      y: bbox[1],
+      rawY0,
+      rawY1,
+    };
+    candidates.push(candidate);
+    figureRanges.push(candidate);
+
+    for (const item of lines) {
+      if (item.y0 < rawY0 || item.y1 > rawY1 || captionPattern.test(item.text))
+        continue;
+      const wordCount = item.text.split(/\s+/).length;
+      const lowConfidence = item.confidence != null && item.confidence < 72;
+      const diagramLike =
+        item.text.length < 110 &&
+        (wordCount <= 7 || mathScore(item.text) > 0 || lowConfidence);
+      if (diagramLike)
+        excludeRanges.push({ y0: item.y0, y1: item.y1, keepCaption: true });
+    }
+  }
+
+  const equationLines = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const item = lines[index];
+    if (
+      figureRanges.some(
+        (range) => item.y0 < range.rawY1 && item.y1 > range.rawY0,
+      )
+    )
+      continue;
+    const previous = lines[index - 1];
+    const cued =
+      previous &&
+      FORMULA_CUE.test(previous.text) &&
+      item.text.length <= 220 &&
+      item.text.split(/\s+/).length <= 28;
+    if (looksLikeOcrEquation(item.text) || cued) equationLines.push(item);
+  }
+
+  const groups = [];
+  for (const item of equationLines) {
+    const previousGroup = groups.at(-1);
+    if (
+      previousGroup &&
+      item.y0 - previousGroup.at(-1).y1 <= lineHeight * 1.7
+    )
+      previousGroup.push(item);
+    else groups.push([item]);
+  }
+  for (const group of groups) {
+    const rawY0 = Math.max(
+      0,
+      Math.min(...group.map((item) => item.y0)) - lineHeight * 0.9,
+    );
+    const rawY1 = Math.min(
+      geometry.rawHeight,
+      Math.max(...group.map((item) => item.y1)) + lineHeight * 0.9,
+    );
+    const bbox = [
+      left + pageWidth * 0.065,
+      geometry.y(rawY0),
+      right - pageWidth * 0.065,
+      geometry.y(rawY1),
+    ];
+    candidates.push({
+      kind: "equation",
+      bbox,
+      y: bbox[1],
+      rawY0,
+      rawY1,
+    });
+    excludeRanges.push({ y0: rawY0, y1: rawY1 });
+  }
+
+  return { candidates, excludeRanges };
+}
+
 async function recognizePage(page, options, paths) {
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
@@ -433,7 +586,6 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   let ocrCandidates = [];
 
   let ocrApplied = false;
-  let ocrData;
   if (
     options.forceOcr ||
     (options.useOcr &&
@@ -442,7 +594,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         0,
       ) < 40)
   ) {
-    ocrData = await recognizePage(
+    const ocrData = await recognizePage(
       page,
       { ...options, page: pageNumber },
       ocrPaths,
@@ -454,7 +606,23 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         : ocrVisualCandidates(ocrData, lines, pageBounds);
     ocrCandidates = detected.candidates;
     ocrApplied = true;
-    entries.push(...ocrMarkdownEntries(ocrData, escapeMd));
+    entries.push(
+      ...ocrMarkdownEntries(ocrData, escapeMd, {
+        pageBounds,
+        rawHeight: ocrData._rasterHeight,
+        excludeRanges: detected.excludeRanges,
+      }),
+    );
+
+    const rawHeight = Math.max(
+      1,
+      Number(ocrData._rasterHeight) ||
+        Math.max(...lines.map((item) => item.y1), 1),
+    );
+    for (const item of lines) {
+      if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
+      if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
+    }
   }
 
   for (const block of (ocrApplied ? [] : blocks).sort(
@@ -587,13 +755,25 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         }
       }
 
-    // A scanned PDF often contains one page-sized raster but exposes no image
-    // block through structured text. Retain a compact page rendition in that
-    // case so tables, formulas, and illustrations are not silently lost from
-    // the DOCX/ZIP exports while OCR supplies the editable reading text.
-    if (ocrApplied && !assets.length) {
+    for (const candidate of ocrCandidates) {
+      if (
+        assets.some(
+          (asset) =>
+            asset.kind !== "source-page" &&
+            asset.bbox[1] < candidate.bbox[3] &&
+            asset.bbox[3] > candidate.bbox[1],
+        )
+      )
+        continue;
       try {
-        const rendered = cropPage(page, pageBounds, 1.25);
+        const bbox = paddedBbox(candidate.bbox, pageBounds, 4);
+        const rendered = cropPage(
+          page,
+          bbox,
+          candidate.kind === "equation" ? 2.6 : 2.25,
+        );
+        const count =
+          assets.filter((item) => item.kind === candidate.kind).length + 1;
         const asset = {
           id: `p${pageNumber}-${candidate.kind}-${count}`,
           ...candidate,
