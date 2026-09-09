@@ -41,8 +41,8 @@ the underlying issue.
 | Stops after `batch-start` | Rebuild/redeploy. The current worker emits `worker-start` and `engine-ready`; if neither appears, inspect browser developer-console errors. |
 | Engine startup timeout | Confirm the deployment serves `/mupdf/mupdf.js` and `/mupdf/mupdf-wasm.wasm` as static files. |
 | Tesseract `importScripts` error | Rebuild/redeploy so `/tesseract/worker.min.js`, `/tesseract-core/`, and `/tessdata/` are present. |
-| A new run still reports extraction version 4 | Reload the app with the browser cache bypassed or unregister the old service worker, then reopen the PDF. Current builds log extraction version 5 and invalidate older checkpoints. |
-| OCR-only report has zero source visuals | Use a current version-5 build. It retains a rendered source page in the DOCX/ZIP for each OCR-only page and reports `OCR_ONLY_PAGES`; it does not claim editable reconstruction of raster tables or formulas. |
+| A new run still reports an extraction version below 6 | Reload the app with the browser cache bypassed or unregister the old service worker, then reopen the PDF. Current builds log extraction version 6 and invalidate older checkpoints. |
+| OCR-only report has zero source visuals | Use a current version-5 build. It retains a rendered source page only for an OCR page with a figure, table, or equation cue, and reports `OCR_ONLY_PAGES`; it does not claim editable reconstruction of raster tables or formulas. |
 | Resume unavailable | Check browser storage permissions and available disk quota; download a workspace checkpoint before clearing site data. |
 | Slow extraction | This is expected for OCR-heavy scans. Process a short range first to choose a practical checkpoint size. |
 

@@ -26,7 +26,7 @@ import { download, stem } from "./shared/download.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 registerSW({ immediate: true });
 const $ = (id) => document.getElementById(id);
-const EXTRACTION_VERSION = 5;
+const EXTRACTION_VERSION = 6;
 const state = {
   fileName: "",
   fileSize: 0,

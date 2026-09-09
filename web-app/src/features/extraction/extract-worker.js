@@ -316,6 +316,15 @@ function sourceMarker(pageNumber, asset) {
   return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"]`;
 }
 
+function needsScannedVisualFallback(ocrData) {
+  const text = ocrData?.text || "";
+  if (/^\s*(?:figure|fig\.|table)\s+\d+(?:\.\d+)?\b/im.test(text))
+    return true;
+  return text
+    .split("\n")
+    .some((line) => line.length < 160 && mathScore(line) >= 7);
+}
+
 async function recognizePage(page, options, paths) {
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
@@ -355,6 +364,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   const edges = { headers: [], footers: [] };
 
   let ocrApplied = false;
+  let ocrData;
   if (
     options.forceOcr ||
     (options.useOcr &&
@@ -363,13 +373,17 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         0,
       ) < 40)
   ) {
-    const ocrData = await recognizePage(
+    ocrData = await recognizePage(
       page,
       { ...options, page: pageNumber },
       ocrPaths,
     );
     ocrApplied = true;
-    entries.push(...ocrMarkdownEntries(ocrData, escapeMd));
+    entries.push(
+      ...ocrMarkdownEntries(ocrData, escapeMd, {
+        extractEquations: options.extractEquations,
+      }),
+    );
   }
 
   for (const block of (ocrApplied ? [] : blocks).sort(
@@ -495,11 +509,11 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         }
       }
 
-    // A scanned PDF often contains one page-sized raster but exposes no image
-    // block through structured text. Retain a compact page rendition in that
-    // case so tables, formulas, and illustrations are not silently lost from
-    // the DOCX/ZIP exports while OCR supplies the editable reading text.
-    if (ocrApplied && !assets.length) {
+    // MuPDF does not expose the page-sized raster used by many scanned PDFs as
+    // an image block. Preserve a page rendition only when OCR identifies a
+    // figure, table, or equation cue; adding it to every OCR page duplicates
+    // the document and conceals a failed semantic reconstruction.
+    if (ocrApplied && !assets.length && needsScannedVisualFallback(ocrData)) {
       try {
         const rendered = cropPage(page, pageBounds, 1.25);
         const asset = {

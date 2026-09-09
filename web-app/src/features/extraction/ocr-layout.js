@@ -29,16 +29,35 @@ function fallbackLines(text = "") {
 function headingLevel(text) {
   const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+\S/.exec(text);
   if (numbered) return Math.min(6, numbered[1].split(".").length);
-  if (/^(?:chapter|appendix)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) return 1;
+  if (/^(?:chapter|appendix|part)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text))
+    return 1;
   if (/^(?:contents|list of (?:figures|tables)|preface|references|index)$/i.test(text))
     return 1;
   const letters = [...text].filter((character) => /\p{L}/u.test(character));
   const upper =
     letters.filter((character) => character === character.toUpperCase()).length /
     Math.max(1, letters.length);
-  return text.length <= 90 && text.split(/\s+/).length <= 14 && upper > 0.82
+  // OCR commonly returns publisher catalogues and table rows in all caps. Treat
+  // only a short, punctuation-free display line as an unnumbered heading.
+  return text.length <= 60 &&
+    text.split(/\s+/).length <= 7 &&
+    !/[,;/:]/.test(text) &&
+    upper > 0.9
     ? 1
     : null;
+}
+
+function equationText(text) {
+  if (text.length > 180 || /\b(?:figure|table|source|note)\b/i.test(text))
+    return false;
+  const symbols = (text.match(/[=<>+−×÷≠≤≥≈∑∏∫√]/gu) || []).length;
+  const words = (text.match(/\p{L}{3,}/gu) || []).length;
+  const variables = (text.match(/(?:^|\s)[A-Za-z](?:[_^]\S+)?(?=\s|$)/g) || [])
+    .length;
+  return (
+    text.split(/\s+/).length <= 18 &&
+    ((symbols >= 2 && words <= 4) || (symbols >= 1 && variables >= 2 && words <= 2))
+  );
 }
 
 function joinLines(lines) {
@@ -51,7 +70,7 @@ function joinLines(lines) {
   }, "");
 }
 
-export function ocrMarkdownEntries(data, escapeMarkdown) {
+export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
   const structuredLines = flattenLines(data.blocks)
     .map((line) => ({ text: lineText(line), ...lineBox(line) }))
     .filter((line) => line.text);
@@ -78,6 +97,11 @@ export function ocrMarkdownEntries(data, escapeMarkdown) {
   for (const line of lines) {
     const level = headingLevel(line.text);
     const previous = paragraph.at(-1);
+    if (options.extractEquations !== false && equationText(line.text)) {
+      flushParagraph();
+      entries.push({ y: line.y0, markdown: `$$\n${line.text}\n$$` });
+      continue;
+    }
     if (level) {
       flushParagraph();
       entries.push({ y: line.y0, markdown: `${"#".repeat(level)} ${escapeMarkdown(line.text)}` });

@@ -90,12 +90,14 @@ user explicitly downloads an export or imports/exports a workspace file.
 
 English OCR data is bundled. Tesseract is suitable for scanned prose but is not a
 mathematical OCR engine. On an OCR-only page, the app now reconstructs paragraph and
-heading boundaries from the OCR layout data (or its text fallback) and retains a
-source-page rendition in DOCX/ZIP exports. This preserves complex tables, formulas,
-and illustrations that cannot be safely invented as editable Markdown. The report
-marks such pages as `OCR_ONLY_PAGES` so they are never mistaken for an equivalent
-native-text extraction. Complex layouts still require review; an interrupted or
-failed page is recorded in the quality report and blocks a clean status.
+heading boundaries from the OCR layout data (or its text fallback). A source-page
+rendition is retained only on OCR pages that contain a detected figure, table, or
+equation cue; it is never added to every page. Clearly mathematical OCR lines are
+emitted as editable display math; visual material and ambiguous notation are kept as
+source visual evidence rather than fabricated equations. The report marks OCR-only
+pages as `OCR_ONLY_PAGES` so they are never mistaken for an equivalent native-text
+extraction. Complex layouts still require review; an interrupted or failed page is
+recorded in the quality report and blocks a clean status.
 
 Brython is not used because it cannot run the native PyMuPDF stack. MuPDF WASM,
 PDF.js, Tesseract.js, Web Workers, IndexedDB, and browser OOXML generation provide

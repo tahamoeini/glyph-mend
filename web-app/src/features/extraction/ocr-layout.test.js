@@ -45,3 +45,26 @@ it("reconstructs structure from plain OCR text when JSON blocks are unavailable"
     "Capacity is limited.",
   ]);
 });
+
+it("does not turn all-caps catalogue entries into headings", () => {
+  const entries = ocrMarkdownEntries(
+    {
+      text: "SUPPLY CHAIN STRUCTURES: Coordination, Information and Optimization\n\n2.1 Introduction",
+      blocks: null,
+    },
+    identity,
+  );
+  expect(entries.map((entry) => entry.markdown)).toEqual([
+    "SUPPLY CHAIN STRUCTURES: Coordination, Information and Optimization",
+    "## 2.1 Introduction",
+  ]);
+});
+
+it("preserves an unambiguous OCR formula as display math", () => {
+  const entries = ocrMarkdownEntries(
+    { text: "R = p × q" },
+    identity,
+    { extractEquations: true },
+  );
+  expect(entries.map((entry) => entry.markdown)).toEqual(["$$\nR = p × q\n$$"]);
+});
