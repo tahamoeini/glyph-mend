@@ -532,8 +532,9 @@ if (typeof self !== "undefined")
         throw new Error("The PDF password is missing or incorrect.");
       for (let index = 0; index < data.pages.length; index += 1) {
         const pageNumber = data.pages[index];
+        let page;
         try {
-          const page = document.loadPage(pageNumber - 1);
+          page = document.loadPage(pageNumber - 1);
           const result = await pageMarkdown(
             page,
             pageNumber,
@@ -553,7 +554,6 @@ if (typeof self !== "undefined")
             },
             result.assets.map((asset) => asset.data.buffer),
           );
-          page.destroy?.();
         } catch (error) {
           self.postMessage({
             type: "page-error",
@@ -561,6 +561,8 @@ if (typeof self !== "undefined")
             message: error?.message || String(error),
           });
           if (data.options.strict) throw error;
+        } finally {
+          page?.destroy?.();
         }
       }
       self.postMessage({

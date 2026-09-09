@@ -89,4 +89,15 @@ describe("exports", () => {
     expect(audit.status).toBe("warnings");
     expect(audit.issues[0].code).toBe("NO_TECHNICAL_OBJECTS");
   });
+  it("requires review when a selected page could not be extracted", () => {
+    const audit = qualityAudit(
+      [{ page: 1, text: "Recovered text", quality: { characters: 14 } }],
+      "Recovered text",
+      [{ type: "page-error", page: 2, message: "Malformed page" }],
+    );
+    expect(audit.status).toBe("needs-review");
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "PAGE_EXTRACTION_ERRORS", pages: [2] }),
+    );
+  });
 });

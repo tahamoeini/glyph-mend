@@ -201,7 +201,7 @@ export function documentMetrics(markdown) {
   };
 }
 
-export function qualityAudit(pages, markdown) {
+export function qualityAudit(pages, markdown, warnings = []) {
   const metrics = documentMetrics(markdown);
   const issues = [];
   const empty = pages
@@ -271,6 +271,18 @@ export function qualityAudit(pages, markdown) {
       severity: "warning",
       count: leakedRunning,
       message: "Probable running headers or page labels remain.",
+    });
+  const failedPages = warnings
+    .filter((warning) => warning?.type === "page-error")
+    .map((warning) => warning.page)
+    .filter(Number.isInteger);
+  if (failedPages.length)
+    issues.push({
+      code: "PAGE_EXTRACTION_ERRORS",
+      severity: "error",
+      count: failedPages.length,
+      pages: [...new Set(failedPages)].slice(0, 50),
+      message: "One or more selected pages could not be extracted.",
     });
   return {
     status: issues.some((issue) => issue.severity === "error")

@@ -46,6 +46,8 @@ const state = {
   audit: { status: "pass", issues: [] },
   engine: "mupdf-wasm",
   previewUrls: [],
+  checkpointWrites: new Set(),
+  checkpointError: null,
 };
 const optionIds = [
   "removeHeaders",
@@ -111,6 +113,22 @@ function setWorking(value) {
   $("extractButton").disabled = value;
   $("pauseButton").classList.toggle("hidden", !value);
   $("cancelButton").classList.toggle("hidden", !value);
+}
+function saveCheckpoint(checkpoint) {
+  const write = savePage(checkpoint);
+  write.catch((error) => {
+    state.checkpointError = error;
+    log("checkpoint-error", error.message, { page: checkpoint.page }, "error");
+  });
+  state.checkpointWrites.add(write);
+  write.then(
+    () => state.checkpointWrites.delete(write),
+    () => state.checkpointWrites.delete(write),
+  );
+}
+async function waitForCheckpointWrites() {
+  await Promise.allSettled([...state.checkpointWrites]);
+  if (state.checkpointError) throw state.checkpointError;
 }
 function activateWorkspace() {
   $("welcome").classList.add("hidden");
@@ -233,9 +251,7 @@ function runBatch(batch, wanted) {
           engine: data.engine || state.engine,
         };
         state.pages[data.page] = checkpoint;
-        savePage(checkpoint).catch((error) =>
-          log("checkpoint-error", error.message, { page: data.page }, "error"),
-        );
+        saveCheckpoint(checkpoint);
         const done = wanted.filter((page) => state.pages[page]).length;
         setStatus(`Extracting page ${data.page}`, done, wanted.length);
         log(
@@ -309,6 +325,7 @@ async function extract() {
     return toast("Selected pages are already extracted.");
   }
   state.options = options();
+  state.checkpointError = null;
   state.startedAt = new Date().toISOString();
   setWorking(true);
   setStatus(
@@ -337,14 +354,23 @@ async function extract() {
         "debug",
       );
       await runBatch(batch, wanted);
+      await waitForCheckpointWrites();
       log("checkpoint-write", "Extraction batch committed", {
         completedPages: wanted.filter((page) => state.pages[page]).length,
       });
       await persist();
     }
     if (!state.running) return;
-    setStatus("Extraction complete", wanted.length, wanted.length);
     finalize(wanted);
+    const completed = wanted.filter((page) => state.pages[page]).length;
+    const skipped = wanted.length - completed;
+    setStatus(
+      skipped
+        ? `Extraction finished with ${skipped} skipped page${skipped === 1 ? "" : "s"}`
+        : "Extraction complete",
+      completed,
+      wanted.length,
+    );
     await persist();
     log("complete", "Extraction complete", {
       processed: Object.keys(state.pages).length,
@@ -427,7 +453,11 @@ function updateOutput() {
   ].forEach((id) => ($(id).disabled = !enabled));
   const m = documentMetrics(state.markdown);
   state.metrics = m;
-  state.audit = qualityAudit(Object.values(state.pages), state.markdown);
+  state.audit = qualityAudit(
+    Object.values(state.pages),
+    state.markdown,
+    state.warnings,
+  );
   const issueCount = state.warnings.length + state.audit.issues.length;
   $("documentStats").textContent = enabled
     ? `${m.words.toLocaleString()} words · ${Object.keys(state.pages).length} pages · ${state.audit.status}`

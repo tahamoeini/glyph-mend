@@ -90,7 +90,29 @@ DOCX
 
 This avoids the old failure mode where a 700-page extraction crashed near the end and the only available recovery strategy was apparently to age one year and start again.
 
-## Installation
+## Browser edition (recommended)
+
+The browser edition is the migration target and does not need Python, a server, or a
+document upload. It performs extraction locally with MuPDF WebAssembly, uses an
+optional local OCR worker, and stores resumable checkpoints in the browser.
+
+```bash
+cd web-app
+npm ci
+npm run dev
+```
+
+For a deployable static site, run `npm run build` and serve `web-app/dist/` over
+HTTPS. See [the browser-edition guide](web-app/README.md) for supported browser
+capabilities, privacy boundaries, verification, OCR limits, and licensing.
+
+## Python reference edition
+
+The original Python CLI remains available for existing command-line workflows. New
+browser-first use should start with `web-app/`; the two editions have separate
+runtime and dependency models.
+
+### Installation
 
 Python 3.10+:
 

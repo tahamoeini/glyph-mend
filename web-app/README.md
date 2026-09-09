@@ -1,4 +1,4 @@
-# PDF Sanitizer Browser Edition 2
+# PDF Sanitizer Browser Edition
 
 The primary, browser-native PDF Sanitizer. It runs on the user's device without a
 backend, account, upload, telemetry, or Python runtime.
@@ -17,12 +17,14 @@ backend, account, upload, telemetry, or Python runtime.
   representation, a source-PDF crop is retained instead of silently deleting it.
 - Editable Markdown, safe rendered preview, source comparison, find, and metrics.
 - Pause, cancel, resume, workspace import/export, and incremental IndexedDB
-  checkpoints. PDF bytes are stored once and completed pages individually.
+  checkpoints. PDF bytes are stored once and completed pages individually; a
+  batch is not marked persisted until its page checkpoints finish writing.
 - Markdown, plain text, and Word downloads. DOCX includes headings, lists, tables,
   inline styles, native Office Math, and embedded source visuals.
 - Complete ZIP bundle containing Markdown, text, report, log, and PNG assets.
 - Timestamped activity log plus per-page metrics, OCR/worker events, and
-  machine-readable quality gates.
+  machine-readable quality gates. A skipped selected page is always reported as
+  `needs-review`; it is never shown as a clean extraction.
 - Installable PWA that works offline after the first successful load.
 
 ## Run it
@@ -43,6 +45,18 @@ npm run preview
 The result is `web-app/dist/`. A local HTTP server is required because browsers
 restrict workers and service workers on `file://` URLs.
 
+## Deployment and browser support
+
+Deploy the contents of `dist/` as static files over HTTPS. The application uses Web
+Workers, WebAssembly, IndexedDB, and a service worker, so current Chromium, Firefox,
+and Safari releases are the practical support baseline. Private browsing,
+storage-restricted browser settings, or browser quota limits can prevent workspace
+resume; exports still work for the active session.
+
+No backend endpoint is required or contacted by this application. The selected PDF,
+its extracted content, and optional checkpoint data remain in the browser unless the
+user explicitly downloads an export or imports/exports a workspace file.
+
 ## Extraction contract
 
 1. Recoverable text becomes semantic Markdown.
@@ -55,7 +69,9 @@ restrict workers and service workers on `file://` URLs.
 English OCR data is bundled. Tesseract is suitable for scanned prose but is not a
 mathematical OCR engine, so image-only mathematics is preserved visually rather than
 invented as LaTeX. Complex layouts still require review; the report changes to
-`warnings` or `needs-review` when deterministic checks find suspicious omissions.
+`warnings` or `needs-review` when deterministic checks find suspicious omissions. An
+interrupted or failed page is recorded in the quality report and blocks a clean
+status.
 
 Brython is not used because it cannot run the native PyMuPDF stack. MuPDF WASM,
 PDF.js, Tesseract.js, Web Workers, IndexedDB, and browser OOXML generation provide
