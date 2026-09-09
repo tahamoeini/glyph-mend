@@ -100,4 +100,20 @@ describe("exports", () => {
       expect.objectContaining({ code: "PAGE_EXTRACTION_ERRORS", pages: [2] }),
     );
   });
+  it("labels scanned OCR-only pages for review instead of reporting a clean layout", () => {
+    const audit = qualityAudit(
+      [
+        {
+          page: 1,
+          text: "Recovered OCR text",
+          quality: { characters: 18, textBlocks: 0, ocrApplied: true },
+        },
+      ],
+      "Recovered OCR text",
+    );
+    expect(audit.status).toBe("warnings");
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "OCR_ONLY_PAGES", pages: [1] }),
+    );
+  });
 });

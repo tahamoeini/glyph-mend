@@ -494,6 +494,29 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           /* Reported through raw vector counts. */
         }
       }
+
+    // A scanned PDF often contains one page-sized raster but exposes no image
+    // block through structured text. Retain a compact page rendition in that
+    // case so tables, formulas, and illustrations are not silently lost from
+    // the DOCX/ZIP exports while OCR supplies the editable reading text.
+    if (ocrApplied && !assets.length) {
+      try {
+        const rendered = cropPage(page, pageBounds, 1.25);
+        const asset = {
+          id: `p${pageNumber}-scanned-page`,
+          kind: "scanned-page",
+          bbox: pageBounds,
+          ...rendered,
+        };
+        assets.push(asset);
+        entries.push({
+          y: pageBounds[3] + 1,
+          markdown: sourceMarker(pageNumber, asset),
+        });
+      } catch {
+        /* OCR text remains available if the fallback page cannot be rasterized. */
+      }
+    }
   }
 
   entries.sort((a, b) => a.y - b.y);

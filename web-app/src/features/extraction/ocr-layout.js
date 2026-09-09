@@ -12,8 +12,8 @@ function lineBox(line) {
   };
 }
 
-function flattenLines(blocks = []) {
-  return blocks.flatMap((block) =>
+function flattenLines(blocks) {
+  return (Array.isArray(blocks) ? blocks : []).flatMap((block) =>
     (block.paragraphs || []).flatMap((paragraph) => paragraph.lines || []),
   );
 }

@@ -272,6 +272,20 @@ export function qualityAudit(pages, markdown, warnings = []) {
       count: leakedRunning,
       message: "Probable running headers or page labels remain.",
     });
+  const ocrOnly = pages.filter(
+    (page) =>
+      page.quality?.ocrApplied &&
+      (page.quality?.textBlocks ?? 0) === 0,
+  );
+  if (ocrOnly.length)
+    issues.push({
+      code: "OCR_ONLY_PAGES",
+      severity: "warning",
+      count: ocrOnly.length,
+      pages: ocrOnly.slice(0, 50).map((page) => page.page),
+      message:
+        "These scanned pages use OCR. Their source-page renditions are retained for layout fidelity; review complex tables and formulas.",
+    });
   const ocrPages = pages.filter((page) => page.quality?.ocrApplied).length;
   if (pages.length && ocrPages === pages.length)
     issues.push({
