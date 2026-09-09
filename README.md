@@ -19,6 +19,8 @@ DOCX is an export format layered on top of the Markdown. Chunking, embeddings, R
   checkpoints, deployment, and troubleshooting.
 - [Browser application guide](web-app/README.md): install, build, verification,
   and browser-specific licensing.
+- [Architecture guide](docs/architecture.md): repository layout, Python module
+  boundaries, tests, and CI workflows.
 - [Desktop GUI guide](docs/gui.md): the legacy Python interface.
 
 ## Semantic output contract

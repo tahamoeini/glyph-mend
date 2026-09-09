@@ -3,10 +3,14 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.coverage
+coverage/
+htmlcov/
 dist/
 build/
 *.egg-info/
 *.md.tmp
 *.parts/
+.vite/
 .DS_Store
 *.pdf
