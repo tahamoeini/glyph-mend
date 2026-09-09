@@ -330,6 +330,7 @@ function runBatch(batch, wanted) {
         options: state.options,
         password: $("pdfPassword").value,
         ocrPaths: {
+          workerPath: new URL("./tesseract/worker.min.js", location.href).href,
           corePath: new URL("./tesseract-core/", location.href).href,
           langPath: new URL("./tessdata/", location.href).href,
         },

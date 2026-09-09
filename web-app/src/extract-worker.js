@@ -1,5 +1,4 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
-import tesseractWorkerUrl from "tesseract.js/dist/worker.min.js?url";
 import { headingFor, normalizeText } from "./cleanup.js";
 
 const MATH_SYMBOLS = /[=<>+−×÷≠≤≥≈∑∏∫√∂∇∈∉⊂⊆∞α-ωΑ-Ω]/gu;
@@ -318,7 +317,7 @@ function sourceMarker(pageNumber, asset) {
 async function recognizePage(page, options, paths) {
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
-      workerPath: tesseractWorkerUrl,
+      workerPath: paths.workerPath,
       corePath: paths.corePath,
       langPath: paths.langPath,
       logger: (event) =>

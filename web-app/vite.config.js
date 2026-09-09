@@ -36,6 +36,10 @@ export default defineConfig({
           dest: "tesseract-core",
         },
         {
+          src: "node_modules/tesseract.js/dist/worker.min.js",
+          dest: "tesseract",
+        },
+        {
           src: "node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz",
           dest: "tessdata",
         },
@@ -47,6 +51,7 @@ export default defineConfig({
         "icon.svg",
         "wasm/*",
         "mupdf/*",
+        "tesseract/*",
         "tesseract-core/*",
         "tessdata/*",
       ],
