@@ -134,6 +134,58 @@ function markdownTable(rows) {
   ].join("\n");
 }
 
+function jsonFallbackBlocks(structured) {
+  try {
+    const data = JSON.parse(structured.asJSON());
+    return (data.blocks || [])
+      .filter((value) => value.type === "text")
+      .map((value) => {
+        const lines = (value.lines || [])
+          .map((item) => {
+            const text = normalizeText(item.text || "");
+            if (!text) return null;
+            const bbox = rect(item.bbox || value.bbox);
+            const size =
+              Number(item.font?.size) || Math.max(6, bbox[3] - bbox[1]);
+            const width = Math.max(1, bbox[2] - bbox[0]);
+            const characters = [...text];
+            const advance = width / Math.max(1, characters.length);
+            return {
+              bbox,
+              text,
+              size,
+              sizes: [size],
+              chars: characters.map((character, index) => ({
+                value: character,
+                x0: bbox[0] + index * advance,
+                x1: bbox[0] + (index + 1) * advance,
+              })),
+            };
+          })
+          .filter(Boolean);
+        if (!lines.length) return null;
+        const sizes = lines.flatMap((item) => item.sizes);
+        return {
+          bbox: value.bbox
+            ? rect(value.bbox)
+            : [
+                Math.min(...lines.map((item) => item.bbox[0])),
+                Math.min(...lines.map((item) => item.bbox[1])),
+                Math.max(...lines.map((item) => item.bbox[2])),
+                Math.max(...lines.map((item) => item.bbox[3])),
+              ],
+          lines,
+          sizes,
+          maxSize: Math.max(...sizes),
+          size: median(sizes),
+        };
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function readStructuredPage(page) {
   const blocks = [];
   const images = [];
@@ -155,7 +207,11 @@ function readStructuredPage(page) {
       const xs = points.filter((_, index) => index % 2 === 0);
       line.text += value;
       line.sizes.push(size);
-      line.chars.push({ value, x0: Math.min(...xs), x1: Math.max(...xs) });
+      line.chars.push({
+        value,
+        x0: xs.length ? Math.min(...xs) : line.bbox[0],
+        x1: xs.length ? Math.max(...xs) : line.bbox[2],
+      });
     },
     endLine() {
       line.text = normalizeText(line.text);
@@ -181,7 +237,13 @@ function readStructuredPage(page) {
       vectors.push({ bbox: rect(bbox), flags });
     },
   });
+
+  // The walker exposes the richest geometry, but some PDFs/versions can still
+  // yield structured JSON while producing no text callbacks. Recover that text
+  // before deciding the page is OCR-only or empty.
+  if (!blocks.length) blocks.push(...jsonFallbackBlocks(structured));
   structured.destroy?.();
+
   const device = new mupdf.Device({
     fillPath(path, _evenOdd, ctm) {
       try {
@@ -413,28 +475,25 @@ function ocrVisualCandidates(data, lines, pageBounds) {
     candidates.push(candidate);
     figureRanges.push(candidate);
 
-    // Keep the caption as editable text, but suppress short/low-confidence OCR
-    // fragments inside the visual. This removes diagram gibberish without
-    // deleting ordinary prose that happens to sit near a figure crop.
-    for (const line of lines) {
-      if (line.y0 < rawY0 || line.y1 > rawY1 || captionPattern.test(line.text))
+    for (const item of lines) {
+      if (item.y0 < rawY0 || item.y1 > rawY1 || captionPattern.test(item.text))
         continue;
-      const wordCount = line.text.split(/\s+/).length;
-      const lowConfidence = line.confidence != null && line.confidence < 72;
+      const wordCount = item.text.split(/\s+/).length;
+      const lowConfidence = item.confidence != null && item.confidence < 72;
       const diagramLike =
-        line.text.length < 110 &&
-        (wordCount <= 7 || mathScore(line.text) > 0 || lowConfidence);
+        item.text.length < 110 &&
+        (wordCount <= 7 || mathScore(item.text) > 0 || lowConfidence);
       if (diagramLike)
-        excludeRanges.push({ y0: line.y0, y1: line.y1, keepCaption: true });
+        excludeRanges.push({ y0: item.y0, y1: item.y1, keepCaption: true });
     }
   }
 
   const equationLines = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
+    const item = lines[index];
     if (
       figureRanges.some(
-        (range) => line.y0 < range.rawY1 && line.y1 > range.rawY0,
+        (range) => item.y0 < range.rawY1 && item.y1 > range.rawY0,
       )
     )
       continue;
@@ -442,26 +501,29 @@ function ocrVisualCandidates(data, lines, pageBounds) {
     const cued =
       previous &&
       FORMULA_CUE.test(previous.text) &&
-      line.text.length <= 220 &&
-      line.text.split(/\s+/).length <= 28;
-    if (looksLikeOcrEquation(line.text) || cued) equationLines.push(line);
+      item.text.length <= 220 &&
+      item.text.split(/\s+/).length <= 28;
+    if (looksLikeOcrEquation(item.text) || cued) equationLines.push(item);
   }
 
   const groups = [];
-  for (const line of equationLines) {
+  for (const item of equationLines) {
     const previousGroup = groups.at(-1);
     if (
       previousGroup &&
-      line.y0 - previousGroup.at(-1).y1 <= lineHeight * 1.7
+      item.y0 - previousGroup.at(-1).y1 <= lineHeight * 1.7
     )
-      previousGroup.push(line);
-    else groups.push([line]);
+      previousGroup.push(item);
+    else groups.push([item]);
   }
   for (const group of groups) {
-    const rawY0 = Math.max(0, Math.min(...group.map((line) => line.y0)) - lineHeight * 0.9);
+    const rawY0 = Math.max(
+      0,
+      Math.min(...group.map((item) => item.y0)) - lineHeight * 0.9,
+    );
     const rawY1 = Math.min(
       geometry.rawHeight,
-      Math.max(...group.map((line) => line.y1)) + lineHeight * 0.9,
+      Math.max(...group.map((item) => item.y1)) + lineHeight * 0.9,
     );
     const bbox = [
       left + pageWidth * 0.065,
@@ -538,9 +600,10 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       ocrPaths,
     );
     const lines = ocrLines(ocrData);
-    const detected = options.preserveVisuals === false
-      ? { candidates: [], excludeRanges: [] }
-      : ocrVisualCandidates(ocrData, lines, pageBounds);
+    const detected =
+      options.preserveVisuals === false
+        ? { candidates: [], excludeRanges: [] }
+        : ocrVisualCandidates(ocrData, lines, pageBounds);
     ocrCandidates = detected.candidates;
     ocrApplied = true;
     entries.push(
@@ -553,11 +616,12 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
 
     const rawHeight = Math.max(
       1,
-      Number(ocrData._rasterHeight) || Math.max(...lines.map((line) => line.y1), 1),
+      Number(ocrData._rasterHeight) ||
+        Math.max(...lines.map((item) => item.y1), 1),
     );
-    for (const line of lines) {
-      if (line.y0 <= rawHeight * 0.09) edges.headers.push(line.text);
-      if (line.y1 >= rawHeight * 0.92) edges.footers.push(line.text);
+    for (const item of lines) {
+      if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
+      if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
     }
   }
 
@@ -611,9 +675,6 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         continue;
       }
       try {
-        // Render the image in page space instead of exporting the raw embedded
-        // raster. Page-space rendering keeps masks, transforms, vector overlays,
-        // and a small safety margin so figures are not clipped at their bounds.
         const bbox = paddedBbox(
           value.bbox,
           pageBounds,
@@ -629,7 +690,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         assets.push(asset);
         entries.push({ y: bbox[1], markdown: sourceMarker(pageNumber, asset) });
       } catch {
-        /* Text extraction remains usable when an exotic image cannot be decoded. */
+        /* text extraction remains usable when an image cannot be rendered */
       }
       value.image.destroy?.();
     }
@@ -656,7 +717,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         assets.push(asset);
         entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
       } catch {
-        /* The quality report records an unpreserved suspicious gap. */
+        /* quality metrics retain the suspicious gap */
       }
     }
 
@@ -690,7 +751,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           assets.push(asset);
           entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
         } catch {
-          /* Reported through raw vector counts. */
+          /* reported through raw vector counts */
         }
       }
 
@@ -711,7 +772,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           bbox,
           candidate.kind === "equation" ? 2.6 : 2.25,
         );
-        const count = assets.filter((item) => item.kind === candidate.kind).length + 1;
+        const count =
+          assets.filter((item) => item.kind === candidate.kind).length + 1;
         const asset = {
           id: `p${pageNumber}-${candidate.kind}-${count}`,
           ...candidate,
@@ -721,14 +783,10 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         assets.push(asset);
         entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
       } catch {
-        /* OCR text remains available even if a local visual crop fails. */
+        /* OCR text remains available even if a local visual crop fails */
       }
     }
 
-    // Keep a source-page rendition for OCR-only pages that have no detected local
-    // visual. It remains available in the workspace/ZIP for verification, but it
-    // is deliberately not inserted inline into Markdown/DOCX, avoiding a second
-    // full-page image followed by duplicated OCR text.
     if (ocrApplied && !assets.length) {
       try {
         const rendered = cropPage(page, pageBounds, 1.15);
@@ -739,7 +797,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           ...rendered,
         });
       } catch {
-        /* OCR text remains available if the source-page fallback cannot render. */
+        /* OCR text remains available if the source-page fallback cannot render */
       }
     }
   }
