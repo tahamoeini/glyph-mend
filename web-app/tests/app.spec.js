@@ -70,8 +70,8 @@ test("extracts a PDF through the structured WASM worker", async ({ page }) => {
   await expect(page.locator("#statusText")).toContainText("complete", {
     timeout: 30000,
   });
-  await expect(page.locator("#markdownEditor")).toContainText(
-    "Browser Extraction Test",
+  await expect(page.locator("#markdownEditor")).toHaveValue(
+    /Browser Extraction Test/,
   );
   expect(wasmResponse).toMatchObject({ status: 200 });
   expect(wasmResponse.contentType).toContain("application/wasm");
