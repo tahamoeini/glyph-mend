@@ -133,8 +133,13 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
   ];
   const minX = Math.min(...allLines.map((line) => line.x0));
   const maxX = Math.max(...allLines.map((line) => line.x1));
-  const rawBottom = Math.max(...allLines.map((line) => line.y1), 1);
-  const rawTop = Math.min(...allLines.map((line) => line.y0), 0);
+  const measuredBottom = Math.max(...allLines.map((line) => line.y1), 1);
+  const measuredTop = Math.min(...allLines.map((line) => line.y0), 0);
+  const suppliedHeight = Number(options.rawHeight);
+  const rawTop = Number.isFinite(suppliedHeight) && suppliedHeight > 0 ? 0 : measuredTop;
+  const rawBottom = Number.isFinite(suppliedHeight) && suppliedHeight > 0
+    ? suppliedHeight
+    : measuredBottom;
   const rawHeight = Math.max(1, rawBottom - rawTop);
   const pageBounds = options.pageBounds;
   const mapY = (value) => {
