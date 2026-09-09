@@ -19,7 +19,7 @@ export default defineConfig({
       {
         find: /^mupdf$/,
         replacement: fileURLToPath(
-          new URL("./src/mupdf-vite.js", import.meta.url),
+          new URL("./src/features/extraction/mupdf-vite.js", import.meta.url),
         ),
       },
     ],

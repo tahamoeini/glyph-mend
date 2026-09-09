@@ -10,7 +10,7 @@ import {
   parsePageRange,
   plainText,
   qualityAudit,
-} from "./cleanup.js";
+} from "./features/extraction/cleanup.js";
 import {
   appendStoredLog,
   clearWorkspace,
@@ -20,8 +20,8 @@ import {
   saveResult,
   serializeWorkspace,
   startWorkspace,
-} from "./workspace-db.js";
-import { download, stem } from "./download.js";
+} from "./storage/workspace-db.js";
+import { download, stem } from "./shared/download.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 registerSW({ immediate: true });
@@ -224,9 +224,12 @@ function selectedPages() {
 }
 function runBatch(batch, wanted) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./extract-worker.js", import.meta.url), {
+    const worker = new Worker(
+      new URL("./features/extraction/extract-worker.js", import.meta.url),
+      {
       type: "module",
-    });
+      },
+    );
     state.worker = worker;
     let settled = false;
     const finish = (error) => {
@@ -714,7 +717,7 @@ async function saveDocx() {
   try {
     $("downloadDocx").disabled = true;
     $("downloadDocx").querySelector("span").textContent = "Building document…";
-    const { markdownToDocx } = await import("./docx-export.js");
+    const { markdownToDocx } = await import("./features/export/docx-export.js");
     download(
       await markdownToDocx(
         state.markdown,

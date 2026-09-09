@@ -13,6 +13,14 @@ It consolidates the useful PDF-processing ideas from [`pdf-tokenizer`](https://g
 
 DOCX is an export format layered on top of the Markdown. Chunking, embeddings, RAG, article generation, and other downstream concerns remain separate.
 
+## Documentation
+
+- [Browser operations guide](docs/browser.md): local processing, OCR settings,
+  checkpoints, deployment, and troubleshooting.
+- [Browser application guide](web-app/README.md): install, build, verification,
+  and browser-specific licensing.
+- [Desktop GUI guide](docs/gui.md): the legacy Python interface.
+
 ## Semantic output contract
 
 | PDF content | Output |

@@ -3,6 +3,9 @@
 The primary, browser-native PDF Sanitizer. It runs on the user's device without a
 backend, account, upload, telemetry, or Python runtime.
 
+For operational guidance and runtime troubleshooting, see the
+[browser operations guide](../docs/browser.md).
+
 ## Complete local workflow
 
 - PDF.js source-page viewer.
@@ -44,6 +47,24 @@ npm run preview
 
 The result is `web-app/dist/`. A local HTTP server is required because browsers
 restrict workers and service workers on `file://` URLs.
+
+## Source layout
+
+```text
+src/
+  app.js                    Browser entry point and UI orchestration
+  features/
+    extraction/             MuPDF/OCR worker, cleanup, and tests
+    export/                 DOCX conversion and tests
+  storage/                  IndexedDB workspace persistence and tests
+  shared/                   Download helpers
+  styles/                   Application styles
+public/                     Manifest and static UI assets
+```
+
+The Vite configuration deliberately copies MuPDF, PDF.js, and Tesseract runtime
+assets into the production build. Do not replace those paths with Vite's internal
+`node_modules` URLs: nested browser workers must receive deployable static URLs.
 
 ## Deployment and browser support
 
