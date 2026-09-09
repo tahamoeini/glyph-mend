@@ -272,6 +272,15 @@ export function qualityAudit(pages, markdown, warnings = []) {
       count: leakedRunning,
       message: "Probable running headers or page labels remain.",
     });
+  const ocrPages = pages.filter((page) => page.quality?.ocrApplied).length;
+  if (pages.length && ocrPages === pages.length)
+    issues.push({
+      code: "OCR_ONLY_DOCUMENT",
+      severity: "warning",
+      count: ocrPages,
+      message:
+        "Every page required OCR; review headings, tables, equations, and figures against the source.",
+    });
   const failedPages = warnings
     .filter((warning) => warning?.type === "page-error")
     .map((warning) => warning.page)

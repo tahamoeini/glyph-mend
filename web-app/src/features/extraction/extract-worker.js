@@ -1,11 +1,13 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
+import { ocrMarkdownEntries } from "./ocr-layout.js";
 
 const MATH_SYMBOLS = /[=<>+−×÷≠≤≥≈∑∏∫√∂∇∈∉⊂⊆∞α-ωΑ-Ω]/gu;
 const FORMULA_CUE =
   /(?:as follows|given by|defined by|equal to|is then|is therefore|we have|condition(?:s)?|constraint(?:s)?|objective|profit function|demand function|probability is|solution is)\s*[:.]?$/i;
 let ocrWorker;
 let mupdf;
+let ocrProgressPage;
 
 async function loadMupdf() {
   if (mupdf) return mupdf;
@@ -323,7 +325,7 @@ async function recognizePage(page, options, paths) {
       logger: (event) =>
         self.postMessage({
           type: "ocr-progress",
-          page: options.page,
+          page: ocrProgressPage,
           status: event.status,
           progress: event.progress,
         }),
@@ -334,8 +336,9 @@ async function recognizePage(page, options, paths) {
     rect(page.getBounds()),
     Math.max(1, Math.min(600, Number(options.ocrDpi) || 300)) / 72,
   );
-  const result = await ocrWorker.recognize(image.data, {}, {});
-  return normalizeText(result.data.text || "");
+  ocrProgressPage = options.page;
+  const result = await ocrWorker.recognize(image.data, {}, { text: true, blocks: true });
+  return result.data;
 }
 
 export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
@@ -360,18 +363,13 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         0,
       ) < 40)
   ) {
-    const text = await recognizePage(
+    const ocrData = await recognizePage(
       page,
       { ...options, page: pageNumber },
       ocrPaths,
     );
     ocrApplied = true;
-    for (const [index, paragraph] of text
-      .split(/\n{2,}/)
-      .map((value) => value.replace(/\n/g, " ").trim())
-      .filter(Boolean)
-      .entries())
-      entries.push({ y: index, markdown: escapeMd(paragraph) });
+    entries.push(...ocrMarkdownEntries(ocrData, escapeMd));
   }
 
   for (const block of (ocrApplied ? [] : blocks).sort(

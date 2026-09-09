@@ -18,6 +18,7 @@ it("creates a DOCX with structural content and native math", async () => {
   const files = await contents(blob);
   expect(blob.type).toContain("officedocument");
   expect(strFromU8(files["word/document.xml"])).toContain("<m:oMath>");
+  expect(strFromU8(files["word/document.xml"])).toContain('w:val="Heading1"');
 });
 it("supports explicit source-page breaks", async () => {
   const flowing = await markdownToDocx(
