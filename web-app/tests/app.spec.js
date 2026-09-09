@@ -61,6 +61,9 @@ test("extracts a PDF through the structured WASM worker", async ({ page }) => {
 
   // This regression isolates MuPDF's native structured extraction and WASM
   // loading. OCR has its own worker/runtime path and should not mask this test.
+  await page.locator("details.advanced").evaluate((details) => {
+    details.open = true;
+  });
   await page.locator("#useOcr").uncheck();
   await page.locator("#extractButton").click();
 
