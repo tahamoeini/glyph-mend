@@ -171,3 +171,34 @@ it("does not promote cropped all-caps abbreviations to headings", () => {
   const entries = ocrMarkdownEntries({ text: "RM.\n\nINTRODUCTION", blocks: null }, identity);
   expect(entries.map((entry) => entry.markdown)).toEqual(["RM.", "# INTRODUCTION"]);
 });
+
+it("promotes a short all-caps OCR heading when real layout evidence supports it", () => {
+  const entries = ocrMarkdownEntries(
+    {
+      blocks: [
+        {
+          paragraphs: [
+            {
+              lines: [
+                { text: "API", bbox: { x0: 180, y0: 10, x1: 230, y1: 36 } },
+                {
+                  text: "Application programming interfaces connect systems.",
+                  bbox: { x0: 20, y0: 70, x1: 410, y1: 86 },
+                },
+                {
+                  text: "This paragraph continues normally.",
+                  bbox: { x0: 20, y0: 90, x1: 360, y1: 106 },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    identity,
+  );
+  expect(entries.map((entry) => entry.markdown)).toEqual([
+    "# API",
+    "Application programming interfaces connect systems. This paragraph continues normally.",
+  ]);
+});
