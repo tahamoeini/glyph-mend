@@ -6,9 +6,10 @@
 - `interfaces/` tests command-line normalization, GUI helper behavior, and progress
   reporting.
 
-Run the complete Python suite from the repository root:
+Install the test tools, then run the complete Python suite from the repository root:
 
 ```bash
+python -m pip install -e ".[dev]"
 python -m pytest
 ```
 

@@ -308,16 +308,20 @@ export function qualityAudit(pages, markdown, warnings = []) {
       message:
         "Every page required OCR; review headings, tables, equations, and figures against the source.",
     });
-  const failedPages = warnings
-    .filter((warning) => warning?.type === "page-error")
-    .map((warning) => warning.page)
-    .filter(Number.isInteger);
+  const failedPages = [
+    ...new Set(
+      warnings
+        .filter((warning) => warning?.type === "page-error")
+        .map((warning) => warning.page)
+        .filter(Number.isInteger),
+    ),
+  ];
   if (failedPages.length)
     issues.push({
       code: "PAGE_EXTRACTION_ERRORS",
       severity: "error",
       count: failedPages.length,
-      pages: [...new Set(failedPages)].slice(0, 50),
+      pages: failedPages.slice(0, 50),
       message: "One or more selected pages could not be extracted.",
     });
   return {

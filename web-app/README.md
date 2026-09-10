@@ -122,3 +122,7 @@ npm run test:e2e
 CI performs all three checks and uploads the static build. The Python code outside
 `web-app/` remains available as the legacy/reference edition and was not modified by
 this migration.
+
+The end-to-end test starts a local Vite server and launches Chromium. On a new Linux
+machine, run `npx playwright install --with-deps chromium` once before running
+`npm run test:e2e`; the CI workflow already performs that setup.

@@ -105,6 +105,19 @@ describe("exports", () => {
       expect.objectContaining({ code: "PAGE_EXTRACTION_ERRORS", pages: [2] }),
     );
   });
+  it("counts a failed page once when duplicate worker events are received", () => {
+    const audit = qualityAudit(
+      [],
+      "",
+      [
+        { type: "page-error", page: 2, message: "Malformed page" },
+        { type: "page-error", page: 2, message: "Malformed page" },
+      ],
+    );
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "PAGE_EXTRACTION_ERRORS", count: 1, pages: [2] }),
+    );
+  });
   it("labels scanned OCR-only pages for review instead of reporting a clean layout", () => {
     const audit = qualityAudit(
       [
