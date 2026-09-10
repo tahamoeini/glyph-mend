@@ -18,9 +18,8 @@ export function enrichStructuredTextOptions(options = "") {
   );
 
   // Preserve geometry that downstream structure detection actually needs.
-  // In particular, table recovery depends on native character spacing and
-  // technical figures are frequently emitted by MuPDF as vectors rather than
-  // image XObjects.
+  // Table recovery depends on native character spacing and technical figures
+  // are frequently emitted by MuPDF as vectors rather than image XObjects.
   for (const option of [
     "preserve-images",
     "preserve-spans",
@@ -266,7 +265,7 @@ function isTocPage(lines) {
 
 function nativeCellCount(line, bodySize) {
   const chars = (line?.chars || [])
-    .map((args) => ({ args, value: String(args?.[0] || ""), bbox: charRect(args) }))
+    .map((args) => ({ value: String(args?.[0] || ""), bbox: charRect(args) }))
     .filter((item) => item.value.trim() && item.bbox);
   if (chars.length < 2) return 1;
   let count = 1;
@@ -293,7 +292,7 @@ function tableRanges(lines, bodySize) {
       const run = counts.slice(start, end + 1);
       if (run.length >= 3) {
         const columns = Math.round(median(run));
-        const consistent = run.filter((value) => Math.abs(value - columns) <= 0).length;
+        const consistent = run.filter((value) => value === columns).length;
         if (columns >= 2 && columns <= 8 && consistent / run.length >= 0.75)
           result.push([start, end]);
       }
@@ -353,7 +352,12 @@ function segmentNativeBlock(block, bodySize) {
     return lines.map((line, index) => ({
       ...block,
       bbox: rect(line.bbox) || block.bbox,
-      lines: [{ ...line, markdownPrefix: index > 0 && tocEntry(lineText(line)) ? "- " : "" }],
+      lines: [
+        {
+          ...line,
+          markdownPrefix: index > 0 && tocEntry(lineText(line)) ? "- " : "",
+        },
+      ],
     }));
   }
 
@@ -370,9 +374,14 @@ function segmentNativeBlock(block, bodySize) {
   const tables = tableRanges(lines, bodySize);
   const tableAt = new Map();
   for (const [start, end] of tables) tableAt.set(start, end);
-  const tableInterior = new Set(tables.flatMap(([start, end]) =>
-    Array.from({ length: Math.max(0, end - start) }, (_, offset) => start + offset + 1),
-  ));
+  const tableInterior = new Set(
+    tables.flatMap(([start, end]) =>
+      Array.from(
+        { length: Math.max(0, end - start) },
+        (_, offset) => start + offset + 1,
+      ),
+    ),
+  );
 
   const result = [];
   let body = [];
@@ -457,10 +466,12 @@ function segmentedJsonTextBlocks(data) {
         result.push({
           ...block,
           bbox: rect(line.bbox) || block.bbox,
-          lines: [{
-            ...line,
-            markdownPrefix: index > 0 && tocEntry(lineText(line)) ? "- " : "",
-          }],
+          lines: [
+            {
+              ...line,
+              markdownPrefix: index > 0 && tocEntry(lineText(line)) ? "- " : "",
+            },
+          ],
         });
       }
       continue;
@@ -574,7 +585,8 @@ function replayJsonBlock(walker, block) {
   for (const line of lines) {
     const originalText = lineText(line);
     const text = `${line.markdownPrefix || ""}${originalText}`;
-    const bbox = rect(line.bbox) || rect(block.bbox) || [0, 0, Math.max(1, text.length), 10];
+    const bbox =
+      rect(line.bbox) || rect(block.bbox) || [0, 0, Math.max(1, text.length), 10];
     walker.beginLine?.(bbox);
     [...text].forEach((character, index) =>
       walker.onChar?.(...syntheticCharArgs(character, index, text, bbox, line)),
@@ -609,7 +621,7 @@ function patchStructuredWalk(mupdf) {
     const seenImages = [];
 
     // Image-only consumers do not need text buffering. Keep the native path and
-    // only supplement image regions MuPDF omitted from walk().
+    // supplement image regions MuPDF omitted from walk().
     if (typeof walker.beginTextBlock !== "function") {
       const wrapped = {
         ...walker,
@@ -633,6 +645,7 @@ function patchStructuredWalk(mupdf) {
     // previous recovery reconstructed each line with evenly spaced characters,
     // which erased column gaps and made table detection impossible.
     const nativeBlocks = [];
+    const nativeImages = [];
     let currentBlock = null;
     let currentLine = null;
     const wrapped = {
@@ -658,7 +671,7 @@ function patchStructuredWalk(mupdf) {
       onImageBlock(bbox, transform, image) {
         const normalized = rect(bbox);
         if (normalized) seenImages.push(normalized);
-        return walker.onImageBlock?.call(walker, bbox, transform, image);
+        nativeImages.push({ bbox, transform, image });
       },
     };
 
@@ -670,12 +683,26 @@ function patchStructuredWalk(mupdf) {
       for (const block of segmentedJsonTextBlocks(data)) replayJsonBlock(walker, block);
     }
 
-    if (typeof walker.onImageBlock === "function")
-      for (const bbox of jsonImages) {
-        if (seenImages.some((existing) => overlapRatio(existing, bbox) >= 0.97))
-          continue;
-        walker.onImageBlock.call(walker, bbox, null, { destroy() {} });
+    if (typeof walker.onImageBlock === "function") {
+      if (jsonImages.length) {
+        // Prefer asJSON image geometry when present. It is already deduplicated
+        // and coalesced, and the extraction worker crops from the source page so
+        // it does not need a live image object here.
+        for (const bbox of jsonImages)
+          walker.onImageBlock.call(walker, bbox, null, { destroy() {} });
+        for (const item of nativeImages) item.image?.destroy?.();
+      } else {
+        for (const item of nativeImages)
+          walker.onImageBlock.call(
+            walker,
+            item.bbox,
+            item.transform,
+            item.image,
+          );
       }
+    } else {
+      for (const item of nativeImages) item.image?.destroy?.();
+    }
     return result;
   };
 
