@@ -1,3 +1,5 @@
+import { installMuPdfStructuredRecovery } from "./features/extraction/structured-recovery.js";
+
 // Keep MuPDF's browser build outside Vite's dependency optimizer. MuPDF's
 // Emscripten glue expects mupdf.js, mupdf-wasm.js, and mupdf-wasm.wasm to stay
 // together. When Vite pre-bundles the package, that relationship can be broken
@@ -26,6 +28,6 @@ globalThis.$libmupdf_wasm_Module = {
 // Vite must not discover/pre-bundle this import at runtime; the copied MuPDF
 // browser module imports its sibling mupdf-wasm.js directly, exactly as shipped.
 const module = await import(/* @vite-ignore */ mupdfModuleUrl);
-const mupdf = module.default ?? module;
+const mupdf = installMuPdfStructuredRecovery(module.default ?? module);
 
 export default mupdf;
