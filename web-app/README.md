@@ -38,6 +38,11 @@ npm ci
 npm run dev
 ```
 
+The npm scripts automatically repair the current platform's native Rollup and
+esbuild packages when the same checkout is used from both Windows and WSL/Linux.
+That avoids the common mounted-drive `node_modules` failure where one platform's
+native binary replaces the other's.
+
 Build and preview the deployable static site:
 
 ```bash
@@ -126,3 +131,7 @@ this migration.
 The end-to-end test starts a local Vite server and launches Chromium. On a new Linux
 machine, run `npx playwright install --with-deps chromium` once before running
 `npm run test:e2e`; the CI workflow already performs that setup.
+
+If you switch the same `web-app/` checkout between Windows and WSL, keep using the
+npm scripts instead of calling Vite or Vitest directly so the native dependency
+preflight can restore the current platform's Rollup/esbuild packages.

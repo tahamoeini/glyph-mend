@@ -4,10 +4,16 @@
     "version": "2.0.0",
     "type": "module",
     "scripts": {
+        "native:deps": "node ./scripts/ensure-native-deps.mjs",
+        "predev": "npm run native:deps",
         "dev": "vite",
+        "prebuild": "npm run native:deps",
         "build": "vite build",
+        "prepreview": "npm run native:deps",
         "preview": "vite preview",
+        "pretest": "npm run native:deps",
         "test": "vitest run",
+        "pretest:e2e": "npm run native:deps",
         "test:e2e": "playwright test"
     },
     "dependencies": {
