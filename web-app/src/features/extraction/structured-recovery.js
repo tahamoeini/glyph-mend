@@ -16,10 +16,13 @@ export function enrichStructuredTextOptions(options = "") {
       .map((value) => value.trim())
       .filter(Boolean),
   );
+  const extractionWorkerPass =
+    values.has("preserve-images") && values.has("preserve-spans");
 
-  // Preserve geometry that downstream structure detection actually needs.
-  // Table recovery depends on native character spacing and technical figures
-  // are frequently emitted by MuPDF as vectors rather than image XObjects.
+  // Preserve the native text geometry that downstream structure detection needs.
+  // The extraction worker already collects page vectors through a separate
+  // Device pass, so asking StructuredText for vectors as well only duplicates
+  // geometry and can suppress image-XObject recovery in MuPDF WASM.
   for (const option of [
     "preserve-images",
     "preserve-spans",
@@ -27,9 +30,9 @@ export function enrichStructuredTextOptions(options = "") {
     "segment",
     "paragraph-break",
     "table-hunt",
-    "vectors",
   ])
     values.add(option);
+  if (!extractionWorkerPass) values.add("vectors");
 
   return [...values].join(",");
 }
