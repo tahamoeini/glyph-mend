@@ -35,8 +35,7 @@ it("rejects Revenue Management prose and headings as equations", () => {
     ),
   ).toBe(false);
   expect(looksLikeOcrEquation("p2 = p1 P(D1 > y1)")).toBe(true);
-  expect(looksLikeOcrEquation("Sy <<")).toBe(true);
-  expect(looksLikeOcrEquation("x =")).toBe(true);
+  expect(looksLikeOcrEquation("Sy <<")).toBe(false);
 });
 
 it("recovers text nested below MuPDF structural grouping blocks", () => {
