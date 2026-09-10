@@ -1,4 +1,7 @@
 import { openDB } from "idb";
+// Keep the existing IndexedDB name so the GlyphMend rebrand does not orphan
+// users' resumable workspaces. This is a persistence compatibility identifier,
+// not the current product name.
 const DB = "pdf-sanitizer-browser",
   META = "metadata",
   PAGES = "pages",
@@ -6,7 +9,13 @@ const DB = "pdf-sanitizer-browser",
   LOGS = "logs",
   CURRENT = "current";
 const OCR_CACHE_DB = "keyval-store";
-const LOCAL_PREFERENCES = ["pdf-sanitizer-theme", "pdf-sanitizer-sidebar"];
+const LOCAL_PREFERENCES = [
+  "pdf-sanitizer-theme",
+  "pdf-sanitizer-sidebar",
+  "glyphmend-theme",
+  "glyphmend-sidebar",
+  "glyphmend-runtime-brand-v1",
+];
 let database;
 async function db() {
   return (database ||= openDB(DB, 4, {
@@ -105,7 +114,12 @@ async function clearAppCaches() {
   const names = await caches.keys();
   await Promise.all(
     names
-      .filter((name) => name.startsWith("workbox-") || name.startsWith("pdf-sanitizer"))
+      .filter(
+        (name) =>
+          name.startsWith("workbox-") ||
+          name.startsWith("glyphmend") ||
+          name.startsWith("pdf-sanitizer"),
+      )
       .map((name) => caches.delete(name)),
   );
 }
