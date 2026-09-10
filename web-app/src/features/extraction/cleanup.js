@@ -52,6 +52,22 @@ function signature(line) {
   return value.toLowerCase();
 }
 
+function fallbackEdgeCandidates(lines, fromStart) {
+  const depth = lines.length >= 8 ? 2 : 1;
+  const ordered = fromStart ? [...lines] : [...lines].reverse();
+  const result = ordered.slice(0, depth);
+  if (!result.some((line) => !isPageLabel(line)))
+    for (const line of ordered.slice(depth)) {
+      if (isPageLabel(line)) {
+        result.push(line);
+        continue;
+      }
+      if (looksLikeRunningFragment(line)) result.push(line);
+      break;
+    }
+  return fromStart ? result : result.reverse();
+}
+
 function selectedEdges(page, headers, footers) {
   const lines = String(page.text || "").split("\n").filter(Boolean);
   if (page.edges) {
@@ -60,10 +76,9 @@ function selectedEdges(page, headers, footers) {
       footers: footers ? (page.edges.footers || []).filter(Boolean) : [],
     };
   }
-  const depth = lines.length >= 8 ? 2 : 1;
   return {
-    headers: headers ? lines.slice(0, depth) : [],
-    footers: footers ? lines.slice(-depth) : [],
+    headers: headers ? fallbackEdgeCandidates(lines, true) : [],
+    footers: footers ? fallbackEdgeCandidates(lines, false) : [],
   };
 }
 
@@ -97,16 +112,39 @@ function normalizeEdgeToken(token) {
     : value;
 }
 
-function edgeLine(page, fromStart) {
+function looksLikeRunningFragment(value) {
+  const text = plainMarkdownLine(value);
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length || text.length > 160) return false;
+  if (isPageLabel(text)) return true;
+  const letters = [...text].filter((char) => /\p{L}/u.test(char));
+  if (!letters.length) return false;
+  const uppercase =
+    letters.filter((char) => char === char.toUpperCase()).length / letters.length;
+  return (
+    uppercase > 0.72 ||
+    (words.length <= 8 &&
+      words.every((word) => /^(?:[A-Z][\p{L}'’&.-]*|[A-Z0-9]{2,})$/u.test(word)))
+  );
+}
+
+function edgeLine(page, fromStart, headers, footers) {
+  const edges = selectedEdges(page, headers, footers);
+  const candidates = fromStart ? edges.headers : edges.footers;
+  if (candidates.length)
+    return plainMarkdownLine(fromStart ? candidates[0] : candidates.at(-1));
   const lines = String(page.text || "").split("\n").filter((line) => line.trim());
+  if (page.edges && lines.length !== 1) return "";
   if (!lines.length) return "";
   return plainMarkdownLine(fromStart ? lines[0] : lines.at(-1));
 }
 
-function commonEdgeTokens(pages, fromStart) {
+function commonEdgeTokens(pages, fromStart, headers, footers) {
   if (pages.length < 2) return null;
   const tokenRows = pages
-    .map((page) => edgeLine(page, fromStart).split(/\s+/).filter(Boolean))
+    .map((page) =>
+      edgeLine(page, fromStart, headers, footers).split(/\s+/).filter(Boolean),
+    )
     .filter((tokens) => tokens.length >= 2);
   if (tokenRows.length !== pages.length) return null;
   const oriented = fromStart
@@ -124,9 +162,19 @@ function commonEdgeTokens(pages, fromStart) {
     ? tokenRows[0].slice(0, count)
     : tokenRows[0].slice(-count)
   ).join(" ");
-  if (sample.length < 6 || sample.length > 160) return null;
-  if (/[.!?]$/.test(sample) && count > 5) return null;
-  return { count, sample };
+  const candidate =
+    (() => {
+      const build = (size) =>
+        (fromStart ? tokenRows[0].slice(0, size) : tokenRows[0].slice(-size)).join(" ");
+      for (let size = count; size >= 2; size -= 1) {
+        const value = build(size);
+        if (value.length < 6 || value.length > 160) continue;
+        if (/[.!?]$/.test(value) && size > 5) continue;
+        if (looksLikeRunningFragment(value)) return { count: size, sample: value };
+      }
+      return null;
+    })();
+  return candidate;
 }
 
 function stripCommonEdgeTokens(text, fragment, fromStart) {
@@ -193,8 +241,8 @@ export function removeRunningMatter(
   { headers = true, footers = true } = {},
 ) {
   const repeated = repeatedEdgeSignatures(pages, headers, footers);
-  const commonHeader = headers ? commonEdgeTokens(pages, true) : null;
-  const commonFooter = footers ? commonEdgeTokens(pages, false) : null;
+  const commonHeader = headers ? commonEdgeTokens(pages, true, headers, footers) : null;
+  const commonFooter = footers ? commonEdgeTokens(pages, false, headers, footers) : null;
   return pages.map((page) => {
     const edges = selectedEdges(page, headers, footers);
     const pageHeaderKeys = new Set(edges.headers.map(signature));
@@ -343,8 +391,8 @@ export function cleanupDocument(rawPages, options = {}) {
   let pages = rawPages.map((p) => ({ ...p, text: normalizeText(p.text) }));
   if (options.removeHeaders || options.removeFooters)
     pages = removeRunningMatter(pages, {
-      headers: options.removeHeaders,
-      footers: options.removeFooters,
+      headers: !!options.removeHeaders,
+      footers: !!options.removeFooters,
     });
   let markdown = pages
     .map(

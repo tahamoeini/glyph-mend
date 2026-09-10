@@ -62,6 +62,17 @@ describe("cleanup", () => {
       }),
     ).toBe("Actual body 12\n\nActual body 13\n\nActual body 14");
   });
+  it("removes repeated footers from short pages even when the last line is only a page label", () => {
+    const pages = [1, 2, 3].map((page) => ({
+      page,
+      text: `Chapter title\nBody ${page}\nRUNNING FOOTER\n${page}`,
+    }));
+    expect(
+      cleanupDocument(pages, {
+        removeFooters: true,
+      }),
+    ).toBe("Chapter title\nBody 1\n\nChapter title\nBody 2\n\nChapter title\nBody 3");
+  });
   it("respects header/footer switches independently", () => {
     const pages = [1, 2, 3].map((page) => ({
       page,

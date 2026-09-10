@@ -80,7 +80,7 @@ describe("structured text recovery", () => {
             { type: "image", bbox: { x: 10, y: 20, w: 100, h: 50 } },
             {
               type: "structure",
-              children: [
+              contents: [
                 { type: "image", bbox: [10, 20, 110, 70] },
                 { type: "image", bbox: { x: 40, y: 95, w: 150, h: 80 } },
               ],

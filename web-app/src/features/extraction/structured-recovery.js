@@ -53,6 +53,7 @@ function collectNodes(nodes, type, result) {
     if (node.type === type) result.push(node);
     collectNodes(node.blocks, type, result);
     collectNodes(node.children, type, result);
+    collectNodes(node.contents, type, result);
   }
   return result;
 }
@@ -71,6 +72,7 @@ function collectImageRects(nodes, result) {
     }
     collectImageRects(node.blocks, result);
     collectImageRects(node.children, result);
+    collectImageRects(node.contents, result);
   }
 }
 

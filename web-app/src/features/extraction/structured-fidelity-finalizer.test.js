@@ -31,40 +31,45 @@ it("uses richer JSON blocks when the current MuPDF walk flattens the page to one
       return JSON.stringify({
         blocks: [
           {
-            type: "text",
-            bbox: [72, 42, 250, 64],
-            lines: [
+            type: "structure",
+            contents: [
               {
-                text: "TECHNICAL NOTE",
+                type: "text",
                 bbox: [72, 42, 250, 64],
-                font: { size: 20 },
-              },
-            ],
-          },
-          {
-            type: "text",
-            bbox: [72, 100, 500, 130],
-            lines: [
-              {
-                text: "Ordinary body text remains a paragraph.",
-                bbox: [72, 100, 500, 112],
-                font: { size: 11 },
+                lines: [
+                  {
+                    text: "TECHNICAL NOTE",
+                    bbox: [72, 42, 250, 64],
+                    font: { size: 20 },
+                  },
+                ],
               },
               {
-                text: "Its wrapped continuation remains with it.",
-                bbox: [72, 116, 430, 128],
-                font: { size: 11 },
+                type: "text",
+                bbox: [72, 100, 500, 130],
+                lines: [
+                  {
+                    text: "Ordinary body text remains a paragraph.",
+                    bbox: [72, 100, 500, 112],
+                    font: { size: 11 },
+                  },
+                  {
+                    text: "Its wrapped continuation remains with it.",
+                    bbox: [72, 116, 430, 128],
+                    font: { size: 11 },
+                  },
+                ],
               },
-            ],
-          },
-          {
-            type: "text",
-            bbox: [72, 400, 330, 414],
-            lines: [
               {
-                text: "Figure 1. Embedded source visual",
+                type: "text",
                 bbox: [72, 400, 330, 414],
-                font: { size: 11 },
+                lines: [
+                  {
+                    text: "Figure 1. Embedded source visual",
+                    bbox: [72, 400, 330, 414],
+                    font: { size: 11 },
+                  },
+                ],
               },
             ],
           },

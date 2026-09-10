@@ -20,6 +20,7 @@ function collectTextBlocks(nodes, result = []) {
     if (node.type === "text") result.push(node);
     collectTextBlocks(node.blocks, result);
     collectTextBlocks(node.children, result);
+    collectTextBlocks(node.contents, result);
   }
   return result;
 }

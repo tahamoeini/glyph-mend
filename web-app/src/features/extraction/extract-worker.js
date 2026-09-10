@@ -292,6 +292,7 @@ export function jsonFallbackBlocks(structured) {
         if (value?.type === "text") textBlocks.push(value);
         collectTextBlocks(value?.blocks);
         collectTextBlocks(value?.children);
+        collectTextBlocks(value?.contents);
       }
     };
     collectTextBlocks(data?.blocks);

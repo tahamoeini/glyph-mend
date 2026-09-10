@@ -110,7 +110,7 @@ it("recovers text nested below MuPDF structural grouping blocks", () => {
         blocks: [
           {
             type: "structure",
-            blocks: [
+            contents: [
               {
                 type: "text",
                 bbox: [72, 700, 360, 720],
