@@ -12,7 +12,6 @@ let ocrDisabledReason = "";
 // Keep Tesseract's IndexedDB data separate from older releases. A stale or
 // partially-written traineddata file otherwise makes every later OCR batch
 // fail during initialization, even though the packaged language asset is fine.
-const OCR_CACHE_PATH = "pdf-sanitizer-ocr-v9";
 
 async function resetOcrWorker() {
   try {
@@ -630,8 +629,10 @@ async function recognizePage(page, options, paths) {
       workerPath: paths.workerPath,
       corePath: paths.corePath,
       langPath: paths.langPath,
-      cachePath: OCR_CACHE_PATH,
-      cacheMethod: "write",
+      // The bundled model is already available from the app's offline cache.
+      // Avoid Tesseract's separate IndexedDB cache, which can retain a partial
+      // traineddata write and make every future initialization fail.
+      cacheMethod: "none",
       workerBlobURL: false,
       logger: (event) =>
         self.postMessage({
