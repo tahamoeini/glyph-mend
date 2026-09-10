@@ -33,67 +33,114 @@ export function parsePageRange(input, total) {
   return [...pages].sort((a, b) => a - b);
 }
 
-function signature(line) {
-  let value = line
-    .replace(/^#{1,6}\s+/, "")
-    .replace(/^\s*(?:[ivxlcdm]{1,10}|\d{1,5})\s+/i, "")
-    .replace(/[*_`]/g, "")
+function plainMarkdownLine(line) {
+  return String(line || "")
+    .replace(/^\s*#{1,6}\s+/, "")
+    .replace(/^\s*>\s?/, "")
+    .replace(/\*\*|__|~~|`/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  const trailing = /^(.*?)\s+(?:\d{1,5}|[ivxlcdm]{1,10})$/i.exec(value);
-  if (trailing && trailing[1].length >= 10) value = trailing[1];
+}
+
+function signature(line) {
+  let value = plainMarkdownLine(line)
+    .replace(/^\s*(?:page\s*)?(?:[ivxlcdm]{1,10}|\d{1,5})(?:\s*[·|:—–-]\s*|\s+)/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const trailing = /^(.*?)\s+(?:page\s*)?(?:\d{1,5}|[ivxlcdm]{1,10})$/i.exec(value);
+  if (trailing && trailing[1].length >= 3) value = trailing[1].trim();
   return value.toLowerCase();
+}
+
+function selectedEdges(page, headers, footers) {
+  const lines = String(page.text || "").split("\n").filter(Boolean);
+  if (page.edges) {
+    return {
+      headers: headers ? (page.edges.headers || []).filter(Boolean) : [],
+      footers: footers ? (page.edges.footers || []).filter(Boolean) : [],
+    };
+  }
+  return {
+    headers: headers ? lines.slice(0, 3) : [],
+    footers: footers ? lines.slice(-3) : [],
+  };
+}
+
+function repeatedEdgeSignatures(pages, headers, footers) {
+  const counts = new Map();
+  for (const page of pages) {
+    const edges = selectedEdges(page, headers, footers);
+    const keys = new Set(
+      [...edges.headers, ...edges.footers]
+        .map(signature)
+        .filter((value) => value.length >= 3 && value.length <= 160),
+    );
+    for (const key of keys) counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const threshold = pages.length <= 2 ? 2 : Math.min(3, Math.max(2, Math.ceil(pages.length * 0.25)));
+  return new Set([...counts].filter(([, count]) => count >= threshold).map(([key]) => key));
+}
+
+function isPageLabel(value) {
+  return /^\s*(?:page\s*)?(?:\d{1,5}|[ivxlcdm]{1,10})\s*$/i.test(
+    plainMarkdownLine(value),
+  );
+}
+
+function stripEdgeFragment(line, candidates, repeated, fromStart) {
+  let result = line;
+  const prefix = /^\s*(#{1,6}\s+|>\s?)?/;
+  for (const candidate of candidates) {
+    const key = signature(candidate);
+    if (!repeated.has(key) && !isPageLabel(candidate)) continue;
+    const plainCandidate = plainMarkdownLine(candidate);
+    if (!plainCandidate) continue;
+    const escaped = plainCandidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = fromStart
+      ? new RegExp(`^(\\s*(?:#{1,6}\\s+|>\\s?)?)${escaped}(?:\\s*[·|:—–-]\\s*|\\s+)?`, "i")
+      : new RegExp(`(?:\\s*[·|:—–-]\\s*|\\s+)?${escaped}\\s*$`, "i");
+    if (!pattern.test(result)) continue;
+    result = result.replace(pattern, fromStart ? "$1" : "").trimEnd();
+    if (fromStart && prefix.test(result) && plainMarkdownLine(result) === "") return "";
+  }
+  return result;
 }
 
 export function removeRunningMatter(
   pages,
   { headers = true, footers = true } = {},
 ) {
-  const counts = new Map();
-  pages.forEach((page) => {
-    const lines = page.text.split("\n").filter(Boolean);
-    const edge = page.edges
-      ? [
-          ...(headers ? page.edges.headers : []),
-          ...(footers ? page.edges.footers : []),
-        ]
-      : [
-          ...(headers ? lines.slice(0, 3) : []),
-          ...(footers ? lines.slice(-3) : []),
-        ];
-    new Set(
-      edge.map(signature).filter((s) => s.length >= 3 && s.length <= 120),
-    ).forEach((s) => counts.set(s, (counts.get(s) || 0) + 1));
-  });
-  const repeated = new Set(
-    [...counts]
-      .filter(
-        ([, n]) =>
-          n >= Math.min(3, Math.max(2, Math.ceil(pages.length * 0.35))),
-      )
-      .map(([s]) => s),
-  );
-  const preservedHeadings = new Set();
+  const repeated = repeatedEdgeSignatures(pages, headers, footers);
   return pages.map((page) => {
-    const lines = page.text.split("\n");
-    return {
-      ...page,
-      text: lines
-        .filter((line) => {
-          const plain = line.trim();
-          if (/^\s*(?:\d{1,5}|[ivxlcdm]{1,10})\s*$/i.test(plain)) return false;
-          const key = signature(line);
-          if (!repeated.has(key)) return true;
-          if (/^#{1,6}\s/.test(plain) && !preservedHeadings.has(key)) {
-            preservedHeadings.add(key);
-            return true;
-          }
-          return false;
-        })
-        .join("\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim(),
-    };
+    const edges = selectedEdges(page, headers, footers);
+    const pageHeaderKeys = new Set(edges.headers.map(signature));
+    const pageFooterKeys = new Set(edges.footers.map(signature));
+    const lines = String(page.text || "").split("\n");
+    const cleaned = lines
+      .map((line) => {
+        let value = line;
+        if (headers) value = stripEdgeFragment(value, edges.headers, repeated, true);
+        if (footers) value = stripEdgeFragment(value, edges.footers, repeated, false);
+        return value;
+      })
+      .filter((line) => {
+        const key = signature(line);
+        if (!key && !plainMarkdownLine(line)) return false;
+        const headerMatch = headers && pageHeaderKeys.has(key) && repeated.has(key);
+        const footerMatch = footers && pageFooterKeys.has(key) && repeated.has(key);
+        if (headerMatch || footerMatch) return false;
+        if (isPageLabel(line)) {
+          const raw = plainMarkdownLine(line);
+          const headerLabel = headers && edges.headers.some((edge) => plainMarkdownLine(edge) === raw);
+          const footerLabel = footers && edges.footers.some((edge) => plainMarkdownLine(edge) === raw);
+          if (headerLabel || footerLabel) return false;
+        }
+        return true;
+      })
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return { ...page, text: cleaned };
   });
 }
 
@@ -128,6 +175,10 @@ export function headingFor(line, fontSize, bodySize) {
     return null;
   }
   if (/^chapter\s+(?:\d+|[ivxlcdm]+)\b/i.test(value)) return 1;
+  if (/^(?:contents|table of contents|list of (?:figures|tables)|preface|acknowledg(?:e)?ments|references|bibliography|index)$/i.test(value))
+    return fontSize >= bodySize * 1.05 || uppercase > 0.72 ? 1 : null;
+  if (/^appendix(?:\s+[A-Z0-9]+)?(?:\s+.+)?$/i.test(value))
+    return fontSize >= bodySize * 1.05 || uppercase > 0.72 ? 1 : null;
   const titleLike =
     uppercase > 0.72 ||
     words.every((word) =>
@@ -137,6 +188,32 @@ export function headingFor(line, fontSize, bodySize) {
   if (fontSize >= bodySize * 1.45 && words.length <= 14) return 1;
   if (fontSize >= bodySize * 1.22 && words.length <= 16) return 2;
   return null;
+}
+
+export function normalizeHeadingHierarchy(markdown) {
+  let previousLevel = null;
+  let previousText = "";
+  const result = [];
+  for (const line of String(markdown || "").split("\n")) {
+    const match = /^\s*(#{1,6})\s+(.+?)\s*$/.exec(line);
+    if (!match) {
+      result.push(line);
+      continue;
+    }
+    const text = match[2].replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (key === previousText) continue;
+    let level = match[1].length;
+    const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+\S/.exec(text);
+    if (numbered) level = Math.min(6, numbered[1].split(".").length);
+    else if (/^chapter\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) level = 1;
+    else if (previousLevel && level > previousLevel + 1) level = previousLevel + 1;
+    result.push(`${"#".repeat(level)} ${text}`);
+    previousLevel = level;
+    previousText = key;
+  }
+  return result.join("\n");
 }
 
 export function joinPageParagraphs(markdown) {
@@ -173,6 +250,7 @@ export function cleanupDocument(rawPages, options = {}) {
         `${options.preserveMarkers ? `<!-- page: ${p.page} -->\n\n` : ""}${p.text}`,
     )
     .join("\n\n");
+  if (options.detectHeadings !== false) markdown = normalizeHeadingHierarchy(markdown);
   if (options.joinParagraphs) markdown = joinPageParagraphs(markdown);
   if (options.extractEquations === false)
     markdown = markdown.replace(/^\$\$\s*$[\s\S]*?^\$\$\s*$/gm, "");
