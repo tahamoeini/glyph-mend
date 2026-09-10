@@ -28,7 +28,10 @@
         "tesseract.js": "^7.0.0"
     },
     "devDependencies": {
+        "@babel/preset-modules": "^0.1.6",
+        "@esbuild/win32-x64": "^0.28.2",
         "@playwright/test": "^1.55.0",
+        "@rollup/rollup-win32-x64-msvc": "^4.63.1",
         "jsdom": "^26.1.0",
         "vite": "^7.1.4",
         "vite-plugin-pwa": "^1.0.3",

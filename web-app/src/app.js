@@ -68,6 +68,87 @@ const optionIds = [
   "preserveMarkers",
   "strict",
 ];
+const appearanceStorageKey = "pdf-sanitizer-theme";
+const media = {
+  colorScheme: queryMedia("(prefers-color-scheme: dark)"),
+  reducedMotion: queryMedia("(prefers-reduced-motion: reduce)"),
+  reducedTransparency: queryMedia("(prefers-reduced-transparency: reduce)"),
+  highContrast: queryMedia("(prefers-contrast: more)"),
+  forcedColors: queryMedia("(forced-colors: active)"),
+  coarsePointer: queryMedia("(pointer: coarse)"),
+  mobileSidebar: queryMedia("(max-width: 820px)"),
+};
+
+function queryMedia(query) {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return {
+      matches: false,
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+    };
+  }
+  return window.matchMedia(query);
+}
+
+function onMediaChange(queryList, listener) {
+  if (typeof queryList.addEventListener === "function") {
+    queryList.addEventListener("change", listener);
+    return;
+  }
+  if (typeof queryList.addListener === "function") queryList.addListener(listener);
+}
+
+function readStoredTheme() {
+  try {
+    const storedTheme = localStorage.getItem(appearanceStorageKey);
+    return storedTheme === "light" || storedTheme === "dark"
+      ? storedTheme
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function systemTheme() {
+  return media.colorScheme.matches ? "dark" : "light";
+}
+
+function syncAdaptivePreferences() {
+  const root = document.documentElement;
+  root.dataset.motion = media.reducedMotion.matches ? "reduce" : "normal";
+  root.dataset.transparency = media.reducedTransparency.matches
+    ? "reduce"
+    : "normal";
+  root.dataset.contrast = media.highContrast.matches ? "more" : "normal";
+  root.dataset.forcedColors = media.forcedColors.matches ? "active" : "none";
+  root.dataset.pointer = media.coarsePointer.matches ? "coarse" : "fine";
+}
+
+function syncThemePreference() {
+  const storedTheme = readStoredTheme();
+  document.documentElement.dataset.appearance = storedTheme
+    ? "manual"
+    : "system";
+  applyTheme(storedTheme || systemTheme());
+}
+
+function syncTabIndicator(container = document.querySelector(".tabs")) {
+  if (!container) return;
+  const indicator = container.querySelector(".liquid-selection-indicator");
+  const activeTab = container.querySelector(".tab.active");
+  if (!indicator || !activeTab) return;
+  if (!activeTab.offsetWidth) {
+    indicator.style.opacity = "0";
+    return;
+  }
+  indicator.style.width = `${activeTab.offsetWidth}px`;
+  indicator.style.transform = `translate3d(${activeTab.offsetLeft}px, 0, 0)`;
+  indicator.style.borderRadius = getComputedStyle(activeTab).borderRadius;
+  indicator.style.opacity = "1";
+}
 
 function toast(message, error = false) {
   const el = $("toast");
@@ -170,6 +251,7 @@ function activateWorkspace() {
   closeMobileSidebar();
   updateOutput();
   renderLog();
+  requestAnimationFrame(syncTabIndicator);
 }
 function wasmUrl() {
   return new URL("./wasm/", location.href).href;
@@ -797,6 +879,8 @@ function activateTab(tab) {
     .querySelectorAll(".tab-view")
     .forEach((view) => view.classList.add("hidden"));
   $(tabViews[tab.dataset.tab]).classList.remove("hidden");
+  tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+  requestAnimationFrame(() => syncTabIndicator(tab.closest(".tabs")));
   if (tab.dataset.tab === "source") renderSource($("previewPage").value);
 }
 
@@ -808,18 +892,7 @@ function applyTheme(theme) {
   );
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", theme === "dark" ? "#111318" : "#eef1f5");
-}
-
-function initialTheme() {
-  try {
-    return (
-      localStorage.getItem("pdf-sanitizer-theme") ||
-      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-    );
-  } catch {
-    return "light";
-  }
+    ?.setAttribute("content", theme === "dark" ? "#171a1f" : "#f2f5f8");
 }
 
 function setSidebarExpanded(isExpanded) {
@@ -828,11 +901,11 @@ function setSidebarExpanded(isExpanded) {
 
 function closeMobileSidebar() {
   document.body.classList.remove("sidebar-open");
-  if (matchMedia("(max-width: 820px)").matches) setSidebarExpanded(false);
+  if (media.mobileSidebar.matches) setSidebarExpanded(false);
 }
 
 function toggleSidebar() {
-  if (matchMedia("(max-width: 820px)").matches) {
+  if (media.mobileSidebar.matches) {
     const isOpen = document.body.classList.toggle("sidebar-open");
     setSidebarExpanded(isOpen);
     return;
@@ -850,14 +923,23 @@ function restoreSidebarPreference() {
     isCollapsed = localStorage.getItem("pdf-sanitizer-sidebar") === "collapsed";
   } catch {}
   document.body.classList.toggle("sidebar-collapsed", isCollapsed);
+  syncSidebarResponsiveState();
+}
+
+function syncSidebarResponsiveState() {
   setSidebarExpanded(
-    matchMedia("(max-width: 820px)").matches ? false : !isCollapsed,
+    media.mobileSidebar.matches
+      ? document.body.classList.contains("sidebar-open")
+      : !document.body.classList.contains("sidebar-collapsed"),
   );
+  if (!media.mobileSidebar.matches) document.body.classList.remove("sidebar-open");
 }
 
 function bind() {
-  applyTheme(initialTheme());
+  syncAdaptivePreferences();
+  syncThemePreference();
   restoreSidebarPreference();
+  requestAnimationFrame(syncTabIndicator);
   $("pdfInput").onchange = (e) => openFile(e.target.files[0]);
   const dz = $("dropZone");
   ["dragenter", "dragover"].forEach((n) =>
@@ -998,14 +1080,30 @@ function bind() {
       document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     applyTheme(theme);
     try {
-      localStorage.setItem("pdf-sanitizer-theme", theme);
+      localStorage.setItem(appearanceStorageKey, theme);
     } catch {}
+    document.documentElement.dataset.appearance = "manual";
   };
   $("sidebarToggle").onclick = toggleSidebar;
   $("sidebarBackdrop").onclick = closeMobileSidebar;
+  onMediaChange(media.colorScheme, () => {
+    syncAdaptivePreferences();
+    if (!readStoredTheme()) {
+      document.documentElement.dataset.appearance = "system";
+      applyTheme(systemTheme());
+    }
+  });
+  [
+    media.reducedMotion,
+    media.reducedTransparency,
+    media.highContrast,
+    media.forcedColors,
+    media.coarsePointer,
+  ].forEach((queryList) => onMediaChange(queryList, syncAdaptivePreferences));
+  onMediaChange(media.mobileSidebar, syncSidebarResponsiveState);
   window.addEventListener("resize", () => {
-    if (!matchMedia("(max-width: 820px)").matches)
-      document.body.classList.remove("sidebar-open");
+    syncSidebarResponsiveState();
+    syncTabIndicator();
   });
   window.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
