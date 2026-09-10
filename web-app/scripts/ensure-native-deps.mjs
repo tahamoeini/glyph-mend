@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -32,55 +31,15 @@ if (missingPackages.length === 0) {
   process.exit(0);
 }
 
-console.log(`[native-deps] Installing missing packages for ${process.platform}/${process.arch}: ${missingPackages.join(", ")}`);
-
-const installArgs = [
-  "install",
-  "--no-save",
-  "--no-package-lock",
-  "--ignore-scripts",
-  "--prefer-offline",
-  "--no-audit",
-  "--loglevel=error",
-  ...missingPackages,
-];
-
-const install = runNpm(installArgs);
-if (install.status !== 0) {
-  process.exit(install.status ?? 1);
-}
-
-const unresolvedPackages = missingPackages.filter((packageSpec) => {
-  const { packageName, version } = splitPackageSpec(packageSpec);
-  return !hasExpectedPackageVersion(packageName, version);
-});
-
-if (unresolvedPackages.length > 0) {
-  console.error(`[native-deps] Packages are still missing after install: ${unresolvedPackages.join(", ")}`);
-  process.exit(1);
-}
-
-function runNpm(args) {
-  if (process.env.npm_execpath) {
-    return spawnSync(process.execPath, [process.env.npm_execpath, ...args], {
-      cwd: rootDir,
-      env: {
-        ...process.env,
-        PDF_SANITIZER_NATIVE_DEPS_RUNNING: "1",
-      },
-      stdio: "inherit",
-    });
-  }
-
-  return spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", args, {
-    cwd: rootDir,
-    env: {
-      ...process.env,
-      PDF_SANITIZER_NATIVE_DEPS_RUNNING: "1",
-    },
-    stdio: "inherit",
-  });
-}
+// Do not invoke `npm install` from a lifecycle script. npm can reify (and
+// prune) the active node_modules tree while this script is running, leaving
+// tools such as Vite only partially installed. A normal top-level install is
+// the safe, deterministic place to resolve optional platform packages.
+console.error(
+  `[native-deps] Missing native packages for ${process.platform}/${process.arch}: ` +
+    `${missingPackages.join(", ")}. Run \`npm install\` from web-app after removing its node_modules directory.`,
+);
+process.exit(1);
 
 function resolveRollupPackage() {
   if (process.platform === "win32") {
