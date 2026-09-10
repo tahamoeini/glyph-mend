@@ -4,6 +4,7 @@ import {
   jsonFallbackBlocks,
   latexMarkdown,
   looksLikeOcrEquation,
+  ocrTableMarkdown,
   textFallbackBlocks,
 } from "./extract-worker.js";
 
@@ -25,6 +26,69 @@ it("associates a nearby figure caption with its visual placeholder", () => {
   expect(captionFor(blocks, [60, 100, 340, 230], 12)).toBe(
     "Figure 3.2. Booking curve by fare class",
   );
+});
+
+it("converts a stable OCR word grid into a Markdown table", () => {
+  const line = (y, values) => ({
+    words: values.map(([text, x0, x1]) => ({
+      text,
+      confidence: 95,
+      bbox: { x0, y0: y, x1, y1: y + 12 },
+    })),
+  });
+  const data = {
+    blocks: [
+      {
+        paragraphs: [
+          {
+            lines: [
+              line(10, [["Class", 10, 45], ["Demand", 110, 160], ["Fare", 220, 250]]),
+              line(30, [["Y", 10, 18], ["120", 110, 135], ["450", 220, 245]]),
+              line(50, [["M", 10, 22], ["85", 110, 128], ["320", 220, 245]]),
+              line(70, [["B", 10, 18], ["40", 110, 128], ["180", 220, 245]]),
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  expect(ocrTableMarkdown(data)).toBe(
+    "| Class | Demand | Fare |\n| --- | --- | --- |\n| Y | 120 | 450 |\n| M | 85 | 320 |\n| B | 40 | 180 |",
+  );
+});
+
+it("rejects prose-like or geometrically unstable OCR instead of inventing a table", () => {
+  const data = {
+    blocks: [
+      {
+        paragraphs: [
+          {
+            lines: [
+              {
+                words: [
+                  { text: "This", confidence: 94, bbox: { x0: 10, y0: 10, x1: 40, y1: 22 } },
+                  { text: "paragraph", confidence: 94, bbox: { x0: 90, y0: 10, x1: 145, y1: 22 } },
+                ],
+              },
+              {
+                words: [
+                  { text: "does", confidence: 94, bbox: { x0: 35, y0: 30, x1: 58, y1: 42 } },
+                  { text: "not", confidence: 94, bbox: { x0: 180, y0: 30, x1: 200, y1: 42 } },
+                ],
+              },
+              {
+                words: [
+                  { text: "form", confidence: 94, bbox: { x0: 10, y0: 50, x1: 38, y1: 62 } },
+                  { text: "columns", confidence: 94, bbox: { x0: 130, y0: 50, x1: 175, y1: 62 } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  expect(ocrTableMarkdown(data)).toBeNull();
 });
 
 it("rejects Revenue Management prose and incomplete OCR equations", () => {
