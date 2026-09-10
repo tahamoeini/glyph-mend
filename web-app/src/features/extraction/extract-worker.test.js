@@ -27,7 +27,7 @@ it("associates a nearby figure caption with its visual placeholder", () => {
   );
 });
 
-it("rejects Revenue Management prose and headings as equations", () => {
+it("rejects Revenue Management prose and incomplete OCR equations", () => {
   expect(looksLikeOcrEquation("2.2.2.1 Dynamic Programming Formulation")).toBe(false);
   expect(
     looksLikeOcrEquation(
@@ -35,8 +35,8 @@ it("rejects Revenue Management prose and headings as equations", () => {
     ),
   ).toBe(false);
   expect(looksLikeOcrEquation("p2 = p1 P(D1 > y1)")).toBe(true);
-  expect(looksLikeOcrEquation("Sy <<")).toBe(true);
-  expect(looksLikeOcrEquation("x =")).toBe(true);
+  expect(looksLikeOcrEquation("Sy <<")).toBe(false);
+  expect(looksLikeOcrEquation("x =")).toBe(false);
 });
 
 it("recovers text nested below MuPDF structural grouping blocks", () => {
