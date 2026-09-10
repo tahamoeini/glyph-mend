@@ -6,18 +6,68 @@ import {
   jsonImageRects,
 } from "./structured-recovery.js";
 
+function quad(x0, y0, x1, y1) {
+  return [x0, y0, x1, y0, x1, y1, x0, y1];
+}
+
+function emitLine(walker, text, bbox, size = 10, gaps = {}) {
+  walker.beginLine?.(bbox);
+  let x = bbox[0];
+  const visible = Math.max(1, [...text].filter((char) => char !== " ").length);
+  const defaultAdvance = Math.max(3, (bbox[2] - bbox[0]) / visible);
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (Object.hasOwn(gaps, index)) x += gaps[index];
+    const advance = char === " " ? Math.max(2, defaultAdvance * 0.35) : defaultAdvance;
+    walker.onChar?.(char, [x, bbox[3]], null, size, quad(x, bbox[1], x + advance, bbox[3]));
+    x += advance;
+  }
+  walker.endLine?.();
+}
+
+function collectBlocks(structured) {
+  const blocks = [];
+  let current = null;
+  let line = "";
+  const charBoxes = [];
+  let lineBoxes = [];
+  structured.walk({
+    beginTextBlock() {
+      current = [];
+      lineBoxes = [];
+    },
+    beginLine() {
+      line = "";
+      lineBoxes.push([]);
+    },
+    onChar(value, _origin, _font, _size, characterQuad) {
+      line += value;
+      lineBoxes.at(-1).push(characterQuad);
+    },
+    endLine() {
+      current.push(line);
+    },
+    endTextBlock() {
+      blocks.push(current);
+      charBoxes.push(lineBoxes);
+    },
+  });
+  return { blocks, charBoxes };
+}
+
 describe("structured text recovery", () => {
-  it("adds paragraph and table analysis without duplicating vector collection", () => {
-    const options = enrichStructuredTextOptions("preserve-whitespace,segment");
+  it("enables whitespace, paragraph, table, image, span, and vector preservation", () => {
+    const options = enrichStructuredTextOptions("segment");
     const values = new Set(options.split(","));
     expect(values).toEqual(
       new Set([
-        "preserve-whitespace",
         "preserve-images",
         "preserve-spans",
+        "preserve-whitespace",
         "segment",
         "paragraph-break",
         "table-hunt",
+        "vectors",
       ]),
     );
   });
@@ -57,7 +107,7 @@ describe("structured text recovery", () => {
     ]);
   });
 
-  it("replays JSON images omitted by walk while preserving native callbacks", () => {
+  it("replays JSON images omitted by the native walk", () => {
     class Page {
       toStructuredText(options) {
         return options;
@@ -66,9 +116,7 @@ describe("structured text recovery", () => {
     class StructuredText {
       asJSON() {
         return JSON.stringify({
-          blocks: [
-            { type: "image", bbox: { x: 50, y: 60, w: 80, h: 40 } },
-          ],
+          blocks: [{ type: "image", bbox: { x: 50, y: 60, w: 80, h: 40 } }],
         });
       }
       walk(walker) {
@@ -77,11 +125,11 @@ describe("structured text recovery", () => {
       }
     }
 
-    const fakeMuPdf = { Page, StructuredText };
-    installMuPdfStructuredRecovery(fakeMuPdf);
-
+    installMuPdfStructuredRecovery({ Page, StructuredText });
     const page = new Page();
-    expect(page.toStructuredText("preserve-whitespace")).toContain("paragraph-break");
+    const options = page.toStructuredText("segment");
+    expect(options).toContain("paragraph-break");
+    expect(options).toContain("vectors");
 
     const images = [];
     new StructuredText().walk({
@@ -93,7 +141,7 @@ describe("structured text recovery", () => {
     expect(images).toEqual([[42, 55, 138, 105]]);
   });
 
-  it("uses richer JSON blocks instead of a single collapsed native walk block", () => {
+  it("splits a single native page-wide text block into headings and paragraphs", () => {
     class Page {
       toStructuredText(options) {
         return options;
@@ -101,80 +149,113 @@ describe("structured text recovery", () => {
     }
     class StructuredText {
       asJSON() {
-        return JSON.stringify({
-          blocks: [
-            {
-              type: "text",
-              bbox: [60, 60, 360, 95],
-              lines: [
-                {
-                  text: "2.3",
-                  bbox: [60, 60, 90, 74],
-                  font: { name: "Times-Bold", weight: "bold", size: 13 },
-                },
-                {
-                  text: "Adaptive Methods",
-                  bbox: [98, 60, 220, 74],
-                  font: { name: "Times-Bold", weight: "bold", size: 13 },
-                },
-                {
-                  text: "This body paragraph should not become part of the heading.",
-                  bbox: [60, 80, 360, 95],
-                  font: { name: "Times-Roman", weight: "normal", size: 10 },
-                },
-              ],
-            },
-            {
-              type: "text",
-              bbox: [60, 120, 360, 140],
-              lines: [
-                {
-                  text: "A second paragraph remains a distinct structured block.",
-                  bbox: [60, 120, 360, 140],
-                  font: { name: "Times-Roman", size: 10 },
-                },
-              ],
-            },
-          ],
-        });
+        return JSON.stringify({ blocks: [] });
       }
       walk(walker) {
-        walker.beginTextBlock?.([0, 0, 500, 700]);
-        walker.beginLine?.([0, 0, 500, 20]);
-        for (const char of "collapsed entire page")
-          walker.onChar?.(char, [0, 0], null, 10, [0, 0, 1, 0, 1, 10, 0, 10]);
-        walker.endLine?.();
+        walker.beginTextBlock?.([50, 50, 430, 190]);
+        emitLine(walker, "2.3 Adaptive Methods", [50, 50, 220, 64], 13);
+        emitLine(walker, "The first paragraph begins here and continues", [50, 82, 410, 94]);
+        emitLine(walker, "on a second wrapped line.", [50, 96, 240, 108]);
+        emitLine(walker, "A new paragraph starts after the visible gap", [64, 128, 410, 140]);
+        emitLine(walker, "and has its own continuation line.", [50, 142, 300, 154]);
         walker.endTextBlock?.();
       }
     }
 
     installMuPdfStructuredRecovery({ Page, StructuredText });
-    const blocks = [];
-    let current = null;
-    let line = "";
-    new StructuredText().walk({
-      beginTextBlock() {
-        current = [];
-      },
-      beginLine() {
-        line = "";
-      },
-      onChar(value) {
-        line += value;
-      },
-      endLine() {
-        current.push(line);
-      },
-      endTextBlock() {
-        blocks.push(current);
-      },
-    });
-
-    expect(blocks).toEqual([
-      ["2.3", "Adaptive Methods"],
-      ["This body paragraph should not become part of the heading."],
-      ["A second paragraph remains a distinct structured block."],
+    expect(collectBlocks(new StructuredText()).blocks).toEqual([
+      ["2.3 Adaptive Methods"],
+      ["The first paragraph begins here and continues", "on a second wrapped line."],
+      ["A new paragraph starts after the visible gap", "and has its own continuation line."],
     ]);
-    expect(blocks.flat().join(" ")).not.toContain("collapsed entire page");
+  });
+
+  it("preserves native character geometry while isolating table rows", () => {
+    class Page {
+      toStructuredText(options) {
+        return options;
+      }
+    }
+    class StructuredText {
+      asJSON() {
+        return JSON.stringify({ blocks: [] });
+      }
+      walk(walker) {
+        walker.beginTextBlock?.([40, 40, 430, 180]);
+        emitLine(walker, "Introductory prose.", [40, 40, 180, 52]);
+        emitLine(walker, "Class Revenue Demand", [40, 80, 300, 92], 10, { 6: 36, 14: 34 });
+        emitLine(walker, "Y 100 20", [40, 96, 260, 108], 10, { 2: 56, 6: 54 });
+        emitLine(walker, "M 75 35", [40, 112, 260, 124], 10, { 2: 56, 5: 54 });
+        emitLine(walker, "K 50 45", [40, 128, 260, 140], 10, { 2: 56, 5: 54 });
+        emitLine(walker, "Following prose.", [40, 166, 180, 178]);
+        walker.endTextBlock?.();
+      }
+    }
+
+    installMuPdfStructuredRecovery({ Page, StructuredText });
+    const { blocks, charBoxes } = collectBlocks(new StructuredText());
+    expect(blocks).toEqual([
+      ["Introductory prose."],
+      ["Class Revenue Demand", "Y 100 20", "M 75 35", "K 50 45"],
+      ["Following prose."],
+    ]);
+
+    const tableBoxes = charBoxes[1][1];
+    const firstDataGap = tableBoxes[2][0] - tableBoxes[1][2];
+    expect(firstDataGap).toBeGreaterThan(20);
+  });
+
+  it("turns flattened contents entries into readable list items instead of headings", () => {
+    class Page {
+      toStructuredText(options) {
+        return options;
+      }
+    }
+    class StructuredText {
+      asJSON() {
+        return JSON.stringify({ blocks: [] });
+      }
+      walk(walker) {
+        walker.beginTextBlock?.([50, 40, 430, 160]);
+        emitLine(walker, "Contents", [180, 40, 250, 55], 14);
+        emitLine(walker, "1. INTRODUCTION 1", [50, 80, 250, 92]);
+        emitLine(walker, "1.1 What Is RM? 1", [50, 98, 260, 110]);
+        emitLine(walker, "2. SINGLE-RESOURCE CAPACITY CONTROL 27", [50, 116, 390, 128]);
+        walker.endTextBlock?.();
+      }
+    }
+
+    installMuPdfStructuredRecovery({ Page, StructuredText });
+    expect(collectBlocks(new StructuredText()).blocks).toEqual([
+      ["Contents"],
+      ["- 1. INTRODUCTION 1"],
+      ["- 1.1 What Is RM? 1"],
+      ["- 2. SINGLE-RESOURCE CAPACITY CONTROL 27"],
+    ]);
+  });
+
+  it("normalizes common PDF bullet glyphs to Markdown bullets", () => {
+    class Page {
+      toStructuredText(options) {
+        return options;
+      }
+    }
+    class StructuredText {
+      asJSON() {
+        return JSON.stringify({ blocks: [] });
+      }
+      walk(walker) {
+        walker.beginTextBlock?.([50, 40, 430, 100]);
+        emitLine(walker, "• First item", [50, 40, 180, 52]);
+        emitLine(walker, "• Second item", [50, 64, 190, 76]);
+        walker.endTextBlock?.();
+      }
+    }
+
+    installMuPdfStructuredRecovery({ Page, StructuredText });
+    expect(collectBlocks(new StructuredText()).blocks).toEqual([
+      ["- First item"],
+      ["- Second item"],
+    ]);
   });
 });
