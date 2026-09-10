@@ -8,6 +8,46 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/src/styles/style.css">
+  <style>
+    .product-hunt-badge {
+      margin: 16px auto 0;
+      display: flex;
+      justify-content: center;
+    }
+
+    .product-hunt-badge a {
+      display: inline-flex;
+      border-radius: 12px;
+      transition: opacity 140ms ease, transform 140ms ease;
+    }
+
+    .product-hunt-badge a:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+    }
+
+    .product-hunt-badge img {
+      display: block;
+      width: 250px;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .product-hunt-light,
+    .product-hunt-dark {
+      display: none !important;
+    }
+
+    :root[data-theme="light"] .product-hunt-neutral,
+    :root[data-theme="dark"] .product-hunt-neutral {
+      display: none !important;
+    }
+
+    :root[data-theme="light"] .product-hunt-light,
+    :root[data-theme="dark"] .product-hunt-dark {
+      display: block !important;
+    }
+  </style>
   <title>GlyphMend — Browser Edition</title>
 </head>
 <body>
@@ -77,6 +117,13 @@
         <button id="resetClientStorageButton" class="quiet danger-text" type="button">Reset local data</button>
       </div>
       <p class="welcome-footnote"><span aria-hidden="true">✓</span> Offline-first <span aria-hidden="true">·</span> Checkpointed <span aria-hidden="true">·</span> Export-ready <span aria-hidden="true">·</span> <a href="https://github.com/tahamoeini/glyph-mend" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+      <div class="product-hunt-badge" aria-label="GlyphMend on Product Hunt">
+        <a href="https://www.producthunt.com/products/glyphmend?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-glyphmend" target="_blank" rel="noopener noreferrer">
+          <img class="product-hunt-neutral" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=neutral&amp;t=1789071060239" loading="lazy">
+          <img class="product-hunt-light" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=light&amp;t=1789071058947" loading="lazy">
+          <img class="product-hunt-dark" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=dark&amp;t=1789071061228" loading="lazy">
+        </a>
+      </div>
     </section>
     <section id="workspace" class="workspace hidden" aria-label="Document workspace" aria-busy="false">
       <aside id="settingsSidebar" class="sidebar liquid-glass liquid-glass-regular liquid-glass-sidebar" aria-label="Document and extraction settings">

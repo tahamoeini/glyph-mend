@@ -6,6 +6,12 @@
 
 > **Faithful document reconstruction from PDF to structured Markdown.**
 
+<p align="center">
+  <a href="https://www.producthunt.com/products/glyphmend?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-glyphmend" target="_blank" rel="noopener noreferrer">
+    <img alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=neutral&amp;t=1789071060239">
+  </a>
+</p>
+
 GlyphMend is a local-first, structure-aware PDF reconstruction toolkit. Its primary output is deterministic, inspectable Markdown; DOCX is an export format layered on top of that canonical Markdown.
 
 The recommended browser edition runs extraction locally with MuPDF WebAssembly, bundled OCR support, resumable browser workspaces, source-visual preservation, native Word equation export, logs, quality gates, and offline installation. A Python CLI and desktop GUI remain available for command-line and native workflows.
