@@ -39,7 +39,37 @@ function upperRatio(text) {
   );
 }
 
-function headingLevel(text) {
+function isShortAllCaps(text) {
+  return /^(?:[A-Z]\.){2,}$|^[A-Z]{1,3}\.?$/.test(text);
+}
+
+function hasShortHeadingEvidence(line, lines, medianHeight, minX, maxX) {
+  if (!isShortAllCaps(line.text) || !(line.x1 > line.x0 && line.y1 > line.y0))
+    return false;
+
+  const index = lines.indexOf(line);
+  const previous = index > 0 ? lines[index - 1] : null;
+  const next = index >= 0 && index < lines.length - 1 ? lines[index + 1] : null;
+  const lineHeight = Math.max(1, line.y1 - line.y0);
+  const pageWidth = Math.max(1, maxX - minX);
+  const lineWidth = Math.max(1, line.x1 - line.x0);
+  const pageCenter = (minX + maxX) / 2;
+  const lineCenter = (line.x0 + line.x1) / 2;
+  const centered = Math.abs(lineCenter - pageCenter) <= pageWidth * 0.16;
+  const compact = lineWidth <= pageWidth * 0.45;
+  const enlarged = lineHeight >= medianHeight * 1.18;
+  const gapBefore = previous ? line.y0 - previous.y1 : Number.POSITIVE_INFINITY;
+  const gapAfter = next ? next.y0 - line.y1 : Number.POSITIVE_INFINITY;
+  const isolated =
+    gapBefore >= medianHeight * 0.9 && gapAfter >= medianHeight * 0.9;
+
+  // Short all-caps tokens are ambiguous in OCR: "RM." can be a cropped body
+  // fragment while "API" can be a real heading. Promote them only when the OCR
+  // supplied real geometry and that geometry provides heading evidence.
+  return enlarged || (centered && compact && isolated);
+}
+
+function headingLevel(text, allowShort = false) {
   const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+(.+)$/.exec(text);
   if (numbered) {
     const number = numbered[1];
@@ -72,10 +102,9 @@ function headingLevel(text) {
   if (/^(?:chapter|appendix)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) return 1;
   if (/^(?:contents|list of (?:figures|tables)|preface|references|index)$/i.test(text))
     return 1;
-  // A cropped abbreviation such as "RM." is normally a continuation of body
-  // text, not a document heading. Preserve full one-word headings such as
-  // "INTRODUCTION" while refusing very short all-caps fragments.
-  if (/^(?:[A-Z]\.){2,}$|^[A-Z]{1,3}\.?$/.test(text)) return null;
+  // Preserve the conservative 4f86 behavior for text-only OCR. Very short
+  // all-caps fragments become headings only when real OCR geometry supports it.
+  if (isShortAllCaps(text)) return allowShort ? 1 : null;
   return text.length <= 90 && text.split(/\s+/).length <= 14 && upperRatio(text) > 0.82
     ? 1
     : null;
@@ -194,7 +223,14 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
       }
       continue;
     }
-    const level = headingLevel(line.text);
+    const allowShortHeading = hasShortHeadingEvidence(
+      line,
+      allLines,
+      medianHeight,
+      minX,
+      maxX,
+    );
+    const level = headingLevel(line.text, allowShortHeading);
     const previous = paragraph.at(-1);
     const numberedList = /^\d+[.)]\s+\S/.test(line.text) && !level;
     const suppressTocHeading =
