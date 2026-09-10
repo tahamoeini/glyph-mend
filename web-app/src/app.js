@@ -49,6 +49,8 @@ const state = {
   audit: { status: "pass", issues: [] },
   engine: "mupdf-wasm",
   previewUrls: [],
+  previewRenderTask: null,
+  previewRenderToken: 0,
   checkpointWrites: new Set(),
   checkpointError: null,
 };
@@ -417,6 +419,14 @@ function runBatch(batch, wanted) {
         if (data.progress === 1 && data.status === "recognizing text")
           log("ocr", `OCR completed for page ${data.page}`, {}, "debug");
       }
+      if (data.type === "ocr-error") {
+        log(
+          "ocr-error",
+          `OCR failed for page ${data.page}`,
+          { error: data.message },
+          "error",
+        );
+      }
       if (data.type === "page-error") {
         state.warnings.push(data);
         log(
@@ -650,16 +660,34 @@ async function renderSource(pageNumber) {
     Math.min(state.pageCount, Number(pageNumber) || 1),
   );
   $("previewPage").value = number;
+  const renderToken = ++state.previewRenderToken;
+  const previousTask = state.previewRenderTask;
+  if (previousTask) {
+    previousTask.cancel();
+    try {
+      await previousTask.promise;
+    } catch {}
+    if (renderToken !== state.previewRenderToken) return;
+  }
   try {
     const page = await state.pdf.getPage(number),
       viewport = page.getViewport({ scale: state.previewScale }),
       canvas = $("pdfCanvas"),
       ctx = canvas.getContext("2d");
+    if (renderToken !== state.previewRenderToken) {
+      page.cleanup();
+      return;
+    }
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    const renderTask = page.render({ canvasContext: ctx, viewport });
+    state.previewRenderTask = renderTask;
+    await renderTask.promise;
+    if (state.previewRenderTask === renderTask) state.previewRenderTask = null;
     page.cleanup();
   } catch (error) {
+    if (error?.name === "RenderingCancelledException") return;
+    state.previewRenderTask = null;
     log(
       "render-error",
       `Could not render page ${number}`,

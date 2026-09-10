@@ -615,20 +615,35 @@ async function recognizePage(page, options, paths) {
   // triggered OCR rather than being logged as "page undefined".
   ocrProgressPage = options.page;
   if (!ocrWorker) {
-    ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
-      workerPath: paths.workerPath,
-      corePath: paths.corePath,
-      langPath: paths.langPath,
-      cachePath: OCR_CACHE_PATH,
-      cacheMethod: "write",
-      logger: (event) =>
-        self.postMessage({
-          type: "ocr-progress",
-          page: ocrProgressPage,
-          status: event.status,
-          progress: event.progress,
-        }),
-    });
+    try {
+      ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
+        workerPath: paths.workerPath,
+        corePath: paths.corePath,
+        langPath: paths.langPath,
+        cachePath: OCR_CACHE_PATH,
+        cacheMethod: "write",
+        // The extraction logic already runs inside a dedicated Worker. Avoid
+        // Blob URL indirection for Tesseract's nested worker so startup
+        // failures surface as deterministic URL load errors.
+        workerBlobURL: false,
+        logger: (event) =>
+          self.postMessage({
+            type: "ocr-progress",
+            page: ocrProgressPage,
+            status: event.status,
+            progress: event.progress,
+          }),
+        errorHandler: (error) => {
+          self.postMessage({
+            type: "ocr-error",
+            page: ocrProgressPage,
+            message: String(error),
+          });
+        },
+      });
+    } catch (error) {
+      throw new Error(`OCR initialization failed: ${error?.message || String(error)}`);
+    }
   }
   const image = cropPage(
     page,

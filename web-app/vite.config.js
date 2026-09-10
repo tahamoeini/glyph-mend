@@ -32,7 +32,7 @@ export default defineConfig({
         { src: "node_modules/mupdf/dist/mupdf-wasm.js", dest: "mupdf" },
         { src: "node_modules/mupdf/dist/mupdf-wasm.wasm", dest: "mupdf" },
         {
-          src: "node_modules/tesseract.js-core/*.wasm.js",
+          src: "node_modules/tesseract.js-core/*.{wasm,wasm.js}",
           dest: "tesseract-core",
         },
         {
