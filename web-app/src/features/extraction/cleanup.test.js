@@ -109,7 +109,7 @@ describe("exports", () => {
   it("requires review when most substantial pages collapse to one block", () => {
     const pages = Array.from({ length: 12 }, (_, index) => ({
       page: index + 1,
-      text: "word ".repeat(80),
+      text: "word ".repeat(90),
       quality: { characters: 400, textBlocks: 1, ocrApplied: false },
     }));
     const markdown = pages.map((page) => page.text).join("\n\n");
@@ -122,7 +122,7 @@ describe("exports", () => {
   it("does not flag healthy multi-block text as collapsed", () => {
     const pages = Array.from({ length: 12 }, (_, index) => ({
       page: index + 1,
-      text: "word ".repeat(80),
+      text: "word ".repeat(90),
       quality: { characters: 400, textBlocks: 5, ocrApplied: false },
     }));
     const audit = qualityAudit(pages, pages.map((page) => page.text).join("\n\n"));

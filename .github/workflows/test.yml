@@ -53,11 +53,12 @@ jobs:
       - name: Smoke-test installed commands
         shell: bash
         run: |
-          pdf-sanitizer --help
-          pdf-sanitizer gui --help
+          glyphmend --help
+          glyphmend gui --help
+          python -m glyphmend --help
           md-to-docx --help
-          python -m pdf_sanitizer --help
-          python -c "import pdf_sanitizer, pdf_sanitizer.gui; print(pdf_sanitizer.__version__)"
+          pdf-sanitizer --help
+          python -c "import glyphmend, pdf_sanitizer; print(glyphmend.__version__); assert glyphmend.__version__ == pdf_sanitizer.__version__"
 
   package:
     name: Build package
@@ -78,13 +79,15 @@ jobs:
         run: |
           python -m pip install --force-reinstall dist/*.whl
           python -m pip check
-          pdf-sanitizer --help
-          pdf-sanitizer gui --help
+          glyphmend --help
+          glyphmend gui --help
+          python -m glyphmend --help
           md-to-docx --help
-          python -c "import pdf_sanitizer, pdf_sanitizer.gui; print(pdf_sanitizer.__version__)"
+          pdf-sanitizer --help
+          python -c "import glyphmend, pdf_sanitizer; print(glyphmend.__version__); assert glyphmend.__version__ == pdf_sanitizer.__version__"
       - uses: actions/upload-artifact@v7
         with:
-          name: python-package
+          name: glyphmend-python
           path: dist/*
           if-no-files-found: error
           retention-days: 14

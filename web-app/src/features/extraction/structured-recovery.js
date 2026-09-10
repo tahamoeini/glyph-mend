@@ -101,14 +101,17 @@ function patchStructuredWalk(mupdf) {
 
   prototype.walk = function walkWithImageRecovery(walker = {}) {
     const seen = [];
-    const wrapped = {
-      ...walker,
-      onImageBlock: (bbox, transform, image) => {
-        const normalized = rect(bbox);
-        if (normalized) seen.push(normalized);
-        return walker.onImageBlock?.call(walker, bbox, transform, image);
-      },
-    };
+    const wrapped =
+      typeof walker.onImageBlock === "function"
+        ? {
+            ...walker,
+            onImageBlock: (bbox, transform, image) => {
+              const normalized = rect(bbox);
+              if (normalized) seen.push(normalized);
+              return walker.onImageBlock.call(walker, bbox, transform, image);
+            },
+          }
+        : walker;
 
     const result = original.call(this, wrapped);
     if (typeof walker.onImageBlock !== "function") return result;

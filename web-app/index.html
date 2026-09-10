@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#eef1f5">
-  <meta name="description" content="Private, offline-first PDF conversion.">
+  <meta name="description" content="Faithful document reconstruction from PDF to structured Markdown.">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/src/styles/style.css">
-  <title>PDF Sanitizer — Browser Edition</title>
+  <title>GlyphMend — Browser Edition</title>
 </head>
 <body>
   <svg class="icon-sprite" aria-hidden="true" focusable="false" width="0" height="0">
@@ -57,7 +57,7 @@
   </svg>
   <input id="pdfInput" class="visually-hidden" type="file" accept="application/pdf,.pdf">
   <header class="topbar liquid-glass liquid-glass-regular liquid-glass-toolbar">
-    <div class="brand-lockup" aria-label="PDF Sanitizer"><span class="brand-mark" aria-hidden="true">PS</span><a class="brand" href="#">PDF Sanitizer</a></div>
+    <div class="brand-lockup" aria-label="GlyphMend" data-brand-aria-label><span class="brand-mark" aria-hidden="true"><img data-brand-logo src="./brand/glyphmend-mark.svg" alt="" width="22" height="22" style="display:block;filter:brightness(0) invert(1)"></span><a class="brand" href="#" data-brand-name>GlyphMend</a></div>
     <div id="topDocumentContext" class="top-document-context" aria-live="polite"><strong id="topFileName">Document workspace</strong><span id="topFileMeta">Private, local document processing</span></div>
     <div class="topbar-actions" role="group" aria-label="Application controls">
       <div class="privacy"><i aria-hidden="true"></i><span>Local processing only</span></div>
@@ -68,7 +68,7 @@
   </header>
   <main>
     <section id="welcome" class="welcome content-panel">
-      <div class="welcome-copy"><p class="eyebrow">Private document workspace</p><h1>Turn a PDF into useful, editable content.</h1><p class="lede">Extract, clean, review, and export — entirely on this device.</p></div>
+      <div class="welcome-copy"><p class="eyebrow">Private document workspace</p><h1>Turn a PDF into useful, editable content.</h1><p class="lede" data-brand-slogan>Faithful document reconstruction from PDF to structured Markdown.</p></div>
       <label id="dropZone" class="drop-zone" for="pdfInput"><span class="drop-icon" aria-hidden="true"><svg class="icon"><use href="#icon-arrow-down"></use></svg></span><strong>Drop a PDF here</strong><span>or use <span class="drop-affordance">Choose PDF</span></span><small>PDF files up to your configured limit · nothing is uploaded</small></label>
       <div class="welcome-actions" aria-label="Workspace options">
         <button id="restoreButton" class="quiet" type="button">Resume saved workspace</button>
@@ -149,6 +149,7 @@
     </section>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/src/brand-bootstrap.js"></script>
   <script type="module" src="/src/app.js"></script>
 </body>
 </html>

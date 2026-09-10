@@ -1,4 +1,7 @@
 import { openDB } from "idb";
+// Keep the existing IndexedDB name so the GlyphMend rebrand does not orphan
+// users' resumable workspaces. This is a persistence compatibility identifier,
+// not the current product name.
 const DB = "pdf-sanitizer-browser",
   META = "metadata",
   PAGES = "pages",
@@ -6,7 +9,13 @@ const DB = "pdf-sanitizer-browser",
   LOGS = "logs",
   CURRENT = "current";
 const OCR_CACHE_DB = "keyval-store";
-const LOCAL_PREFERENCES = ["pdf-sanitizer-theme", "pdf-sanitizer-sidebar"];
+const LOCAL_PREFERENCES = [
+  "pdf-sanitizer-theme",
+  "pdf-sanitizer-sidebar",
+  "glyphmend-theme",
+  "glyphmend-sidebar",
+  "glyphmend-runtime-brand-v1",
+];
 export const CHECKPOINT_REVISION = 1;
 let database;
 async function db() {
@@ -56,11 +65,11 @@ export async function loadWorkspace() {
     meta = await value.get(META, CURRENT);
   if (!meta) return null;
   const compatible = meta.checkpointRevision === CHECKPOINT_REVISION;
+  if (!compatible) await value.clear(PAGES);
   const [pdfBytes, pageValues, logs] = await Promise.all([
     value.get(PDF, CURRENT),
     compatible ? value.getAll(PAGES) : Promise.resolve([]),
     value.getAll(LOGS),
-    compatible ? Promise.resolve() : value.clear(PAGES),
   ]);
   return {
     ...meta,
@@ -112,7 +121,12 @@ async function clearAppCaches() {
   const names = await caches.keys();
   await Promise.all(
     names
-      .filter((name) => name.startsWith("workbox-") || name.startsWith("pdf-sanitizer"))
+      .filter(
+        (name) =>
+          name.startsWith("workbox-") ||
+          name.startsWith("glyphmend") ||
+          name.startsWith("pdf-sanitizer"),
+      )
       .map((name) => caches.delete(name)),
   );
 }
