@@ -227,6 +227,14 @@ export function qualityAudit(pages, markdown, warnings = []) {
         (page.quality?.preservedEquationFallbacks || 0),
     )
     .map((page) => page.page);
+  const substantialTextPages = pages.filter(
+    (page) =>
+      !page.quality?.ocrApplied &&
+      (page.quality?.characters ?? page.text?.length ?? 0) >= 250,
+  );
+  const collapsedStructure = substantialTextPages.filter(
+    (page) => (page.quality?.textBlocks ?? Number.POSITIVE_INFINITY) <= 1,
+  );
   const damagedHyphens = (
     markdown.match(/\p{L}{2,}-\n+(?:<!--\s*page:[^>]+-->\s*)?\p{Ll}{2,}/gu) ||
     []
@@ -253,23 +261,45 @@ export function qualityAudit(pages, markdown, warnings = []) {
       message:
         "Possible equations or graphics were detected but not preserved.",
     });
+  if (
+    substantialTextPages.length >= 10 &&
+    collapsedStructure.length / substantialTextPages.length >= 0.7 &&
+    metrics.words > 1000
+  )
+    issues.push({
+      code: "STRUCTURE_COLLAPSE",
+      severity: "error",
+      count: collapsedStructure.length,
+      pages: collapsedStructure.slice(0, 50).map((page) => page.page),
+      message:
+        "Most substantial text pages collapsed to one structured block; headings, paragraphs, tables, or equations may have been flattened.",
+    });
   const technicalCues = (
     markdown.match(
       /\b(?:equation|theorem|proof|function|probability|optimization|constraint|formula|figure|table)\b/gi,
     ) || []
   ).length;
-  if (
-    metrics.equations === 0 &&
-    metrics.sourceVisuals === 0 &&
-    metrics.words > 10000 &&
-    technicalCues > 20
-  )
+  const technicalObjects =
+    metrics.equations + metrics.tables + metrics.sourceVisuals;
+  if (metrics.words > 10000 && technicalCues > 20 && technicalObjects === 0)
     issues.push({
       code: "NO_TECHNICAL_OBJECTS",
       severity: "warning",
       count: 1,
       message:
-        "A technical document contains no equations or preserved source visuals; inspect the source/output comparison.",
+        "A technical document contains no equations, tables, or preserved source visuals; inspect the source/output comparison.",
+    });
+  else if (
+    metrics.words > 10000 &&
+    technicalCues > 20 &&
+    technicalObjects < Math.max(2, Math.ceil(pages.length / 50))
+  )
+    issues.push({
+      code: "LOW_TECHNICAL_OBJECTS",
+      severity: "warning",
+      count: technicalObjects,
+      message:
+        "Very few equations, tables, or source visuals were recovered for a technical document; inspect representative source pages.",
     });
   if (damagedHyphens > 20)
     issues.push({
@@ -297,7 +327,7 @@ export function qualityAudit(pages, markdown, warnings = []) {
       count: ocrOnly.length,
       pages: ocrOnly.slice(0, 50).map((page) => page.page),
       message:
-        "These scanned pages use OCR. Their source-page renditions are retained for layout fidelity; review complex tables and formulas.",
+        "These pages required OCR; review complex tables, formulas, and layout against the source.",
     });
   const ocrPages = pages.filter((page) => page.quality?.ocrApplied).length;
   if (pages.length && ocrPages === pages.length)

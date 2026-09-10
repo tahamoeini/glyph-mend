@@ -16,6 +16,7 @@ const LOCAL_PREFERENCES = [
   "glyphmend-sidebar",
   "glyphmend-runtime-brand-v1",
 ];
+export const CHECKPOINT_REVISION = 1;
 let database;
 async function db() {
   return (database ||= openDB(DB, 4, {
@@ -28,16 +29,19 @@ async function db() {
     },
   }));
 }
+function currentMeta(meta) {
+  return {
+    ...meta,
+    schema: 4,
+    checkpointRevision: CHECKPOINT_REVISION,
+    updatedAt: new Date().toISOString(),
+  };
+}
 export async function startWorkspace(meta, pdfBytes) {
   const value = await db(),
     tx = value.transaction([META, PAGES, PDF, LOGS], "readwrite");
   await Promise.all([
-    tx
-      .objectStore(META)
-      .put(
-        { ...meta, schema: 4, updatedAt: new Date().toISOString() },
-        CURRENT,
-      ),
+    tx.objectStore(META).put(currentMeta(meta), CURRENT),
     tx.objectStore(PDF).put(pdfBytes, CURRENT),
     tx.objectStore(PAGES).clear(),
     tx.objectStore(LOGS).clear(),
@@ -51,11 +55,7 @@ export async function savePage(page) {
 export async function saveResult(meta) {
   const value = await db(),
     previous = await value.get(META, CURRENT);
-  await value.put(
-    META,
-    { ...previous, ...meta, schema: 4, updatedAt: new Date().toISOString() },
-    CURRENT,
-  );
+  await value.put(META, currentMeta({ ...previous, ...meta }), CURRENT);
 }
 export async function appendStoredLog(event) {
   await (await db()).add(LOGS, event);
@@ -64,13 +64,20 @@ export async function loadWorkspace() {
   const value = await db(),
     meta = await value.get(META, CURRENT);
   if (!meta) return null;
+  const compatible = meta.checkpointRevision === CHECKPOINT_REVISION;
   const [pdfBytes, pageValues, logs] = await Promise.all([
     value.get(PDF, CURRENT),
-    value.getAll(PAGES),
+    compatible ? value.getAll(PAGES) : Promise.resolve([]),
     value.getAll(LOGS),
+    compatible ? Promise.resolve() : value.clear(PAGES),
   ]);
   return {
     ...meta,
+    // app.js already has the canonical extraction-version mismatch path. Mark
+    // pre-revision workspaces incompatible so stale v10 pages cannot be resumed
+    // after the structured-fidelity fix, without changing the public report schema.
+    extractionVersion: compatible ? meta.extractionVersion : -1,
+    checkpointRevision: compatible ? CHECKPOINT_REVISION : 0,
     pdfBytes,
     pages: Object.fromEntries(pageValues.map((page) => [page.page, page])),
     logs,
@@ -125,7 +132,12 @@ async function clearAppCaches() {
 }
 export function serializeWorkspace(value) {
   return JSON.stringify(
-    { ...value, schema: 4, exportedAt: new Date().toISOString() },
+    {
+      ...value,
+      schema: 4,
+      checkpointRevision: CHECKPOINT_REVISION,
+      exportedAt: new Date().toISOString(),
+    },
     (_key, item) => {
       if (item instanceof ArrayBuffer)
         return { __binary: "array-buffer", base64: arrayToBase64(item) };
@@ -146,7 +158,13 @@ export function deserializeWorkspace(text) {
     throw new Error("Unsupported workspace format.");
   if (typeof value.pdfBytes === "string")
     value.pdfBytes = base64ToArray(value.pdfBytes);
-  return { ...value, schema: 4 };
+  const compatible = value.checkpointRevision === CHECKPOINT_REVISION;
+  return {
+    ...value,
+    schema: 4,
+    checkpointRevision: compatible ? CHECKPOINT_REVISION : 0,
+    extractionVersion: compatible ? value.extractionVersion : -1,
+  };
 }
 function arrayToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
