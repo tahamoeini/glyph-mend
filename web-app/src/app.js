@@ -16,6 +16,7 @@ import {
   clearWorkspace,
   deserializeWorkspace,
   loadWorkspace,
+  resetClientStorage,
   savePage,
   saveResult,
   serializeWorkspace,
@@ -28,7 +29,7 @@ registerSW({ immediate: true });
 const $ = (id) => document.getElementById(id);
 // OCR runtime cache and structural recovery changed in this release. Existing
 // checkpoints must not be presented as results from the current pipeline.
-const EXTRACTION_VERSION = 7;
+const EXTRACTION_VERSION = 8;
 const state = {
   fileName: "",
   fileSize: 0,
@@ -331,16 +332,8 @@ function runBatch(batch, wanted) {
           wanted.filter((page) => state.pages[page]).length,
           wanted.length,
         );
-        if (data.progress === 1)
+        if (data.progress === 1 && data.status === "recognizing text")
           log("ocr", `OCR completed for page ${data.page}`, {}, "debug");
-      }
-      if (data.type === "ocr-error") {
-        log(
-          "ocr-error",
-          `OCR initialization failed for page ${data.page}`,
-          { error: data.message },
-          "warning",
-        );
       }
       if (data.type === "page-error") {
         state.warnings.push(data);
@@ -896,6 +889,21 @@ function bind() {
       state.logs = [];
       renderLog();
       toast("Saved workspace removed.");
+    }
+  };
+  $("resetClientStorageButton").onclick = async () => {
+    if (state.running) {
+      toast("Stop extraction before resetting local data.", true);
+      return;
+    }
+    const message =
+      "Reset all local PDF Sanitizer data in this browser? This removes saved documents, checkpoints, OCR language data, offline cache, and appearance preferences. Export anything you want to keep first.";
+    if (!confirm(message)) return;
+    try {
+      await resetClientStorage();
+      location.reload();
+    } catch (error) {
+      toast(`Could not reset local data: ${error.message}`, true);
     }
   };
   $("exportWorkspaceButton").onclick = () => save("workspace");

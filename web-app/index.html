@@ -31,6 +31,7 @@
         <button id="restoreButton" class="quiet" type="button">Resume saved workspace</button>
         <label class="quiet file-button">Import workspace<input id="workspaceInput" type="file" accept="application/json,.json"></label>
         <label class="quiet file-button">Open Markdown<input id="markdownInput" type="file" accept="text/markdown,.md,.markdown"></label>
+        <button id="resetClientStorageButton" class="quiet danger-text" type="button">Reset local data</button>
       </div>
       <p class="welcome-footnote"><span aria-hidden="true">✓</span> Offline-first <span aria-hidden="true">·</span> Checkpointed <span aria-hidden="true">·</span> Export-ready</p>
     </section>
@@ -73,7 +74,7 @@
               <p class="technical-note">MuPDF WebAssembly and the bundled English OCR model run locally. Bounded batches release memory between checkpoints.</p>
             </div>
           </details>
-          <details class="workspace-tools control-section"><summary><span>Workspace data</span><small>Checkpoint controls</small></summary><div class="inline-actions"><button id="exportWorkspaceButton" class="text-button" type="button">Export checkpoint</button><button id="clearWorkspaceButton" class="text-button danger-text" type="button">Forget saved data</button></div></details>
+          <details class="workspace-tools control-section"><summary><span>Workspace data</span><small>Checkpoint controls</small></summary><div class="inline-actions"><button id="exportWorkspaceButton" class="text-button" type="button">Export checkpoint</button><button id="clearWorkspaceButton" class="text-button danger-text" type="button">Forget saved data</button><small>To clear the app’s full local cache, use Reset local data on the welcome screen.</small></div></details>
         </div>
         <div class="action-dock">
           <div class="progress-card" aria-live="polite"><div class="progress-heading"><span id="progressStage">Ready to extract</span><strong id="progressText">0%</strong></div><strong id="statusText">Ready</strong><span id="progressPage" class="progress-page">Configure the document, then start extraction.</span><progress id="progress" max="100" value="0">0%</progress></div>

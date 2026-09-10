@@ -36,6 +36,7 @@ const legacyControlIds = [
   "cancelButton",
   "exportWorkspaceButton",
   "clearWorkspaceButton",
+  "resetClientStorageButton",
   "markdownEditor",
   "renderedPreview",
   "sourcePreview",

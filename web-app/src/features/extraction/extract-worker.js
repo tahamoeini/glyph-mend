@@ -11,7 +11,7 @@ let ocrProgressPage;
 // Keep Tesseract's IndexedDB data separate from older releases. A stale or
 // partially-written traineddata file otherwise makes every later OCR batch
 // fail during initialization, even though the packaged language asset is fine.
-const OCR_CACHE_PATH = "pdf-sanitizer-ocr-v7";
+const OCR_CACHE_PATH = "pdf-sanitizer-ocr-v8";
 
 const LATEX_SYMBOLS = new Map([
   ["≤", "\\leq"], ["≥", "\\geq"], ["≠", "\\neq"], ["≈", "\\approx"],
@@ -620,21 +620,13 @@ async function recognizePage(page, options, paths) {
       corePath: paths.corePath,
       langPath: paths.langPath,
       cachePath: OCR_CACHE_PATH,
-      // Refresh once per batch from the packaged, offline language asset. This
-      // bypasses corrupt cache entries and replaces them with verified data.
-      cacheMethod: "refresh",
+      cacheMethod: "write",
       logger: (event) =>
         self.postMessage({
           type: "ocr-progress",
           page: ocrProgressPage,
           status: event.status,
           progress: event.progress,
-        }),
-      errorHandler: (error) =>
-        self.postMessage({
-          type: "ocr-error",
-          page: ocrProgressPage,
-          message: error?.message || String(error),
         }),
     });
   }

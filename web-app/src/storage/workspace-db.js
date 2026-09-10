@@ -5,6 +5,8 @@ const DB = "pdf-sanitizer-browser",
   PDF = "pdf",
   LOGS = "logs",
   CURRENT = "current";
+const OCR_CACHE_DB = "keyval-store";
+const LOCAL_PREFERENCES = ["pdf-sanitizer-theme", "pdf-sanitizer-sidebar"];
 let database;
 async function db() {
   return (database ||= openDB(DB, 4, {
@@ -72,6 +74,40 @@ export async function clearWorkspace() {
     [META, PAGES, PDF, LOGS].map((name) => tx.objectStore(name).clear()),
   );
   await tx.done;
+}
+export async function resetClientStorage() {
+  database?.close();
+  database = undefined;
+  await Promise.all([
+    deleteDatabase(DB),
+    deleteDatabase(OCR_CACHE_DB),
+    clearAppCaches(),
+  ]);
+  try {
+    LOCAL_PREFERENCES.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Storage can be unavailable in private browsing modes.
+  }
+}
+
+function deleteDatabase(name) {
+  if (!globalThis.indexedDB) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(name);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+    request.onblocked = () => resolve();
+  });
+}
+
+async function clearAppCaches() {
+  if (!globalThis.caches) return;
+  const names = await caches.keys();
+  await Promise.all(
+    names
+      .filter((name) => name.startsWith("workbox-") || name.startsWith("pdf-sanitizer"))
+      .map((name) => caches.delete(name)),
+  );
 }
 export function serializeWorkspace(value) {
   return JSON.stringify(
