@@ -33,67 +33,253 @@ export function parsePageRange(input, total) {
   return [...pages].sort((a, b) => a - b);
 }
 
-function signature(line) {
-  let value = line
-    .replace(/^#{1,6}\s+/, "")
-    .replace(/^\s*(?:[ivxlcdm]{1,10}|\d{1,5})\s+/i, "")
-    .replace(/[*_`]/g, "")
+function plainMarkdownLine(line) {
+  return String(line || "")
+    .replace(/^\s*#{1,6}\s+/, "")
+    .replace(/^\s*>\s?/, "")
+    .replace(/\*\*|__|~~|`/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  const trailing = /^(.*?)\s+(?:\d{1,5}|[ivxlcdm]{1,10})$/i.exec(value);
-  if (trailing && trailing[1].length >= 10) value = trailing[1];
+}
+
+function signature(line) {
+  let value = plainMarkdownLine(line)
+    .replace(/^\s*(?:page\s*)?(?:[ivxlcdm]{1,10}|\d{1,5})(?:\s*[·|:—–-]\s*|\s+)/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const trailing = /^(.*?)\s+(?:page\s*)?(?:\d{1,5}|[ivxlcdm]{1,10})$/i.exec(value);
+  if (trailing && trailing[1].length >= 3) value = trailing[1].trim();
   return value.toLowerCase();
+}
+
+function fallbackEdgeCandidates(lines, fromStart) {
+  const depth = lines.length >= 8 ? 2 : 1;
+  const ordered = fromStart ? [...lines] : [...lines].reverse();
+  const result = ordered.slice(0, depth);
+  if (!result.some((line) => !isPageLabel(line)))
+    for (const line of ordered.slice(depth)) {
+      if (isPageLabel(line)) {
+        result.push(line);
+        continue;
+      }
+      if (looksLikeRunningFragment(line)) result.push(line);
+      break;
+    }
+  return fromStart ? result : result.reverse();
+}
+
+function selectedEdges(page, headers, footers) {
+  const lines = String(page.text || "").split("\n").filter(Boolean);
+  if (page.edges) {
+    return {
+      headers: headers ? (page.edges.headers || []).filter(Boolean) : [],
+      footers: footers ? (page.edges.footers || []).filter(Boolean) : [],
+    };
+  }
+  return {
+    headers: headers ? fallbackEdgeCandidates(lines, true) : [],
+    footers: footers ? fallbackEdgeCandidates(lines, false) : [],
+  };
+}
+
+function repeatedEdgeSignatures(pages, headers, footers) {
+  const counts = new Map();
+  for (const page of pages) {
+    const edges = selectedEdges(page, headers, footers);
+    const keys = new Set(
+      [...edges.headers, ...edges.footers]
+        .map(signature)
+        .filter((value) => value.length >= 3 && value.length <= 160),
+    );
+    for (const key of keys) counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const threshold =
+    pages.length <= 2
+      ? 2
+      : Math.min(3, Math.max(2, Math.ceil(pages.length * 0.25)));
+  return new Set(
+    [...counts].filter(([, count]) => count >= threshold).map(([key]) => key),
+  );
+}
+
+function normalizeEdgeToken(token) {
+  const value = String(token || "")
+    .replace(/^[_*`]+|[_*`]+$/g, "")
+    .replace(/\\([.!])/g, "$1")
+    .toLowerCase();
+  return /^(?:page)?\d{1,5}$/.test(value) || /^[ivxlcdm]{1,10}$/i.test(value)
+    ? "<page>"
+    : value;
+}
+
+function looksLikeRunningFragment(value) {
+  const text = plainMarkdownLine(value);
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length || text.length > 160) return false;
+  if (isPageLabel(text)) return true;
+  const letters = [...text].filter((char) => /\p{L}/u.test(char));
+  if (!letters.length) return false;
+  const uppercase =
+    letters.filter((char) => char === char.toUpperCase()).length / letters.length;
+  return (
+    uppercase > 0.72 ||
+    (words.length <= 8 &&
+      words.every((word) => /^(?:[A-Z][\p{L}'’&.-]*|[A-Z0-9]{2,})$/u.test(word)))
+  );
+}
+
+function edgeLine(page, fromStart, headers, footers) {
+  const edges = selectedEdges(page, headers, footers);
+  const candidates = fromStart ? edges.headers : edges.footers;
+  if (candidates.length)
+    return plainMarkdownLine(fromStart ? candidates[0] : candidates.at(-1));
+  const lines = String(page.text || "").split("\n").filter((line) => line.trim());
+  if (page.edges && lines.length !== 1) return "";
+  if (!lines.length) return "";
+  return plainMarkdownLine(fromStart ? lines[0] : lines.at(-1));
+}
+
+function commonEdgeTokens(pages, fromStart, headers, footers) {
+  if (pages.length < 2) return null;
+  const tokenRows = pages
+    .map((page) =>
+      edgeLine(page, fromStart, headers, footers).split(/\s+/).filter(Boolean),
+    )
+    .filter((tokens) => tokens.length >= 2);
+  if (tokenRows.length !== pages.length) return null;
+  const oriented = fromStart
+    ? tokenRows
+    : tokenRows.map((tokens) => [...tokens].reverse());
+  const max = Math.min(12, ...oriented.map((tokens) => tokens.length));
+  let count = 0;
+  for (; count < max; count += 1) {
+    const expected = normalizeEdgeToken(oriented[0][count]);
+    if (!oriented.every((tokens) => normalizeEdgeToken(tokens[count]) === expected))
+      break;
+  }
+  if (count < 2) return null;
+  const sample = (fromStart
+    ? tokenRows[0].slice(0, count)
+    : tokenRows[0].slice(-count)
+  ).join(" ");
+  const build = (size) =>
+    (fromStart ? tokenRows[0].slice(0, size) : tokenRows[0].slice(-size)).join(" ");
+  for (let size = count; size >= 2; size -= 1) {
+    const value = build(size);
+    if (value.length < 6 || value.length > 160) continue;
+    if (/[.!?]$/.test(value) && size > 5) continue;
+    if (looksLikeRunningFragment(value)) return { count: size, sample: value };
+  }
+  return null;
+}
+
+function stripCommonEdgeTokens(text, fragment, fromStart) {
+  if (!fragment) return text;
+  const lines = String(text || "").split("\n");
+  const indexes = lines
+    .map((line, index) => (line.trim() ? index : -1))
+    .filter((index) => index >= 0);
+  if (!indexes.length) return text;
+  const index = fromStart ? indexes[0] : indexes.at(-1);
+  const line = lines[index];
+  const prefixMatch = /^(\s*(?:#{1,6}\s+|>\s?)?)(.*)$/.exec(line);
+  const prefix = prefixMatch?.[1] || "";
+  const body = prefixMatch?.[2] || line;
+  const tokens = body.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < fragment.count) return text;
+  const candidate = (fromStart
+    ? tokens.slice(0, fragment.count)
+    : tokens.slice(-fragment.count)
+  ).map(normalizeEdgeToken);
+  const expected = fragment.sample.split(/\s+/).map(normalizeEdgeToken);
+  if (candidate.length !== expected.length || candidate.some((value, i) => value !== expected[i]))
+    return text;
+  const remaining = fromStart
+    ? tokens.slice(fragment.count)
+    : tokens.slice(0, -fragment.count);
+  lines[index] = remaining.length ? `${prefix}${remaining.join(" ")}` : "";
+  return lines.join("\n");
+}
+
+function isPageLabel(value) {
+  return /^\s*(?:page\s*)?(?:\d{1,5}|[ivxlcdm]{1,10})\s*$/i.test(
+    plainMarkdownLine(value),
+  );
+}
+
+function stripEdgeFragment(line, candidates, repeated, fromStart) {
+  let result = line;
+  for (const candidate of candidates) {
+    if (isPageLabel(candidate)) continue;
+    const key = signature(candidate);
+    if (!repeated.has(key)) continue;
+    const plainCandidate = plainMarkdownLine(candidate);
+    if (!plainCandidate) continue;
+    const escaped = plainCandidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = fromStart
+      ? new RegExp(
+          `^(\\s*(?:#{1,6}\\s+|>\\s?)?)${escaped}(?:\\s*[·|:—–-]\\s*|\\s+)?`,
+          "i",
+        )
+      : new RegExp(
+          `(?:\\s*[·|:—–-]\\s*|\\s+)?${escaped}\\s*$`,
+          "i",
+        );
+    if (!pattern.test(result)) continue;
+    result = result.replace(pattern, fromStart ? "$1" : "").trimEnd();
+    if (/^\s*(?:#{1,6}|>)?\s*$/.test(result)) return "";
+  }
+  return result;
 }
 
 export function removeRunningMatter(
   pages,
   { headers = true, footers = true } = {},
 ) {
-  const counts = new Map();
-  pages.forEach((page) => {
-    const lines = page.text.split("\n").filter(Boolean);
-    const edge = page.edges
-      ? [
-          ...(headers ? page.edges.headers : []),
-          ...(footers ? page.edges.footers : []),
-        ]
-      : [
-          ...(headers ? lines.slice(0, 3) : []),
-          ...(footers ? lines.slice(-3) : []),
-        ];
-    new Set(
-      edge.map(signature).filter((s) => s.length >= 3 && s.length <= 120),
-    ).forEach((s) => counts.set(s, (counts.get(s) || 0) + 1));
-  });
-  const repeated = new Set(
-    [...counts]
-      .filter(
-        ([, n]) =>
-          n >= Math.min(3, Math.max(2, Math.ceil(pages.length * 0.35))),
-      )
-      .map(([s]) => s),
-  );
-  const preservedHeadings = new Set();
+  const repeated = repeatedEdgeSignatures(pages, headers, footers);
+  const commonHeader = headers ? commonEdgeTokens(pages, true, headers, footers) : null;
+  const commonFooter = footers ? commonEdgeTokens(pages, false, headers, footers) : null;
   return pages.map((page) => {
-    const lines = page.text.split("\n");
-    return {
-      ...page,
-      text: lines
-        .filter((line) => {
-          const plain = line.trim();
-          if (/^\s*(?:\d{1,5}|[ivxlcdm]{1,10})\s*$/i.test(plain)) return false;
-          const key = signature(line);
-          if (!repeated.has(key)) return true;
-          if (/^#{1,6}\s/.test(plain) && !preservedHeadings.has(key)) {
-            preservedHeadings.add(key);
-            return true;
-          }
-          return false;
-        })
-        .join("\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim(),
-    };
+    const edges = selectedEdges(page, headers, footers);
+    const pageHeaderKeys = new Set(edges.headers.map(signature));
+    const pageFooterKeys = new Set(edges.footers.map(signature));
+    let source = String(page.text || "");
+    if (commonHeader) source = stripCommonEdgeTokens(source, commonHeader, true);
+    if (commonFooter) source = stripCommonEdgeTokens(source, commonFooter, false);
+    const lines = source.split("\n");
+    const cleaned = lines
+      .map((line) => {
+        let value = line;
+        if (headers)
+          value = stripEdgeFragment(value, edges.headers, repeated, true);
+        if (footers)
+          value = stripEdgeFragment(value, edges.footers, repeated, false);
+        return value;
+      })
+      .filter((line) => {
+        const key = signature(line);
+        if (!key && !plainMarkdownLine(line)) return false;
+        const headerMatch =
+          headers && pageHeaderKeys.has(key) && repeated.has(key);
+        const footerMatch =
+          footers && pageFooterKeys.has(key) && repeated.has(key);
+        if (headerMatch || footerMatch) return false;
+        if (isPageLabel(line)) {
+          const raw = plainMarkdownLine(line);
+          const headerLabel =
+            headers &&
+            edges.headers.some((edge) => plainMarkdownLine(edge) === raw);
+          const footerLabel =
+            footers &&
+            edges.footers.some((edge) => plainMarkdownLine(edge) === raw);
+          if (headerLabel || footerLabel) return false;
+        }
+        return true;
+      })
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return { ...page, text: cleaned };
   });
 }
 
@@ -119,7 +305,9 @@ export function headingFor(line, fontSize, bodySize) {
     const numberedTitle =
       /^[A-Z]/.test(title) &&
       !/[.!?;:]$/.test(title) &&
-      !/\b(?:is|are|was|were|has|have|will|should|must|include)\b/i.test(title);
+      !/\b(?:is|are|was|were|has|have|will|should|must|include)\b/i.test(
+        title,
+      );
     if (
       numberedTitle &&
       (level > 1 || fontSize >= bodySize * 1.12 || uppercase > 0.72)
@@ -128,6 +316,14 @@ export function headingFor(line, fontSize, bodySize) {
     return null;
   }
   if (/^chapter\s+(?:\d+|[ivxlcdm]+)\b/i.test(value)) return 1;
+  if (
+    /^(?:contents|table of contents|list of (?:figures|tables)|preface|acknowledg(?:e)?ments|references|bibliography|index)$/i.test(
+      value,
+    )
+  )
+    return fontSize >= bodySize * 1.05 || uppercase > 0.72 ? 1 : null;
+  if (/^appendix(?:\s+[A-Z0-9]+)?(?:\s+.+)?$/i.test(value))
+    return fontSize >= bodySize * 1.05 || uppercase > 0.72 ? 1 : null;
   const titleLike =
     uppercase > 0.72 ||
     words.every((word) =>
@@ -137,6 +333,33 @@ export function headingFor(line, fontSize, bodySize) {
   if (fontSize >= bodySize * 1.45 && words.length <= 14) return 1;
   if (fontSize >= bodySize * 1.22 && words.length <= 16) return 2;
   return null;
+}
+
+export function normalizeHeadingHierarchy(markdown) {
+  let previousLevel = null;
+  let previousText = "";
+  const result = [];
+  for (const line of String(markdown || "").split("\n")) {
+    const match = /^\s*(#{1,6})\s+(.+?)\s*$/.exec(line);
+    if (!match) {
+      result.push(line);
+      continue;
+    }
+    const text = match[2].replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (key === previousText) continue;
+    let level = match[1].length;
+    const numbered = /^(\d+(?:\.\d+){0,5})\.?\s+\S/.exec(text);
+    if (numbered) level = Math.min(6, numbered[1].split(".").length);
+    else if (/^chapter\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) level = 1;
+    else if (previousLevel && level > previousLevel + 1)
+      level = previousLevel + 1;
+    result.push(`${"#".repeat(level)} ${text}`);
+    previousLevel = level;
+    previousText = key;
+  }
+  return result.join("\n");
 }
 
 export function joinPageParagraphs(markdown) {
@@ -164,8 +387,8 @@ export function cleanupDocument(rawPages, options = {}) {
   let pages = rawPages.map((p) => ({ ...p, text: normalizeText(p.text) }));
   if (options.removeHeaders || options.removeFooters)
     pages = removeRunningMatter(pages, {
-      headers: options.removeHeaders,
-      footers: options.removeFooters,
+      headers: !!options.removeHeaders,
+      footers: !!options.removeFooters,
     });
   let markdown = pages
     .map(
@@ -173,6 +396,8 @@ export function cleanupDocument(rawPages, options = {}) {
         `${options.preserveMarkers ? `<!-- page: ${p.page} -->\n\n` : ""}${p.text}`,
     )
     .join("\n\n");
+  if (options.detectHeadings !== false)
+    markdown = normalizeHeadingHierarchy(markdown);
   if (options.joinParagraphs) markdown = joinPageParagraphs(markdown);
   if (options.extractEquations === false)
     markdown = markdown.replace(/^\$\$\s*$[\s\S]*?^\$\$\s*$/gm, "");
@@ -236,8 +461,9 @@ export function qualityAudit(pages, markdown, warnings = []) {
     (page) => (page.quality?.textBlocks ?? Number.POSITIVE_INFINITY) <= 1,
   );
   const damagedHyphens = (
-    markdown.match(/\p{L}{2,}-\n+(?:<!--\s*page:[^>]+-->\s*)?\p{Ll}{2,}/gu) ||
-    []
+    markdown.match(
+      /\p{L}{2,}-\n+(?:<!--\s*page:[^>]+-->\s*)?\p{Ll}{2,}/gu,
+    ) || []
   ).length;
   const leakedRunning = (
     markdown.match(

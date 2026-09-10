@@ -4,6 +4,7 @@ import {
   documentMetrics,
   headingFor,
   joinPageParagraphs,
+  normalizeHeadingHierarchy,
   normalizeText,
   parsePageRange,
   plainText,
@@ -44,12 +45,90 @@ describe("cleanup", () => {
       "Figure 3\nActual body",
     ]);
   });
+  it("removes repeated running headers even when extraction promoted them to Markdown headings", () => {
+    const pages = [12, 13, 14].map((page) => ({
+      page,
+      text: `## THE THEORY AND PRACTICE OF REVENUE MANAGEMENT ${page}\n\nActual body ${page}\n\n${page}`,
+      edges: {
+        headers: [`THE THEORY AND PRACTICE OF REVENUE MANAGEMENT ${page}`],
+        footers: [`${page}`],
+      },
+    }));
+    expect(
+      cleanupDocument(pages, {
+        removeHeaders: true,
+        removeFooters: true,
+        detectHeadings: true,
+      }),
+    ).toBe("Actual body 12\n\nActual body 13\n\nActual body 14");
+  });
+  it("removes repeated footers from short pages even when the last line is only a page label", () => {
+    const pages = [1, 2, 3].map((page) => ({
+      page,
+      text: `Chapter title\nBody ${page}\nRUNNING FOOTER\n${page}`,
+    }));
+    expect(
+      cleanupDocument(pages, {
+        removeFooters: true,
+      }),
+    ).toBe("Chapter title\nBody 1\n\nChapter title\nBody 2\n\nChapter title\nBody 3");
+  });
+  it("respects header/footer switches independently", () => {
+    const pages = [1, 2, 3].map((page) => ({
+      page,
+      text: `RUNNING TITLE ${page}\nBody ${page}\nPage ${page}`,
+      edges: {
+        headers: [`RUNNING TITLE ${page}`],
+        footers: [`Page ${page}`],
+      },
+    }));
+    const result = cleanupDocument(pages, {
+      removeHeaders: true,
+      removeFooters: false,
+    });
+    expect(result).not.toContain("RUNNING TITLE");
+    expect(result).toContain("Page 1");
+    expect(result).toContain("Page 3");
+  });
+  it("does not remove a genuine first heading that is not repeated running matter", () => {
+    const pages = [
+      {
+        page: 1,
+        text: "# Introduction\nBody one",
+        edges: { headers: ["Introduction"], footers: [] },
+      },
+      {
+        page: 2,
+        text: "# Capacity Control\nBody two",
+        edges: { headers: ["Capacity Control"], footers: [] },
+      },
+      {
+        page: 3,
+        text: "# Dynamic Pricing\nBody three",
+        edges: { headers: ["Dynamic Pricing"], footers: [] },
+      },
+    ];
+    expect(
+      cleanupDocument(pages, { removeHeaders: true, detectHeadings: true }),
+    ).toContain("# Introduction");
+  });
   it("does not promote sentence fragments or years to headings", () => {
     expect(
       headingFor("2002. The book has benefited greatly,", 18, 10),
     ).toBeNull();
     expect(headingFor("This ordinary sentence fragment", 18, 10)).toBeNull();
     expect(headingFor("2.3 Capacity Control", 12, 10)).toBe(2);
+  });
+  it("recognizes conventional front/back matter headings conservatively", () => {
+    expect(headingFor("Contents", 11, 10)).toBe(1);
+    expect(headingFor("References", 11, 10)).toBe(1);
+    expect(headingFor("Acknowledgments", 9, 10)).toBeNull();
+  });
+  it("normalizes numbered heading depth and impossible non-numbered jumps", () => {
+    const source = "# Chapter 2\n\n#### Revenue Controls\n\n##### 2.3 Capacity Control\n\n### 2.3.1 Nested Model";
+    expect(normalizeHeadingHierarchy(source)).toBe(
+      "# Chapter 2\n\n## Revenue Controls\n\n## 2.3 Capacity Control\n\n### 2.3.1 Nested Model",
+    );
   });
   it("joins a lowercase continuation across a page marker", () => {
     const value =

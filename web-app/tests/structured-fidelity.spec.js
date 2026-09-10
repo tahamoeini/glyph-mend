@@ -59,7 +59,7 @@ function textAndImagePdf() {
   ]);
 }
 
-test("preserves structured text and embedded source visuals without forcing OCR", async ({
+test("preserves structured text, headings, and embedded source visuals without forcing OCR", async ({
   page,
 }) => {
   const errors = [];
@@ -85,7 +85,7 @@ test("preserves structured text and embedded source visuals without forcing OCR"
   await expect(page.locator("#progressText")).toHaveText("100%");
 
   const markdown = await page.locator("#markdownEditor").inputValue();
-  expect(markdown).toContain("TECHNICAL NOTE");
+  expect(markdown).toMatch(/^#{1,2}\s+TECHNICAL NOTE$/m);
   expect(markdown).toContain("This page has enough native text");
   expect(markdown).toMatch(/\[SOURCE_VISUAL page=1[^\]]+\]/);
   expect(markdown).toContain('caption="Figure 1. Embedded source visual"');

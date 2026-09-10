@@ -112,6 +112,112 @@ function markdownTable(rows) {
   ].join("\n");
 }
 
+function wordBox(word) {
+  const box = word?.bbox || {};
+  const x0 = Number(box.x0 ?? box.left);
+  const y0 = Number(box.y0 ?? box.top);
+  const x1 = Number(box.x1 ?? box.right);
+  const y1 = Number(box.y1 ?? box.bottom);
+  return [x0, y0, x1, y1];
+}
+
+function ocrWordRows(data) {
+  const result = [];
+  for (const block of data?.blocks || []) {
+    for (const paragraph of block?.paragraphs || []) {
+      for (const line of paragraph?.lines || []) {
+        const words = (line?.words || [])
+          .map((word) => ({
+            text: normalizeTextLine(word?.text || ""),
+            bbox: wordBox(word),
+            confidence: Number.isFinite(Number(word?.confidence))
+              ? Number(word.confidence)
+              : 100,
+          }))
+          .filter(
+            (word) =>
+              word.text &&
+              word.bbox.every(Number.isFinite) &&
+              word.bbox[2] > word.bbox[0] &&
+              word.bbox[3] > word.bbox[1] &&
+              word.confidence >= 58,
+          )
+          .sort((a, b) => a.bbox[0] - b.bbox[0]);
+        if (words.length < 2) continue;
+        const lineHeight = median(words.map((word) => word.bbox[3] - word.bbox[1]));
+        const gapThreshold = Math.max(10, lineHeight * 1.15);
+        const cells = [];
+        let current = { text: words[0].text, x0: words[0].bbox[0], x1: words[0].bbox[2] };
+        let previous = words[0];
+        for (const word of words.slice(1)) {
+          const gap = word.bbox[0] - previous.bbox[2];
+          if (gap > gapThreshold) {
+            cells.push(current);
+            current = { text: word.text, x0: word.bbox[0], x1: word.bbox[2] };
+          } else {
+            current.text = `${current.text} ${word.text}`.trim();
+            current.x1 = word.bbox[2];
+          }
+          previous = word;
+        }
+        cells.push(current);
+        if (cells.length < 2) continue;
+        result.push({
+          cells,
+          y0: Math.min(...words.map((word) => word.bbox[1])),
+          y1: Math.max(...words.map((word) => word.bbox[3])),
+          lineHeight,
+        });
+      }
+    }
+  }
+  return result.sort((a, b) => a.y0 - b.y0);
+}
+
+export function ocrTableMarkdown(data) {
+  const rows = ocrWordRows(data);
+  if (rows.length < 3) return null;
+  const frequencies = new Map();
+  for (const row of rows) {
+    const count = row.cells.length;
+    if (count >= 2 && count <= 8) frequencies.set(count, (frequencies.get(count) || 0) + 1);
+  }
+  const columns = [...frequencies].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!columns) return null;
+  const consistent = rows.filter((row) => row.cells.length === columns);
+  if (consistent.length < 3 || consistent.length / rows.length < 0.78) return null;
+
+  const starts = Array.from({ length: columns }, (_, index) =>
+    median(consistent.map((row) => row.cells[index].x0)),
+  );
+  const allCells = consistent.flatMap((row) => row.cells);
+  const tableLeft = Math.min(...allCells.map((cell) => cell.x0));
+  const tableRight = Math.max(...allCells.map((cell) => cell.x1));
+  const tableWidth = Math.max(1, tableRight - tableLeft);
+  const tolerance = Math.max(
+    median(consistent.map((row) => row.lineHeight)) * 2.2,
+    tableWidth * 0.055,
+  );
+  const aligned = consistent.filter((row) =>
+    row.cells.every((cell, index) => Math.abs(cell.x0 - starts[index]) <= tolerance),
+  );
+  if (aligned.length / consistent.length < 0.82) return null;
+
+  const textCells = aligned.flatMap((row) => row.cells.map((cell) => cell.text));
+  const shortCells = textCells.filter((cell) => cell.split(/\s+/).length <= 8).length;
+  const numericCells = textCells.filter((cell) => /\d/.test(cell)).length;
+  const sentenceLike = textCells.filter(
+    (cell) =>
+      cell.split(/\s+/).length > 10 ||
+      /\b(?:the|and|that|this|with|from|which|because|therefore)\b/i.test(cell),
+  ).length;
+  if (shortCells / textCells.length < 0.72) return null;
+  if (sentenceLike / textCells.length > 0.28 && numericCells / textCells.length < 0.15)
+    return null;
+
+  return markdownTable(aligned.map((row) => row.cells.map((cell) => cell.text)));
+}
+
 function mathScore(text) {
   let score = 0;
   score += (text.match(MATH_SYMBOLS) || []).length * 2;
@@ -186,6 +292,7 @@ export function jsonFallbackBlocks(structured) {
         if (value?.type === "text") textBlocks.push(value);
         collectTextBlocks(value?.blocks);
         collectTextBlocks(value?.children);
+        collectTextBlocks(value?.contents);
       }
     };
     collectTextBlocks(data?.blocks);
@@ -595,7 +702,7 @@ function ocrVisualCandidates(data, lines, pageBounds) {
   };
 }
 
-async function recognizePage(page, options, paths) {
+async function ensureOcrWorker(options, paths) {
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
       workerPath: paths.workerPath,
@@ -610,16 +717,44 @@ async function recognizePage(page, options, paths) {
         }),
     });
   }
+  return ocrWorker;
+}
+
+async function recognizeRaster(image, options, paths) {
+  const worker = await ensureOcrWorker(options, paths);
+  ocrProgressPage = options.page;
+  const result = await worker.recognize(image.data, {}, { text: true, blocks: true });
+  result.data._rasterWidth = image.width;
+  result.data._rasterHeight = image.height;
+  return result.data;
+}
+
+async function recognizePage(page, options, paths) {
   const image = cropPage(
     page,
     rect(page.getBounds()),
     Math.max(1, Math.min(600, Number(options.ocrDpi) || 300)) / 72,
   );
-  ocrProgressPage = options.page;
-  const result = await ocrWorker.recognize(image.data, {}, { text: true, blocks: true });
-  result.data._rasterWidth = image.width;
-  result.data._rasterHeight = image.height;
-  return result.data;
+  return recognizeRaster(image, options, paths);
+}
+
+async function tableMarkdownForVisual(rendered, caption, options, paths, pageNumber) {
+  if (
+    !options.detectTables ||
+    !options.useOcr ||
+    !/^table\s+\d+(?:\.\d+)*(?:[.:]|\b)/i.test(caption || "")
+  )
+    return null;
+  try {
+    const data = await recognizeRaster(
+      rendered,
+      { ...options, page: pageNumber },
+      paths,
+    );
+    return ocrTableMarkdown(data);
+  } catch {
+    return null;
+  }
 }
 
 export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
@@ -734,15 +869,27 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           Math.max(4, bodySize * 0.55),
         );
         const rendered = cropPage(page, bbox, 2.25);
-        const asset = {
-          id: `p${pageNumber}-image-${index + 1}`,
-          kind: "image",
-          bbox,
-          caption: captionFor(blocks, bbox, bodySize),
-          ...rendered,
-        };
-        assets.push(asset);
-        entries.push({ y: bbox[1], markdown: sourceMarker(pageNumber, asset) });
+        const caption = captionFor(blocks, bbox, bodySize);
+        const recoveredTable = await tableMarkdownForVisual(
+          rendered,
+          caption,
+          options,
+          ocrPaths,
+          pageNumber,
+        );
+        if (recoveredTable) {
+          entries.push({ y: bbox[1], markdown: recoveredTable });
+        } else {
+          const asset = {
+            id: `p${pageNumber}-image-${index + 1}`,
+            kind: /^table\b/i.test(caption) ? "table-image" : "image",
+            bbox,
+            caption,
+            ...rendered,
+          };
+          assets.push(asset);
+          entries.push({ y: bbox[1], markdown: sourceMarker(pageNumber, asset) });
+        }
       } catch {
         /* text extraction remains usable when an image cannot be rendered */
       }
@@ -771,13 +918,26 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
             Math.max(4, bodySize * 0.55),
           );
           const rendered = cropPage(page, bbox, 2.25);
+          const caption = captionFor(blocks, bbox, bodySize);
+          const recoveredTable = await tableMarkdownForVisual(
+            rendered,
+            caption,
+            options,
+            ocrPaths,
+            pageNumber,
+          );
+          if (recoveredTable) {
+            entries.push({ y: candidate.y, markdown: recoveredTable });
+            continue;
+          }
           const asset = {
             id: `p${pageNumber}-graphic-${
               assets.filter((item) => item.kind === "graphic").length + 1
             }`,
             ...candidate,
+            kind: /^table\b/i.test(caption) ? "table-image" : candidate.kind,
             bbox,
-            caption: captionFor(blocks, bbox, bodySize),
+            caption,
             ...rendered,
           };
           assets.push(asset);
@@ -805,11 +965,25 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           bbox,
           candidate.kind === "equation" ? 2.6 : 2.25,
         );
-        const count =
-          assets.filter((item) => item.kind === candidate.kind).length + 1;
+        const recoveredTable = await tableMarkdownForVisual(
+          rendered,
+          candidate.caption || "",
+          options,
+          ocrPaths,
+          pageNumber,
+        );
+        if (recoveredTable) {
+          entries.push({ y: candidate.y, markdown: recoveredTable });
+          continue;
+        }
+        const fallbackKind = /^table\b/i.test(candidate.caption || "")
+          ? "table-image"
+          : candidate.kind;
+        const count = assets.filter((item) => item.kind === fallbackKind).length + 1;
         const asset = {
-          id: `p${pageNumber}-${candidate.kind}-${count}`,
+          id: `p${pageNumber}-${fallbackKind}-${count}`,
           ...candidate,
+          kind: fallbackKind,
           bbox,
           caption: candidate.caption || "",
           ...rendered,

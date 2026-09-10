@@ -53,6 +53,7 @@ function collectNodes(nodes, type, result) {
     if (node.type === type) result.push(node);
     collectNodes(node.blocks, type, result);
     collectNodes(node.children, type, result);
+    collectNodes(node.contents, type, result);
   }
   return result;
 }
@@ -62,11 +63,16 @@ function collectImageRects(nodes, result) {
     if (!node || typeof node !== "object") continue;
     if (node.type === "image") {
       const bbox = rect(node.bbox);
-      if (bbox?.every(Number.isFinite) && bbox[2] > bbox[0] && bbox[3] > bbox[1])
+      if (
+        bbox?.every(Number.isFinite) &&
+        bbox[2] > bbox[0] &&
+        bbox[3] > bbox[1]
+      )
         result.push(bbox);
     }
     collectImageRects(node.blocks, result);
     collectImageRects(node.children, result);
+    collectImageRects(node.contents, result);
   }
 }
 
@@ -76,7 +82,9 @@ function matrixValues(value) {
     return values.length === 6 && values.every(Number.isFinite) ? values : null;
   }
   if (!value || typeof value !== "object") return null;
-  const values = [value.a, value.b, value.c, value.d, value.e, value.f].map(Number);
+  const values = [value.a, value.b, value.c, value.d, value.e, value.f].map(
+    Number,
+  );
   return values.every(Number.isFinite) ? values : null;
 }
 
@@ -92,7 +100,12 @@ function imageRectFromMatrix(matrix) {
   ];
   const xs = points.map((point) => point[0]);
   const ys = points.map((point) => point[1]);
-  const bbox = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  const bbox = [
+    Math.min(...xs),
+    Math.min(...ys),
+    Math.max(...xs),
+    Math.max(...ys),
+  ];
   return bbox.every(Number.isFinite) && bbox[2] > bbox[0] && bbox[3] > bbox[1]
     ? bbox
     : null;
@@ -169,14 +182,24 @@ function unionRect(a, b) {
 
 export function coalesceImageRects(rects) {
   const result = [];
-  for (const source of [...rects].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
+  for (const source of [...rects].sort(
+    (a, b) => a[1] - b[1] || a[0] - b[0],
+  )) {
     let bbox = [...source];
     let changed = true;
     while (changed) {
       changed = false;
       const index = result.findIndex((existing) => {
-        const h = Math.max(existing[3] - existing[1], bbox[3] - bbox[1], 1);
-        const w = Math.max(existing[2] - existing[0], bbox[2] - bbox[0], 1);
+        const h = Math.max(
+          existing[3] - existing[1],
+          bbox[3] - bbox[1],
+          1,
+        );
+        const w = Math.max(
+          existing[2] - existing[0],
+          bbox[2] - bbox[0],
+          1,
+        );
         const horizontalGap = Math.max(
           0,
           Math.max(existing[0], bbox[0]) - Math.min(existing[2], bbox[2]),
@@ -236,8 +259,14 @@ function charRect(args) {
   if (quad.length < 4) return null;
   const xs = quad.filter((_, index) => index % 2 === 0).map(Number);
   const ys = quad.filter((_, index) => index % 2 === 1).map(Number);
-  if (!xs.length || !ys.length || ![...xs, ...ys].every(Number.isFinite)) return null;
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  if (!xs.length || !ys.length || ![...xs, ...ys].every(Number.isFinite))
+    return null;
+  return [
+    Math.min(...xs),
+    Math.min(...ys),
+    Math.max(...xs),
+    Math.max(...ys),
+  ];
 }
 
 function nativeLineSize(line) {
@@ -251,12 +280,70 @@ function nativeLineSize(line) {
 
 function jsonLineSize(line) {
   const bbox = rect(line?.bbox);
-  return Number(line?.font?.size) || (bbox ? Math.max(6, bbox[3] - bbox[1]) : 10);
+  return (
+    Number(line?.font?.size) || (bbox ? Math.max(6, bbox[3] - bbox[1]) : 10)
+  );
 }
 
 function median(values) {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)] || 10;
+}
+
+function splitCollapsedNativeLine(line) {
+  const items = (line?.chars || [])
+    .map((args) => ({ args, bbox: charRect(args), size: Number(args?.[3]) || 10 }))
+    .filter((item) => item.bbox);
+  if (items.length < 2) return [line];
+  const heights = items.map((item) => item.bbox[3] - item.bbox[1]);
+  const typicalHeight = Math.max(4, median(heights));
+  const centers = items.map((item) => (item.bbox[1] + item.bbox[3]) / 2);
+  if (Math.max(...centers) - Math.min(...centers) <= typicalHeight * 0.8)
+    return [line];
+
+  const groups = [];
+  for (const item of [...items].sort(
+    (a, b) =>
+      (a.bbox[1] + a.bbox[3]) / 2 - (b.bbox[1] + b.bbox[3]) / 2 ||
+      a.bbox[0] - b.bbox[0],
+  )) {
+    const center = (item.bbox[1] + item.bbox[3]) / 2;
+    let group = groups.find(
+      (candidate) =>
+        Math.abs(center - candidate.center) <=
+        Math.max(2, Math.min(typicalHeight, item.size) * 0.65),
+    );
+    if (!group) {
+      group = { center, items: [] };
+      groups.push(group);
+    }
+    group.items.push(item);
+    group.center =
+      group.items.reduce(
+        (sum, value) => sum + (value.bbox[1] + value.bbox[3]) / 2,
+        0,
+      ) / group.items.length;
+  }
+  if (groups.length <= 1) return [line];
+
+  return groups
+    .sort((a, b) => a.center - b.center)
+    .map((group) => {
+      const ordered = group.items.sort((a, b) => a.bbox[0] - b.bbox[0]);
+      const boxes = ordered.map((item) => item.bbox);
+      const bbox = [
+        Math.min(...boxes.map((box) => box[0])),
+        Math.min(...boxes.map((box) => box[1])),
+        Math.max(...boxes.map((box) => box[2])),
+        Math.max(...boxes.map((box) => box[3])),
+      ];
+      return {
+        bbox,
+        beginArgs: [bbox],
+        chars: ordered.map((item) => item.args),
+      };
+    })
+    .filter((value) => lineText(value));
 }
 
 function titleLike(text) {
@@ -278,11 +365,19 @@ function titleLike(text) {
 function headingText(text, size, bodySize, font = null) {
   if (!text) return false;
   if (/^(?:chapter|appendix)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) return true;
-  if (/^(?:contents|list of (?:figures|tables)|preface|acknowledg(?:e)?ments|references|index)$/i.test(text))
+  if (
+    /^(?:contents|list of (?:figures|tables)|preface|acknowledg(?:e)?ments|references|index)$/i.test(
+      text,
+    )
+  )
     return true;
   if (/^\d+(?:\.\d+)+\.?\s+\S/.test(text)) return true;
   if (/^\d+\.\s+[A-Z][A-Z\s&-]{3,}$/.test(text)) return true;
-  if (/^(?:theorem|proposition|definition|lemma|corollary|example)\s+\d/i.test(text))
+  if (
+    /^(?:theorem|proposition|definition|lemma|corollary|example)\s+\d/i.test(
+      text,
+    )
+  )
     return true;
   const bold = /bold|semibold|demi/i.test(
     `${font?.weight || ""} ${font?.name || ""}`,
@@ -304,7 +399,8 @@ function tocEntry(text) {
   return (
     text.length <= 180 &&
     /(?:^|\s)(?:\d{1,4}|[ivxlcdm]{1,10})$/i.test(text) &&
-    (/(?:\.{2,}|\s{2,})/.test(text) || /^\d+(?:\.\d+)*\.?\s+\S/.test(text))
+    (/(?:\.{2,}|\s{2,})/.test(text) ||
+      /^\d+(?:\.\d+)*\.?\s+\S/.test(text))
   );
 }
 
@@ -313,7 +409,9 @@ function isTocPage(lines) {
   if (!texts.length) return false;
   if (
     texts.slice(0, 8).some((text) =>
-      /^(?:contents|list of (?:figures|tables))(?:\s+[ivxlcdm\d]+)?$/i.test(text),
+      /^(?:contents|list of (?:figures|tables))(?:\s+[ivxlcdm\d]+)?$/i.test(
+        text,
+      ),
     )
   )
     return true;
@@ -351,7 +449,11 @@ function tableRanges(lines, bodySize) {
       if (run.length >= 3) {
         const columns = Math.round(median(run));
         const consistent = run.filter((value) => value === columns).length;
-        if (columns >= 2 && columns <= 8 && consistent / run.length >= 0.75)
+        if (
+          columns >= 2 &&
+          columns <= 8 &&
+          consistent / run.length >= 0.75
+        )
           result.push([start, end]);
       }
       start = null;
@@ -371,7 +473,14 @@ function lineBounds(lines) {
   ];
 }
 
-function paragraphBoundary(lines, index, bodySize, bodyLeft, bodyRight, baseGap) {
+function paragraphBoundary(
+  lines,
+  index,
+  bodySize,
+  bodyLeft,
+  bodyRight,
+  baseGap,
+) {
   if (index <= 0) return false;
   const previous = lines[index - 1];
   const current = lines[index];
@@ -467,7 +576,10 @@ function segmentNativeBlock(block, bodySize) {
     if (pureSection && index + 1 < lines.length) {
       const next = lines[index + 1];
       const nextText = lineText(next);
-      if (titleLike(nextText) || headingText(nextText, nativeLineSize(next), bodySize)) {
+      if (
+        titleLike(nextText) ||
+        headingText(nextText, nativeLineSize(next), bodySize)
+      ) {
         flush();
         const pair = [current, next];
         result.push({ ...block, bbox: lineBounds(pair), lines: pair });
@@ -478,7 +590,11 @@ function segmentNativeBlock(block, bodySize) {
 
     if (headingText(text, size, bodySize) || captionLine(text)) {
       flush();
-      result.push({ ...block, bbox: rect(current.bbox) || block.bbox, lines: [current] });
+      result.push({
+        ...block,
+        bbox: rect(current.bbox) || block.bbox,
+        lines: [current],
+      });
       continue;
     }
 
@@ -491,7 +607,14 @@ function segmentNativeBlock(block, bodySize) {
     if (
       body.length &&
       (listLine(lineText(body[0])) ||
-        paragraphBoundary(lines, index, bodySize, bodyLeft, bodyRight, baseGap))
+        paragraphBoundary(
+          lines,
+          index,
+          bodySize,
+          bodyLeft,
+          bodyRight,
+          baseGap,
+        ))
     )
       flush();
     body.push(current);
@@ -502,7 +625,9 @@ function segmentNativeBlock(block, bodySize) {
 
 function segmentNativeBlocks(blocks) {
   const sizes = blocks.flatMap((block) =>
-    (block.lines || []).map(nativeLineSize).filter((size) => size > 4 && size < 40),
+    (block.lines || [])
+      .map(nativeLineSize)
+      .filter((size) => size > 4 && size < 40),
   );
   const bodySize = median(sizes);
   return blocks.flatMap((block) => segmentNativeBlock(block, bodySize));
@@ -511,7 +636,9 @@ function segmentNativeBlocks(blocks) {
 function segmentedJsonTextBlocks(data) {
   const textBlocks = collectNodes(data?.blocks, "text", []);
   const sizes = textBlocks.flatMap((block) =>
-    (block.lines || []).map(jsonLineSize).filter((size) => size > 4 && size < 40),
+    (block.lines || [])
+      .map(jsonLineSize)
+      .filter((size) => size > 4 && size < 40),
   );
   const bodySize = median(sizes);
   const result = [];
@@ -556,7 +683,11 @@ function segmentedJsonTextBlocks(data) {
       const size = jsonLineSize(current);
       if (headingText(text, size, bodySize, current.font) || captionLine(text)) {
         flush();
-        result.push({ ...block, bbox: rect(current.bbox) || block.bbox, lines: [current] });
+        result.push({
+          ...block,
+          bbox: rect(current.bbox) || block.bbox,
+          lines: [current],
+        });
         continue;
       }
       if (listLine(text)) {
@@ -567,7 +698,14 @@ function segmentedJsonTextBlocks(data) {
       if (
         body.length &&
         (listLine(lineText(body[0])) ||
-          paragraphBoundary(lines, index, bodySize, bodyLeft, bodyRight, baseGap))
+          paragraphBoundary(
+            lines,
+            index,
+            bodySize,
+            bodyLeft,
+            bodyRight,
+            baseGap,
+          ))
       )
         flush();
       body.push(current);
@@ -644,10 +782,13 @@ function replayJsonBlock(walker, block) {
     const originalText = lineText(line);
     const text = `${line.markdownPrefix || ""}${originalText}`;
     const bbox =
-      rect(line.bbox) || rect(block.bbox) || [0, 0, Math.max(1, text.length), 10];
+      rect(line.bbox) ||
+      rect(block.bbox) || [0, 0, Math.max(1, text.length), 10];
     walker.beginLine?.(bbox);
     [...text].forEach((character, index) =>
-      walker.onChar?.(...syntheticCharArgs(character, index, text, bbox, line)),
+      walker.onChar?.(
+        ...syntheticCharArgs(character, index, text, bbox, line),
+      ),
     );
     walker.endLine?.();
   }
@@ -704,16 +845,20 @@ function patchStructuredWalk(mupdf) {
       const result = original.call(this, wrapped);
       if (typeof walker.onImageBlock === "function")
         for (const bbox of sourceImageRects) {
-          if (seenImages.some((existing) => overlapRatio(existing, bbox) >= 0.97))
+          if (
+            seenImages.some(
+              (existing) => overlapRatio(existing, bbox) >= 0.97,
+            )
+          )
             continue;
           walker.onImageBlock.call(walker, bbox, null, { destroy() {} });
         }
       return result;
     }
 
-    // Capture native text first so we retain the real per-character quads. The
-    // previous recovery reconstructed each line with evenly spaced characters,
-    // which erased column gaps and made table detection impossible.
+    // Capture native text first so real per-character quads survive recovery.
+    // Some MuPDF inputs collapse multiple visual baselines into one beginLine;
+    // split those using the character quads before semantic segmentation.
     const nativeBlocks = [];
     const nativeImages = [];
     let currentBlock = null;
@@ -724,14 +869,21 @@ function patchStructuredWalk(mupdf) {
         currentBlock = { bbox: rect(bbox) || bbox, lines: [] };
       },
       beginLine(...args) {
-        currentLine = { bbox: rect(args[0]) || args[0], beginArgs: args, chars: [] };
+        currentLine = {
+          bbox: rect(args[0]) || args[0],
+          beginArgs: args,
+          chars: [],
+        };
       },
       onChar(...args) {
         if (currentLine) currentLine.chars.push(args);
       },
       endLine() {
-        if (currentBlock && currentLine && lineText(currentLine))
-          currentBlock.lines.push(currentLine);
+        if (currentBlock && currentLine) {
+          for (const logicalLine of splitCollapsedNativeLine(currentLine)) {
+            if (lineText(logicalLine)) currentBlock.lines.push(logicalLine);
+          }
+        }
         currentLine = null;
       },
       endTextBlock() {
