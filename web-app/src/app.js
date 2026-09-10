@@ -99,7 +99,27 @@ function setStatus(message, done = 0, total = 0) {
   $("statusText").textContent = message;
   const pct = total ? Math.round((done / total) * 100) : 0;
   $("progress").value = pct;
+  $("progress").textContent = `${pct}%`;
   $("progressText").textContent = `${pct}%`;
+  const page = message.match(/page\s+(\d+)/i)?.[1];
+  $("progressPage").textContent = total
+    ? page
+      ? `Page ${page} of ${total}`
+      : `${done} of ${total} pages processed`
+    : message === "Ready"
+      ? "Configure the document, then start extraction."
+      : "Preparing the document workspace";
+  $("progressStage").textContent = /ocr/i.test(message)
+    ? "OCR"
+    : /complete|finished/i.test(message)
+      ? "Complete"
+      : /failed|cancel/i.test(message)
+        ? "Needs attention"
+        : /pause/i.test(message)
+          ? "Paused"
+          : /open|start|read|extract/i.test(message)
+            ? "Extracting document"
+            : "Document status";
 }
 function options() {
   return {
@@ -111,8 +131,12 @@ function options() {
 function setWorking(value) {
   state.running = value;
   $("extractButton").disabled = value;
+  $("extractButtonLabel").textContent = value
+    ? "Extraction in progress"
+    : "Extract document";
   $("pauseButton").classList.toggle("hidden", !value);
   $("cancelButton").classList.toggle("hidden", !value);
+  $("workspace").setAttribute("aria-busy", String(value));
 }
 function saveCheckpoint(checkpoint) {
   const write = savePage(checkpoint);
@@ -136,6 +160,11 @@ function activateWorkspace() {
   $("fileName").textContent = state.fileName;
   $("fileMeta").textContent =
     `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`;
+  $("topFileName").textContent = state.fileName || "Markdown workspace";
+  $("topFileMeta").textContent = state.pageCount
+    ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
+    : "Review and export imported Markdown";
+  closeMobileSidebar();
   updateOutput();
   renderLog();
 }
@@ -493,8 +522,13 @@ function updateOutput() {
   $("documentStats").textContent = enabled
     ? `${m.words.toLocaleString()} words · ${Object.keys(state.pages).length} pages · ${state.audit.status}`
     : "";
+  const statusClass = String(state.audit.status)
+    .toLowerCase()
+    .replace(/[^a-z-]/g, "");
+  $("qualityBadge").className = `status-badge ${enabled ? statusClass : "neutral"}`;
+  $("qualityBadge").textContent = enabled ? state.audit.status : "Waiting";
   $("qualityReport").innerHTML =
-    `<div><dt>Quality status</dt><dd>${state.audit.status}</dd></div><div><dt>Pages processed</dt><dd>${Object.keys(state.pages).length}</dd></div><div><dt>Issues</dt><dd>${issueCount}</dd></div><div><dt>Headings</dt><dd>${m.headings}</dd></div><div><dt>Tables</dt><dd>${m.tables}</dd></div><div><dt>Native equations</dt><dd>${m.equations}</dd></div><div><dt>Preserved visuals</dt><dd>${m.sourceVisuals}</dd></div>${state.audit.issues.map((issue) => `<div class="quality-issue"><dt>${issue.code}</dt><dd>${issue.count}</dd></div>`).join("")}`;
+    `<div class="metric-card metric-status"><dt>Quality status</dt><dd>${state.audit.status}</dd></div><div class="metric-card"><dt>Pages</dt><dd>${Object.keys(state.pages).length}</dd></div><div class="metric-card"><dt>Words</dt><dd>${m.words.toLocaleString()}</dd></div><div class="metric-card${issueCount ? " quality-issue warning" : ""}"><dt>Issues</dt><dd>${issueCount}</dd></div><div class="metric-card"><dt>Headings</dt><dd>${m.headings}</dd></div><div class="metric-card"><dt>Tables</dt><dd>${m.tables}</dd></div><div class="metric-card"><dt>Equations</dt><dd>${m.equations}</dd></div><div class="metric-card"><dt>Visuals</dt><dd>${m.sourceVisuals}</dd></div>${state.audit.issues.map((issue) => `<div class="metric-card quality-issue ${issue.severity || "warning"}"><dt>${issue.code}</dt><dd>${issue.count}</dd></div>`).join("")}`;
   renderMarkdown();
 }
 function renderMarkdown() {
@@ -716,7 +750,8 @@ function save(kind) {
 async function saveDocx() {
   try {
     $("downloadDocx").disabled = true;
-    $("downloadDocx").querySelector("span").textContent = "Building document…";
+    $("downloadDocx").querySelector("small").textContent =
+      "Building document…";
     const { markdownToDocx } = await import("./features/export/docx-export.js");
     download(
       await markdownToDocx(
@@ -736,12 +771,90 @@ async function saveDocx() {
     toast(`DOCX export failed: ${error.message}`, true);
   } finally {
     $("downloadDocx").disabled = false;
-    $("downloadDocx").querySelector("span").textContent =
+    $("downloadDocx").querySelector("small").textContent =
       "Headings, tables, lists, equations, and source visuals";
   }
 }
 
+const tabViews = {
+  markdown: "markdownEditor",
+  preview: "renderedPreview",
+  source: "sourcePreview",
+  log: "activityLog",
+};
+
+function activateTab(tab) {
+  document.querySelectorAll(".tab").forEach((candidate) => {
+    const isActive = candidate === tab;
+    candidate.classList.toggle("active", isActive);
+    candidate.setAttribute("aria-selected", String(isActive));
+    candidate.tabIndex = isActive ? 0 : -1;
+  });
+  document
+    .querySelectorAll(".tab-view")
+    .forEach((view) => view.classList.add("hidden"));
+  $(tabViews[tab.dataset.tab]).classList.remove("hidden");
+  if (tab.dataset.tab === "source") renderSource($("previewPage").value);
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  $("themeButton").setAttribute(
+    "aria-label",
+    `Switch to ${theme === "dark" ? "light" : "dark"} mode`,
+  );
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", theme === "dark" ? "#111318" : "#eef1f5");
+}
+
+function initialTheme() {
+  try {
+    return (
+      localStorage.getItem("pdf-sanitizer-theme") ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    );
+  } catch {
+    return "light";
+  }
+}
+
+function setSidebarExpanded(isExpanded) {
+  $("sidebarToggle").setAttribute("aria-expanded", String(isExpanded));
+}
+
+function closeMobileSidebar() {
+  document.body.classList.remove("sidebar-open");
+  if (matchMedia("(max-width: 820px)").matches) setSidebarExpanded(false);
+}
+
+function toggleSidebar() {
+  if (matchMedia("(max-width: 820px)").matches) {
+    const isOpen = document.body.classList.toggle("sidebar-open");
+    setSidebarExpanded(isOpen);
+    return;
+  }
+  const isCollapsed = document.body.classList.toggle("sidebar-collapsed");
+  setSidebarExpanded(!isCollapsed);
+  try {
+    localStorage.setItem("pdf-sanitizer-sidebar", isCollapsed ? "collapsed" : "open");
+  } catch {}
+}
+
+function restoreSidebarPreference() {
+  let isCollapsed = false;
+  try {
+    isCollapsed = localStorage.getItem("pdf-sanitizer-sidebar") === "collapsed";
+  } catch {}
+  document.body.classList.toggle("sidebar-collapsed", isCollapsed);
+  setSidebarExpanded(
+    matchMedia("(max-width: 820px)").matches ? false : !isCollapsed,
+  );
+}
+
 function bind() {
+  applyTheme(initialTheme());
+  restoreSidebarPreference();
   $("pdfInput").onchange = (e) => openFile(e.target.files[0]);
   const dz = $("dropZone");
   ["dragenter", "dragover"].forEach((n) =>
@@ -808,26 +921,24 @@ function bind() {
     clearTimeout(state.saveTimer);
     state.saveTimer = setTimeout(persist, 700);
   };
-  document.querySelectorAll(".tab").forEach(
-    (tab) =>
-      (tab.onclick = () => {
-        document
-          .querySelectorAll(".tab")
-          .forEach((t) => t.classList.toggle("active", t === tab));
-        document
-          .querySelectorAll(".tab-view")
-          .forEach((v) => v.classList.add("hidden"));
-        $(
-          {
-            markdown: "markdownEditor",
-            preview: "renderedPreview",
-            source: "sourcePreview",
-            log: "activityLog",
-          }[tab.dataset.tab],
-        ).classList.remove("hidden");
-        if (tab.dataset.tab === "source") renderSource($("previewPage").value);
-      }),
-  );
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.onclick = () => activateTab(tab);
+    tab.onkeydown = (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
+        return;
+      event.preventDefault();
+      const tabs = [...document.querySelectorAll(".tab")];
+      const current = tabs.indexOf(tab);
+      const target =
+        event.key === "Home"
+          ? tabs[0]
+          : event.key === "End"
+            ? tabs.at(-1)
+            : tabs[(current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
+      activateTab(target);
+      target.focus();
+    };
+  });
   $("previewPage").onchange = (e) => renderSource(e.target.value);
   $("previousPage").onclick = () =>
     renderSource(Number($("previewPage").value) - 1);
@@ -864,6 +975,27 @@ function bind() {
     renderLog();
   };
   $("logLevel").onchange = renderLog;
+  $("themeButton").onclick = () => {
+    const theme =
+      document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    applyTheme(theme);
+    try {
+      localStorage.setItem("pdf-sanitizer-theme", theme);
+    } catch {}
+  };
+  $("sidebarToggle").onclick = toggleSidebar;
+  $("sidebarBackdrop").onclick = closeMobileSidebar;
+  window.addEventListener("resize", () => {
+    if (!matchMedia("(max-width: 820px)").matches)
+      document.body.classList.remove("sidebar-open");
+  });
+  window.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      $("searchInput").focus();
+    }
+    if (event.key === "Escape") closeMobileSidebar();
+  });
   let installPrompt;
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
