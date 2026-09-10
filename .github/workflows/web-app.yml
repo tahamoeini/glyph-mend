@@ -1,10 +1,10 @@
-name: Browser app
+name: GlyphMend browser app
 on:
   push:
     branches: [main]
-    paths: ["web-app/**", ".github/workflows/web-app.yml"]
+    paths: ["branding.json", "brand/**", "web-app/**", ".github/workflows/web-app.yml"]
   pull_request:
-    paths: ["web-app/**", ".github/workflows/web-app.yml"]
+    paths: ["branding.json", "brand/**", "web-app/**", ".github/workflows/web-app.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,7 +32,7 @@ jobs:
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v7
         with:
-          name: pdf-sanitizer-browser
+          name: glyphmend-browser
           path: web-app/dist
           if-no-files-found: error
           retention-days: 14

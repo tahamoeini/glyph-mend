@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 from typing import Callable
 
+from .branding import get_brand
 from .config import ExtractionConfig
 from .docx_export import markdown_to_docx
 from .progress import ProgressEvent
@@ -56,13 +57,14 @@ def _parse_positive_int(value: str, name: str) -> int:
 
 
 def main() -> int:
+    brand = get_brand()
     try:
         import tkinter as tk
         from tkinter import filedialog, messagebox, ttk
         from tkinter.scrolledtext import ScrolledText
     except ImportError:
         print(
-            "pdf-sanitizer GUI requires Tkinter. On Windows/macOS it is normally included; "
+            f"{brand.name} GUI requires Tkinter. On Windows/macOS it is normally included; "
             "on minimal Linux installations install the system Tk package (for example python3-tk).",
             file=sys.stderr,
         )
@@ -71,7 +73,7 @@ def main() -> int:
     class App:
         def __init__(self, root: tk.Tk):
             self.root = root
-            self.root.title("PDF Sanitizer")
+            self.root.title(brand.name)
             self.root.geometry("1040x800")
             self.root.minsize(900, 700)
             self.events: queue.Queue[tuple[str, object]] = queue.Queue()
@@ -122,11 +124,8 @@ def main() -> int:
 
             header = ttk.Frame(outer)
             header.pack(fill="x", pady=(0, 8))
-            ttk.Label(header, text="PDF Sanitizer", font=("TkDefaultFont", 16, "bold")).pack(side="left")
-            ttk.Label(
-                header,
-                text="Local-first extraction, restart-safe checkpoints, and DOCX export",
-            ).pack(side="left", padx=14)
+            ttk.Label(header, text=brand.name, font=("TkDefaultFont", 16, "bold")).pack(side="left")
+            ttk.Label(header, text=brand.slogan).pack(side="left", padx=14)
 
             tabs = ttk.Notebook(outer)
             tabs.pack(fill="both", expand=True)
@@ -553,7 +552,7 @@ def main() -> int:
                         self.status.set("Failed")
                         self._append(f"ERROR: {payload}")
                         self._finish()
-                        messagebox.showerror("PDF Sanitizer", str(payload))
+                        messagebox.showerror(brand.name, str(payload))
             except queue.Empty:
                 pass
             self.root.after(100, self._poll)

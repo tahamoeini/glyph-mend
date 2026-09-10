@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from .branding import get_brand
 from .config import ExtractionConfig
 from .docx_export import markdown_to_docx
 from .pipeline import extract_pdf
@@ -16,6 +17,7 @@ _COMMANDS = {"extract", "combine", "md-to-docx", "gui"}
 
 
 def _add_extraction_options(parser: argparse.ArgumentParser) -> None:
+    brand = get_brand()
     parser.add_argument("input", type=Path, help="Input PDF file")
     parser.add_argument("-o", "--output", type=Path, help="Output Markdown path; defaults to <input>.md")
     parser.add_argument("--password", help="Password for encrypted PDFs")
@@ -66,7 +68,7 @@ def _add_extraction_options(parser: argparse.ArgumentParser) -> None:
     checkpoint_group.add_argument(
         "--restart",
         action="store_true",
-        help="Discard a compatible existing pdf-sanitizer workspace and start again",
+        help=f"Discard a compatible existing {brand.name} workspace and start again",
     )
     checkpoint_group.add_argument(
         "--no-checkpoints",
@@ -98,15 +100,20 @@ def _add_extraction_options(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    brand = get_brand()
     parser = argparse.ArgumentParser(
-        prog="pdf-sanitizer",
-        description="Extract PDFs into restart-safe semantic Markdown, use a desktop GUI, and convert Markdown to DOCX.",
+        prog=brand.cli_name,
+        description=(
+            f"{brand.slogan} "
+            "Extract PDFs into restart-safe semantic Markdown, use a desktop GUI, "
+            "and convert Markdown to DOCX."
+        ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     extract_parser = subparsers.add_parser(
         "extract",
-        help="Extract a PDF to checkpointed Markdown (default command for backward compatibility)",
+        help="Extract a PDF to checkpointed Markdown (default command for compatibility)",
     )
     _add_extraction_options(extract_parser)
 
@@ -143,7 +150,8 @@ def _normalize_argv(argv: list[str] | None) -> list[str]:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in _COMMANDS or args[0] in {"-h", "--help"}:
         return args
-    # Preserve the original `pdf-sanitizer input.pdf ...` interface.
+    # Preserve the historical `pdf-sanitizer input.pdf ...` and the canonical
+    # `glyphmend input.pdf ...` shorthand without requiring an explicit subcommand.
     return ["extract", *args]
 
 
@@ -222,6 +230,10 @@ def _run_extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def _error_prefix() -> str:
+    return get_brand().cli_name
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(_normalize_argv(argv))
 
@@ -231,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             output = combine_workspace(args.workspace, args.output)
         except Exception as exc:
-            print(f"pdf-sanitizer: {exc}", file=sys.stderr)
+            print(f"{_error_prefix()}: {exc}", file=sys.stderr)
             return 1
         print(output)
         return 0
@@ -245,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
                 source_pdf=args.source_pdf,
             )
         except Exception as exc:
-            print(f"pdf-sanitizer: {exc}", file=sys.stderr)
+            print(f"{_error_prefix()}: {exc}", file=sys.stderr)
             return 1
         print(output)
         return 0
