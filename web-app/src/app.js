@@ -26,7 +26,9 @@ import { download, stem } from "./shared/download.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 registerSW({ immediate: true });
 const $ = (id) => document.getElementById(id);
-const EXTRACTION_VERSION = 6;
+// OCR runtime cache and structural recovery changed in this release. Existing
+// checkpoints must not be presented as results from the current pipeline.
+const EXTRACTION_VERSION = 7;
 const state = {
   fileName: "",
   fileSize: 0,
@@ -331,6 +333,14 @@ function runBatch(batch, wanted) {
         );
         if (data.progress === 1)
           log("ocr", `OCR completed for page ${data.page}`, {}, "debug");
+      }
+      if (data.type === "ocr-error") {
+        log(
+          "ocr-error",
+          `OCR initialization failed for page ${data.page}`,
+          { error: data.message },
+          "warning",
+        );
       }
       if (data.type === "page-error") {
         state.warnings.push(data);
