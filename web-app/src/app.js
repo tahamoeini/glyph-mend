@@ -22,6 +22,7 @@ import {
   serializeWorkspace,
   startWorkspace,
 } from "./storage/workspace-db.js";
+import { DEFAULT_BRAND } from "./shared/brand.js";
 import { download, stem } from "./shared/download.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -32,7 +33,12 @@ if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location
   caches?.keys?.().then((names) =>
     Promise.all(
       names
-        .filter((name) => name.startsWith("workbox-") || name.startsWith("pdf-sanitizer"))
+        .filter(
+          (name) =>
+            name.startsWith("workbox-") ||
+            name.startsWith("glyphmend") ||
+            name.startsWith("pdf-sanitizer"),
+        )
         .map((name) => caches.delete(name)),
     ),
   );
@@ -83,7 +89,10 @@ const optionIds = [
   "preserveMarkers",
   "strict",
 ];
-const appearanceStorageKey = "pdf-sanitizer-theme";
+const appearanceStorageKey = "glyphmend-theme";
+const legacyAppearanceStorageKey = "pdf-sanitizer-theme";
+const sidebarStorageKey = "glyphmend-sidebar";
+const legacySidebarStorageKey = "pdf-sanitizer-sidebar";
 const media = {
   colorScheme: queryMedia("(prefers-color-scheme: dark)"),
   reducedMotion: queryMedia("(prefers-reduced-motion: reduce)"),
@@ -93,6 +102,18 @@ const media = {
   coarsePointer: queryMedia("(pointer: coarse)"),
   mobileSidebar: queryMedia("(max-width: 820px)"),
 };
+
+function currentBrand() {
+  return globalThis.__GLYPHMEND_BRAND__ || DEFAULT_BRAND;
+}
+
+function brandFileToken() {
+  return (
+    currentBrand()
+      .cliName.replace(/[^a-z0-9._-]+/gi, "-")
+      .replace(/^-+|-+$/g, "") || "glyphmend"
+  );
+}
 
 function queryMedia(query) {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -118,10 +139,15 @@ function onMediaChange(queryList, listener) {
 
 function readStoredTheme() {
   try {
-    const storedTheme = localStorage.getItem(appearanceStorageKey);
-    return storedTheme === "light" || storedTheme === "dark"
-      ? storedTheme
-      : null;
+    const storedTheme =
+      localStorage.getItem(appearanceStorageKey) ||
+      localStorage.getItem(legacyAppearanceStorageKey);
+    if (storedTheme === "light" || storedTheme === "dark") {
+      if (!localStorage.getItem(appearanceStorageKey))
+        localStorage.setItem(appearanceStorageKey, storedTheme);
+      return storedTheme;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -847,7 +873,7 @@ function save(kind) {
         ],
         { type: "application/json" },
       ),
-      `${base}.pdfsanitizer.json`,
+      `${base}.${brandFileToken()}.json`,
     );
   if (kind === "report")
     download(
@@ -954,14 +980,19 @@ function toggleSidebar() {
   const isCollapsed = document.body.classList.toggle("sidebar-collapsed");
   setSidebarExpanded(!isCollapsed);
   try {
-    localStorage.setItem("pdf-sanitizer-sidebar", isCollapsed ? "collapsed" : "open");
+    localStorage.setItem(sidebarStorageKey, isCollapsed ? "collapsed" : "open");
   } catch {}
 }
 
 function restoreSidebarPreference() {
   let isCollapsed = false;
   try {
-    isCollapsed = localStorage.getItem("pdf-sanitizer-sidebar") === "collapsed";
+    const stored =
+      localStorage.getItem(sidebarStorageKey) ||
+      localStorage.getItem(legacySidebarStorageKey);
+    isCollapsed = stored === "collapsed";
+    if (stored && !localStorage.getItem(sidebarStorageKey))
+      localStorage.setItem(sidebarStorageKey, stored);
   } catch {}
   document.body.classList.toggle("sidebar-collapsed", isCollapsed);
   syncSidebarResponsiveState();
@@ -1020,7 +1051,7 @@ function bind() {
       return;
     }
     const message =
-      "Reset all local PDF Sanitizer data in this browser? This removes saved documents, checkpoints, OCR language data, offline cache, and appearance preferences. Export anything you want to keep first.";
+      `Reset all local ${currentBrand().name} data in this browser? This removes saved documents, checkpoints, OCR language data, offline cache, and appearance preferences. Export anything you want to keep first.`;
     if (!confirm(message)) return;
     try {
       await resetClientStorage();
