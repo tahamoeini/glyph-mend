@@ -1,1 +1,1 @@
-{"name":"PDF Sanitizer Browser Edition","short_name":"PDF Sanitizer","start_url":"./","display":"standalone","background_color":"#f2f4ef","theme_color":"#17211d","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{"name":"GlyphMend Browser Edition","short_name":"GlyphMend","description":"Faithful document reconstruction from PDF to structured Markdown.","start_url":"./","display":"standalone","background_color":"#f2f4ef","theme_color":"#17211d","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

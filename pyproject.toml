@@ -3,9 +3,9 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pdf-sanitizer"
+name = "glyphmend"
 version = "0.3.3"
-description = "Local-first PDF to restart-safe semantic Markdown extractor with desktop GUI and DOCX export."
+description = "Faithful document reconstruction from PDF to structured Markdown."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Taha Moeini" }]
@@ -23,12 +23,19 @@ dev = [
 ]
 
 [project.scripts]
+glyphmend = "glyphmend.cli:main"
+glyphmend-gui = "glyphmend.gui:main"
+md-to-docx = "glyphmend.cli:docx_main"
+# Compatibility aliases for scripts installed before the GlyphMend rebrand.
 pdf-sanitizer = "pdf_sanitizer.cli:main"
 pdf-sanitizer-gui = "pdf_sanitizer.gui:main"
-md-to-docx = "pdf_sanitizer.cli:docx_main"
+
+[project.urls]
+Homepage = "https://github.com/tahamoeini/glyph-mend"
+Repository = "https://github.com/tahamoeini/glyph-mend"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pdf_sanitizer"]
+packages = ["src/glyphmend", "src/pdf_sanitizer"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

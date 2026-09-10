@@ -57,7 +57,12 @@ export default defineConfig({
         "tessdata/*",
       ],
       manifest: false,
-      workbox: { maximumFileSizeToCacheInBytes: 20 * 1024 * 1024 },
+      workbox: {
+        // Keep brand identity runtime-configurable after build. The loader stores
+        // the last successful configuration locally for offline use.
+        globIgnores: ["branding.json", "brand/**"],
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+      },
     }),
   ],
   test: { environment: "jsdom", include: ["src/**/*.test.js"] },

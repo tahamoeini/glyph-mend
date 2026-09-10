@@ -1,19 +1,20 @@
 {
-    "name": "pdf-sanitizer-browser",
+    "name": "glyphmend-browser",
     "private": true,
     "version": "2.0.0",
     "type": "module",
     "scripts": {
+        "brand:sync": "node ./scripts/sync-brand.mjs",
         "native:deps": "node ./scripts/ensure-native-deps.mjs",
-        "predev": "npm run native:deps",
+        "predev": "npm run brand:sync && npm run native:deps",
         "dev": "vite",
-        "prebuild": "npm run native:deps",
+        "prebuild": "npm run brand:sync && npm run native:deps",
         "build": "vite build",
-        "prepreview": "npm run native:deps",
+        "prepreview": "npm run brand:sync && npm run native:deps",
         "preview": "vite preview",
-        "pretest": "npm run native:deps",
+        "pretest": "npm run brand:sync && npm run native:deps",
         "test": "vitest run",
-        "pretest:e2e": "npm run native:deps",
+        "pretest:e2e": "npm run brand:sync && npm run native:deps",
         "test:e2e": "playwright test"
     },
     "dependencies": {
