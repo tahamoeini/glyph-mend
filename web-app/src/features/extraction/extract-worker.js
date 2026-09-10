@@ -1,4 +1,4 @@
-import { createWorker as createOcrWorker } from "tesseract.js";
+import { createSafeWorker as createOcrWorker } from "./tesseract-safe-worker.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 

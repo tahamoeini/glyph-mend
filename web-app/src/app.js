@@ -25,7 +25,20 @@ import {
 import { download, stem } from "./shared/download.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-registerSW({ immediate: true });
+if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
+  navigator.serviceWorker?.getRegistrations?.().then((registrations) =>
+    Promise.all(registrations.map((registration) => registration.unregister())),
+  );
+  caches?.keys?.().then((names) =>
+    Promise.all(
+      names
+        .filter((name) => name.startsWith("workbox-") || name.startsWith("pdf-sanitizer"))
+        .map((name) => caches.delete(name)),
+    ),
+  );
+} else {
+  registerSW({ immediate: true });
+}
 const $ = (id) => document.getElementById(id);
 // OCR runtime cache and structural recovery changed in this release. Existing
 // checkpoints must not be presented as results from the current pipeline.
