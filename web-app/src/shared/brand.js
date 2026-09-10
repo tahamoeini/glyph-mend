@@ -16,6 +16,14 @@ function clean(value, fallback) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function resolveUrl(value, base = globalThis.document?.baseURI) {
+  try {
+    return new URL(value, base).toString();
+  } catch {
+    return value;
+  }
+}
+
 export function normalizeBrand(candidate = {}) {
   return Object.freeze(
     Object.fromEntries(
@@ -47,7 +55,7 @@ export async function loadBrand({ url = "./branding.json", fetchImpl = globalThi
   if (typeof fetchImpl !== "function") return cached || DEFAULT_BRAND;
 
   try {
-    const response = await fetchImpl(new URL(url, document.baseURI), { cache: "no-store" });
+    const response = await fetchImpl(resolveUrl(url), { cache: "no-store" });
     if (!response.ok) throw new Error(`Brand config request failed with ${response.status}`);
     const brand = normalizeBrand(await response.json());
     cacheBrand(brand);
@@ -68,8 +76,16 @@ export function applyBrand(brand, root = document) {
     node.textContent = resolved.slogan;
   });
   root.querySelectorAll("[data-brand-logo]").forEach((node) => {
-    node.setAttribute("src", new URL(resolved.logoPath, doc.baseURI).toString());
+    node.setAttribute("src", resolveUrl(resolved.logoPath, doc.baseURI));
     node.setAttribute("alt", resolved.logoAlt);
+    // The former text monogram sat on an accent-filled square. A neutral surface
+    // keeps the configurable logo's own colors intact instead of recoloring it.
+    node.style.filter = "none";
+    const mark = node.closest(".brand-mark");
+    if (mark) {
+      mark.style.background = "var(--material-content-elevated)";
+      mark.style.border = "1px solid var(--border-subtle)";
+    }
   });
   root.querySelectorAll("[data-brand-aria-label]").forEach((node) => {
     node.setAttribute("aria-label", resolved.name);
