@@ -1,3 +1,5 @@
+const sourcePageByStructuredText = new WeakMap();
+
 function rect(value) {
   if (Array.isArray(value) && value.length >= 4)
     return value.slice(0, 4).map(Number);
@@ -66,6 +68,59 @@ function collectImageRects(nodes, result) {
     collectImageRects(node.blocks, result);
     collectImageRects(node.children, result);
   }
+}
+
+function matrixValues(value) {
+  if (Array.isArray(value) || ArrayBuffer.isView(value)) {
+    const values = Array.from(value).slice(0, 6).map(Number);
+    return values.length === 6 && values.every(Number.isFinite) ? values : null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const values = [value.a, value.b, value.c, value.d, value.e, value.f].map(Number);
+  return values.every(Number.isFinite) ? values : null;
+}
+
+function imageRectFromMatrix(matrix) {
+  const values = matrixValues(matrix);
+  if (!values) return null;
+  const [a, b, c, d, e, f] = values;
+  const points = [
+    [e, f],
+    [a + e, b + f],
+    [c + e, d + f],
+    [a + c + e, b + d + f],
+  ];
+  const xs = points.map((point) => point[0]);
+  const ys = points.map((point) => point[1]);
+  const bbox = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  return bbox.every(Number.isFinite) && bbox[2] > bbox[0] && bbox[3] > bbox[1]
+    ? bbox
+    : null;
+}
+
+function pageImageRects(page, mupdf) {
+  if (!page?.run || !mupdf?.Device) return [];
+  const result = [];
+  const capture = (_image, ctm) => {
+    const bbox = imageRectFromMatrix(ctm);
+    if (bbox) result.push(bbox);
+  };
+  let device;
+  try {
+    device = new mupdf.Device({
+      fillImage: capture,
+      fillImageMask: capture,
+    });
+    page.run(device, mupdf.Matrix?.identity || [1, 0, 0, 1, 0, 0]);
+    device.close?.();
+  } catch {
+    try {
+      device?.close?.();
+    } catch {
+      /* source-image recovery remains best effort */
+    }
+  }
+  return dedupeRects(result);
 }
 
 function overlapRatio(a, b) {
@@ -599,13 +654,24 @@ function replayJsonBlock(walker, block) {
   walker.endTextBlock?.();
 }
 
+function recoveredImageRects(structured, mupdf) {
+  const page = sourcePageByStructuredText.get(structured);
+  return dedupeRects([
+    ...jsonImageRects(structured),
+    ...pageImageRects(page, mupdf),
+  ]);
+}
+
 function patchPageExtraction(mupdf) {
   const prototype = mupdf?.Page?.prototype;
   if (!prototype?.toStructuredText || prototype.__pdfSanitizerStructuredOptions)
     return;
   const original = prototype.toStructuredText;
   prototype.toStructuredText = function toStructuredText(options = "") {
-    return original.call(this, enrichStructuredTextOptions(options));
+    const structured = original.call(this, enrichStructuredTextOptions(options));
+    if (structured && typeof structured === "object")
+      sourcePageByStructuredText.set(structured, this);
+    return structured;
   };
   Object.defineProperty(prototype, "__pdfSanitizerStructuredOptions", {
     value: true,
@@ -620,11 +686,12 @@ function patchStructuredWalk(mupdf) {
 
   prototype.walk = function walkWithStructuredRecovery(walker = {}) {
     const data = parseStructured(this);
-    const jsonImages = jsonImageRects(this);
+    const sourceImageRects = recoveredImageRects(this, mupdf);
     const seenImages = [];
 
     // Image-only consumers do not need text buffering. Keep the native path and
-    // supplement image regions MuPDF omitted from walk().
+    // supplement image regions omitted by StructuredText using both its JSON
+    // structure and the page's direct image draw operations.
     if (typeof walker.beginTextBlock !== "function") {
       const wrapped = {
         ...walker,
@@ -636,7 +703,7 @@ function patchStructuredWalk(mupdf) {
       };
       const result = original.call(this, wrapped);
       if (typeof walker.onImageBlock === "function")
-        for (const bbox of jsonImages) {
+        for (const bbox of sourceImageRects) {
           if (seenImages.some((existing) => overlapRatio(existing, bbox) >= 0.97))
             continue;
           walker.onImageBlock.call(walker, bbox, null, { destroy() {} });
@@ -687,11 +754,11 @@ function patchStructuredWalk(mupdf) {
     }
 
     if (typeof walker.onImageBlock === "function") {
-      if (jsonImages.length) {
-        // Prefer asJSON image geometry when present. It is already deduplicated
-        // and coalesced, and the extraction worker crops from the source page so
-        // it does not need a live image object here.
-        for (const bbox of jsonImages)
+      if (sourceImageRects.length) {
+        // The extraction worker crops the original page from the bbox, so a
+        // placeholder image handle is sufficient and avoids depending on
+        // StructuredText retaining an Image object across the replay boundary.
+        for (const bbox of sourceImageRects)
           walker.onImageBlock.call(walker, bbox, null, { destroy() {} });
         for (const item of nativeImages) item.image?.destroy?.();
       } else {
