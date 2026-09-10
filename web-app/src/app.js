@@ -251,7 +251,7 @@ function activateWorkspace() {
   closeMobileSidebar();
   updateOutput();
   renderLog();
-  requestAnimationFrame(syncTabIndicator);
+  requestAnimationFrame(() => syncTabIndicator());
 }
 function wasmUrl() {
   return new URL("./wasm/", location.href).href;
@@ -939,7 +939,7 @@ function bind() {
   syncAdaptivePreferences();
   syncThemePreference();
   restoreSidebarPreference();
-  requestAnimationFrame(syncTabIndicator);
+  requestAnimationFrame(() => syncTabIndicator());
   $("pdfInput").onchange = (e) => openFile(e.target.files[0]);
   const dz = $("dropZone");
   ["dragenter", "dragover"].forEach((n) =>

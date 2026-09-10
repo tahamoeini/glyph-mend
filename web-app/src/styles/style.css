@@ -23,8 +23,8 @@
     --border-emphasis: rgba(17, 24, 38, 0.24);
     --text-primary: #131821;
     --text-secondary: #4f5968;
-    --text-tertiary: #687285;
-    --text-quaternary: #7d8798;
+    --text-tertiary: #5f697a;
+    --text-quaternary: #697486;
     --text-on-accent: #ffffff;
     --accent: #0a84ff;
     --accent-strong: #0066d6;
@@ -260,6 +260,7 @@
     width: 1rem;
     height: 1rem;
     display: block;
+    pointer-events: none;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.9;
@@ -636,10 +637,6 @@
     padding: 0 10px;
     display: inline-grid;
     place-items: center;
-  }
-
-  .topbar .icon-button {
-    min-width: calc(var(--control-hit-size) - 2px);
   }
 
   .welcome-copy {
@@ -1190,7 +1187,6 @@
     overflow-x: auto;
     border-radius: var(--radius-group);
     background: var(--material-content-inset);
-    scrollbar-width: none;
   }
 
   .tabs::-webkit-scrollbar {
@@ -1359,8 +1355,8 @@
   }
 
   .page-controls .icon-button {
-    min-width: 32px;
-    min-height: 32px;
+    min-width: var(--control-hit-size);
+    min-height: var(--control-hit-size);
     padding: 0 8px;
     border: 0;
     background: transparent;
@@ -1478,7 +1474,7 @@
   }
 
   .text-button {
-    min-height: auto;
+    min-height: 0;
     padding: 4px 0;
     border: 0;
     background: transparent;
@@ -2229,8 +2225,7 @@
     transform: none;
   }
 
-  :root[data-motion="reduce"] body.sidebar-open .sidebar,
-  body.sidebar-open :root[data-motion="reduce"] .sidebar {
+  :root[data-motion="reduce"] body.sidebar-open .sidebar {
     opacity: 1;
   }
 }

@@ -4,6 +4,15 @@ import { describe, expect, it } from "vitest";
 
 const html = readFileSync("index.html", "utf8");
 const document = new JSDOM(html).window.document;
+const contentSurfaceIds = [
+  "welcome",
+  "dropZone",
+  "markdownEditor",
+  "renderedPreview",
+  "sourcePreview",
+  "activityLog",
+  "qualityReport",
+];
 
 const legacyControlIds = [
   "pdfInput",
@@ -111,5 +120,53 @@ describe("application UI contract", () => {
       expect(document.getElementById(tab.getAttribute("aria-controls"))).not.toBeNull();
     });
     expect(document.querySelectorAll(".downloads > button")).toHaveLength(5);
+  });
+
+  it("keeps liquid glass restricted to functional chrome", () => {
+    expect(document.querySelectorAll(".liquid-glass")).toHaveLength(3);
+    expect(document.querySelector(".topbar.liquid-glass-toolbar")).not.toBeNull();
+    expect(document.getElementById("settingsSidebar").classList.contains("liquid-glass-sidebar")).toBe(true);
+    expect(document.querySelector(".page-controls.liquid-glass-capsule")).not.toBeNull();
+
+    contentSurfaceIds.forEach((id) => {
+      const element = document.getElementById(id);
+      expect(element?.classList.contains("liquid-glass")).toBe(false);
+      expect(element?.className.includes("glass-panel")).toBe(false);
+    });
+  });
+
+  it("uses a shared selection indicator for tabs and preserves roving tabindex", () => {
+    const tablist = document.querySelector('.tabs[role="tablist"]');
+    const indicator = tablist.querySelector(".liquid-selection-indicator");
+    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+
+    expect(indicator).not.toBeNull();
+    expect(tablist.firstElementChild).toBe(indicator);
+    expect(tabs).toHaveLength(4);
+    expect(tabs.filter((tab) => tab.classList.contains("active"))).toHaveLength(1);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
+    expect(tabs[0].tabIndex).toBe(0);
+    tabs.slice(1).forEach((tab) => {
+      expect(tab.getAttribute("aria-selected")).toBe("false");
+      expect(tab.tabIndex).toBe(-1);
+    });
+  });
+
+  it("provides a consistent inline svg icon system for interactive chrome", () => {
+    const sprite = document.querySelector(".icon-sprite");
+
+    expect(sprite).not.toBeNull();
+    expect(sprite.querySelectorAll("symbol").length).toBeGreaterThanOrEqual(8);
+    [
+      "themeButton",
+      "sidebarToggle",
+      "extractButton",
+      "previousPage",
+      "nextPage",
+      "zoomOut",
+      "zoomIn",
+    ].forEach((id) => {
+      expect(document.getElementById(id)?.querySelector("svg.icon")).not.toBeNull();
+    });
   });
 });
