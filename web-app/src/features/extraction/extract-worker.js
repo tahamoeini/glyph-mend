@@ -12,11 +12,7 @@ let ocrDisabledReason = "";
 // Keep Tesseract's IndexedDB data separate from older releases. A stale or
 // partially-written traineddata file otherwise makes every later OCR batch
 // fail during initialization, even though the packaged language asset is fine.
-const OCR_CACHE_PATH = "pdf-sanitizer-ocr-v8";
-
-function trimSlash(value) {
-  return String(value || "").replace(/\/+$/, "");
-}
+const OCR_CACHE_PATH = "pdf-sanitizer-ocr-v9";
 
 async function resetOcrWorker() {
   try {
@@ -26,41 +22,6 @@ async function resetOcrWorker() {
   } finally {
     ocrWorker = null;
   }
-}
-
-function installOcrGuards() {
-  if (typeof self === "undefined" || self.__ocrGuardsInstalled) return;
-  self.__ocrGuardsInstalled = true;
-
-  const report = (kind, detail) =>
-    self.postMessage({
-      type: "ocr-error",
-      page: ocrProgressPage,
-      message: `${kind}: ${detail}`,
-    });
-
-  self.addEventListener("error", (event) => {
-    const message = event?.message || "Unknown worker error";
-    const filename = event?.filename || "";
-    if (/tesseract/i.test(filename) || /initialization failed/i.test(message)) {
-      report("Unhandled OCR runtime error", message);
-      event.preventDefault();
-      resetOcrWorker();
-    }
-  });
-
-  self.addEventListener("unhandledrejection", (event) => {
-    const reason = event?.reason;
-    const message =
-      typeof reason === "string"
-        ? reason
-        : reason?.message || JSON.stringify(reason || "Unknown rejection");
-    if (/tesseract|initialization failed|Cannot read properties of undefined \(reading 'resolve'\)/i.test(message)) {
-      report("Unhandled OCR rejection", message);
-      event.preventDefault();
-      resetOcrWorker();
-    }
-  });
 }
 
 const LATEX_SYMBOLS = new Map([
@@ -664,44 +625,22 @@ async function recognizePage(page, options, paths) {
   // Set the page first so those events are attributable to the page that
   // triggered OCR rather than being logged as "page undefined".
   ocrProgressPage = options.page;
-  installOcrGuards();
   if (!ocrWorker) {
-    const workerPath = trimSlash(paths.workerPath);
-    const corePath = trimSlash(paths.corePath);
-    const langPath = trimSlash(paths.langPath);
-    const failures = [];
-    for (const cacheMethod of ["refresh", "write", "none"]) {
-      try {
-        ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
-          workerPath,
-          corePath,
-          langPath,
-          cachePath: OCR_CACHE_PATH,
-          cacheMethod,
-          workerBlobURL: false,
-          logger: (event) =>
-            self.postMessage({
-              type: "ocr-progress",
-              page: ocrProgressPage,
-              status: event.status,
-              progress: event.progress,
-            }),
-        });
-        break;
-      } catch (error) {
-        const message = error?.message || String(error);
-        failures.push(`${cacheMethod}: ${message}`);
+    ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
+      workerPath: paths.workerPath,
+      corePath: paths.corePath,
+      langPath: paths.langPath,
+      cachePath: OCR_CACHE_PATH,
+      cacheMethod: "write",
+      workerBlobURL: false,
+      logger: (event) =>
         self.postMessage({
-          type: "ocr-error",
+          type: "ocr-progress",
           page: ocrProgressPage,
-          message: `OCR init attempt failed (${cacheMethod} cache): ${message}`,
-        });
-        await resetOcrWorker();
-      }
-    }
-    if (!ocrWorker) {
-      throw new Error(`OCR initialization failed after retries: ${failures.join(" | ")}`);
-    }
+          status: event.status,
+          progress: event.progress,
+        }),
+    });
   }
   const image = cropPage(
     page,

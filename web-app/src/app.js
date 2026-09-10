@@ -29,7 +29,7 @@ registerSW({ immediate: true });
 const $ = (id) => document.getElementById(id);
 // OCR runtime cache and structural recovery changed in this release. Existing
 // checkpoints must not be presented as results from the current pipeline.
-const EXTRACTION_VERSION = 8;
+const EXTRACTION_VERSION = 9;
 const state = {
   fileName: "",
   fileSize: 0,

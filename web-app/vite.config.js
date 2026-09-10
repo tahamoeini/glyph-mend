@@ -40,9 +40,8 @@ export default defineConfig({
           dest: "tesseract",
         },
         {
-          // Use the package's supported default model. The smaller best_int
-          // variant cannot initialize with the bundled Tesseract 7 LSTM core.
-          src: "node_modules/@tesseract.js-data/eng/4.0.0/eng.traineddata.gz",
+          // Tesseract 7's LSTM-only core uses this bundled integer model.
+          src: "node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz",
           dest: "tessdata",
         },
       ],
