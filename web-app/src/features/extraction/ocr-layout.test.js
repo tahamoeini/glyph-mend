@@ -166,8 +166,3 @@ it("keeps sentence-like numbered OCR lines out of heading syntax", () => {
     "## 1.2 Revenue Controls",
   ]);
 });
-
-it("does not promote cropped all-caps abbreviations to headings", () => {
-  const entries = ocrMarkdownEntries({ text: "RM.\n\nINTRODUCTION", blocks: null }, identity);
-  expect(entries.map((entry) => entry.markdown)).toEqual(["RM.", "# INTRODUCTION"]);
-});

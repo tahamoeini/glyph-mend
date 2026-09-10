@@ -32,7 +32,7 @@ export default defineConfig({
         { src: "node_modules/mupdf/dist/mupdf-wasm.js", dest: "mupdf" },
         { src: "node_modules/mupdf/dist/mupdf-wasm.wasm", dest: "mupdf" },
         {
-          src: "node_modules/tesseract.js-core/*.{wasm,wasm.js}",
+          src: "node_modules/tesseract.js-core/*.wasm.js",
           dest: "tesseract-core",
         },
         {
@@ -40,7 +40,6 @@ export default defineConfig({
           dest: "tesseract",
         },
         {
-          // Tesseract 7's LSTM-only core uses this bundled integer model.
           src: "node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz",
           dest: "tessdata",
         },

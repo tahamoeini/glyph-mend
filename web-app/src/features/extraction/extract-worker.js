@@ -1,4 +1,4 @@
-import { createSafeWorker as createOcrWorker } from "./tesseract-safe-worker.js";
+import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 
@@ -8,20 +8,6 @@ const FORMULA_CUE =
 let ocrWorker;
 let mupdf;
 let ocrProgressPage;
-let ocrDisabledReason = "";
-// Keep Tesseract's IndexedDB data separate from older releases. A stale or
-// partially-written traineddata file otherwise makes every later OCR batch
-// fail during initialization, even though the packaged language asset is fine.
-
-async function resetOcrWorker() {
-  try {
-    await ocrWorker?.terminate?.();
-  } catch {
-    /* Best effort cleanup */
-  } finally {
-    ocrWorker = null;
-  }
-}
 
 const LATEX_SYMBOLS = new Map([
   ["≤", "\\leq"], ["≥", "\\geq"], ["≠", "\\neq"], ["≈", "\\approx"],
@@ -165,21 +151,10 @@ function markdownTable(rows) {
   ].join("\n");
 }
 
-export function jsonFallbackBlocks(structured) {
+function jsonFallbackBlocks(structured) {
   try {
     const data = JSON.parse(structured.asJSON());
-    const textBlocks = [];
-    const collectTextBlocks = (nodes) => {
-      for (const value of nodes || []) {
-        if (value?.type === "text") textBlocks.push(value);
-        // `segment` can place text below structural grouping nodes. MuPDF's
-        // walker does not always surface those children as text callbacks.
-        collectTextBlocks(value?.blocks);
-        collectTextBlocks(value?.children);
-      }
-    };
-    collectTextBlocks(data.blocks);
-    return textBlocks
+    return (data.blocks || [])
       .filter((value) => value.type === "text")
       .map((value) => {
         const lines = (value.lines || [])
@@ -223,34 +198,6 @@ export function jsonFallbackBlocks(structured) {
         };
       })
       .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-export function textFallbackBlocks(structured) {
-  try {
-    const lines = structured
-      .asText()
-      .split(/\r?\n/)
-      .map((value, index) => ({
-        text: normalizeText(value),
-        bbox: [0, index * 12, 1, index * 12 + 10],
-        size: 10,
-        sizes: [10],
-        chars: [],
-      }))
-      .filter((line) => line.text);
-    if (!lines.length) return [];
-    return [
-      {
-        bbox: [0, lines[0].bbox[1], 1, lines.at(-1).bbox[3]],
-        lines,
-        sizes: lines.flatMap((line) => line.sizes),
-        maxSize: 10,
-        size: 10,
-      },
-    ];
   } catch {
     return [];
   }
@@ -312,10 +259,6 @@ function readStructuredPage(page) {
   // yield structured JSON while producing no text callbacks. Recover that text
   // before deciding the page is OCR-only or empty.
   if (!blocks.length) blocks.push(...jsonFallbackBlocks(structured));
-  // Current MuPDF walkers deliberately skip structural grouping blocks. If the
-  // JSON shape is unavailable or changes, `asText` is the reliable last resort
-  // for preserving selectable text instead of declaring a valid PDF empty.
-  if (!blocks.length) blocks.push(...textFallbackBlocks(structured));
   structured.destroy?.();
 
   const device = new mupdf.Device({
@@ -479,10 +422,6 @@ export function looksLikeOcrEquation(text) {
     return false;
   const words = text.split(/\s+/).length;
   if (words > 24) return false;
-  // OCR frequently emits a cropped comparison operator on its own line. It is
-  // not a complete formula and must remain ordinary text rather than a broken
-  // display-math block.
-  if (/[=<>≤≥≠≈+−×÷]\s*$/u.test(text)) return false;
   const mathSymbols = (text.match(MATH_SYMBOLS) || []).length;
   const hasRelation = /[=<>≤≥≠≈]/.test(text);
   if (!hasRelation || mathSymbols === 0) return false;
@@ -570,8 +509,7 @@ function ocrVisualCandidates(data, lines, pageBounds) {
       item.text.length <= 220 &&
       item.text.split(/\s+/).length <= 28 &&
       /[=<>≤≥≠≈+−×÷∑∏∫√]/.test(item.text);
-    if (looksLikeOcrEquation(item.text) || (cued && !/[=<>≤≥≠≈+−×÷]\s*$/u.test(item.text)))
-      equationLines.push(item);
+    if (looksLikeOcrEquation(item.text) || cued) equationLines.push(item);
   }
 
   const groups = [];
@@ -620,20 +558,11 @@ function ocrVisualCandidates(data, lines, pageBounds) {
 }
 
 async function recognizePage(page, options, paths) {
-  // Tesseract reports initialization progress while createWorker is awaited.
-  // Set the page first so those events are attributable to the page that
-  // triggered OCR rather than being logged as "page undefined".
-  ocrProgressPage = options.page;
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
       workerPath: paths.workerPath,
       corePath: paths.corePath,
       langPath: paths.langPath,
-      // The bundled model is already available from the app's offline cache.
-      // Avoid Tesseract's separate IndexedDB cache, which can retain a partial
-      // traineddata write and make every future initialization fail.
-      cacheMethod: "none",
-      workerBlobURL: false,
       logger: (event) =>
         self.postMessage({
           type: "ocr-progress",
@@ -648,13 +577,8 @@ async function recognizePage(page, options, paths) {
     rect(page.getBounds()),
     Math.max(1, Math.min(600, Number(options.ocrDpi) || 300)) / 72,
   );
-  let result;
-  try {
-    result = await ocrWorker.recognize(image.data, {}, { text: true, blocks: true });
-  } catch (error) {
-    await resetOcrWorker();
-    throw new Error(`OCR recognize failed: ${error?.message || String(error)}`);
-  }
+  ocrProgressPage = options.page;
+  const result = await ocrWorker.recognize(image.data, {}, { text: true, blocks: true });
   result.data._rasterWidth = image.width;
   result.data._rasterHeight = image.height;
   return result.data;
@@ -676,54 +600,42 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
 
   let ocrApplied = false;
   if (
-    !ocrDisabledReason &&
-    (options.forceOcr ||
-      (options.useOcr &&
-        blocks.reduce(
-          (count, value) => count + joinWrapped(value.lines).length,
-          0,
-        ) < 40))
+    options.forceOcr ||
+    (options.useOcr &&
+      blocks.reduce(
+        (count, value) => count + joinWrapped(value.lines).length,
+        0,
+      ) < 40)
   ) {
-    try {
-      const ocrData = await recognizePage(
-        page,
-        { ...options, page: pageNumber },
-        ocrPaths,
-      );
-      const lines = ocrLines(ocrData);
-      const detected =
-        options.preserveVisuals === false
-          ? { candidates: [], excludeRanges: [], equationRanges: [] }
-          : ocrVisualCandidates(ocrData, lines, pageBounds);
-      ocrCandidates = detected.candidates;
-      ocrApplied = true;
-      entries.push(
-        ...ocrMarkdownEntries(ocrData, escapeMd, {
-          pageBounds,
-          rawHeight: ocrData._rasterHeight,
-          excludeRanges: detected.excludeRanges,
-          equationRanges: options.extractEquations ? detected.equationRanges : [],
-        }),
-      );
+    const ocrData = await recognizePage(
+      page,
+      { ...options, page: pageNumber },
+      ocrPaths,
+    );
+    const lines = ocrLines(ocrData);
+    const detected =
+      options.preserveVisuals === false
+        ? { candidates: [], excludeRanges: [], equationRanges: [] }
+        : ocrVisualCandidates(ocrData, lines, pageBounds);
+    ocrCandidates = detected.candidates;
+    ocrApplied = true;
+    entries.push(
+      ...ocrMarkdownEntries(ocrData, escapeMd, {
+        pageBounds,
+        rawHeight: ocrData._rasterHeight,
+        excludeRanges: detected.excludeRanges,
+        equationRanges: options.extractEquations ? detected.equationRanges : [],
+      }),
+    );
 
-      const rawHeight = Math.max(
-        1,
-        Number(ocrData._rasterHeight) ||
-          Math.max(...lines.map((item) => item.y1), 1),
-      );
-      for (const item of lines) {
-        if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
-        if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
-      }
-    } catch (error) {
-      const message = error?.message || String(error);
-      self.postMessage({
-        type: "ocr-error",
-        page: pageNumber,
-        message: `OCR disabled after failure on page ${pageNumber}: ${message}`,
-      });
-      ocrDisabledReason = message;
-      await resetOcrWorker();
+    const rawHeight = Math.max(
+      1,
+      Number(ocrData._rasterHeight) ||
+        Math.max(...lines.map((item) => item.y1), 1),
+    );
+    for (const item of lines) {
+      if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
+      if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
     }
   }
 
@@ -893,7 +805,6 @@ if (typeof self !== "undefined")
     if (data.type !== "extract") return;
     let document;
     try {
-      ocrDisabledReason = "";
       self.postMessage({ type: "worker-started" });
       await loadMupdf();
       self.postMessage({ type: "engine-ready", engine: "mupdf-wasm" });
