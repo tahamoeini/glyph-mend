@@ -94,6 +94,40 @@ describe("exports", () => {
     expect(audit.status).toBe("warnings");
     expect(audit.issues[0].code).toBe("NO_TECHNICAL_OBJECTS");
   });
+  it("warns when one preserved visual masks otherwise missing technical objects", () => {
+    const text = `${"word ".repeat(11000)}${" equation theorem function probability table ".repeat(8)}\n[SOURCE_VISUAL id="only-one"]`;
+    const pages = Array.from({ length: 100 }, (_, index) => ({
+      page: index + 1,
+      text: "Technical body",
+      quality: { characters: 300, textBlocks: 2, ocrApplied: false },
+    }));
+    const audit = qualityAudit(pages, text);
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "LOW_TECHNICAL_OBJECTS", count: 1 }),
+    );
+  });
+  it("requires review when most substantial pages collapse to one block", () => {
+    const pages = Array.from({ length: 12 }, (_, index) => ({
+      page: index + 1,
+      text: "word ".repeat(80),
+      quality: { characters: 400, textBlocks: 1, ocrApplied: false },
+    }));
+    const markdown = pages.map((page) => page.text).join("\n\n");
+    const audit = qualityAudit(pages, markdown);
+    expect(audit.status).toBe("needs-review");
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "STRUCTURE_COLLAPSE", count: 12 }),
+    );
+  });
+  it("does not flag healthy multi-block text as collapsed", () => {
+    const pages = Array.from({ length: 12 }, (_, index) => ({
+      page: index + 1,
+      text: "word ".repeat(80),
+      quality: { characters: 400, textBlocks: 5, ocrApplied: false },
+    }));
+    const audit = qualityAudit(pages, pages.map((page) => page.text).join("\n\n"));
+    expect(audit.issues.some((issue) => issue.code === "STRUCTURE_COLLAPSE")).toBe(false);
+  });
   it("requires review when a selected page could not be extracted", () => {
     const audit = qualityAudit(
       [{ page: 1, text: "Recovered text", quality: { characters: 14 } }],
@@ -118,7 +152,7 @@ describe("exports", () => {
       expect.objectContaining({ code: "PAGE_EXTRACTION_ERRORS", count: 1, pages: [2] }),
     );
   });
-  it("labels scanned OCR-only pages for review instead of reporting a clean layout", () => {
+  it("labels scanned OCR-only pages without claiming an unverified source rendition", () => {
     const audit = qualityAudit(
       [
         {
@@ -130,8 +164,8 @@ describe("exports", () => {
       "Recovered OCR text",
     );
     expect(audit.status).toBe("warnings");
-    expect(audit.issues).toContainEqual(
-      expect.objectContaining({ code: "OCR_ONLY_PAGES", pages: [1] }),
-    );
+    const issue = audit.issues.find((item) => item.code === "OCR_ONLY_PAGES");
+    expect(issue).toEqual(expect.objectContaining({ pages: [1] }));
+    expect(issue.message).not.toMatch(/renditions are retained/i);
   });
 });
