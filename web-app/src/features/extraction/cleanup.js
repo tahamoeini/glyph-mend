@@ -162,19 +162,15 @@ function commonEdgeTokens(pages, fromStart, headers, footers) {
     ? tokenRows[0].slice(0, count)
     : tokenRows[0].slice(-count)
   ).join(" ");
-  const candidate =
-    (() => {
-      const build = (size) =>
-        (fromStart ? tokenRows[0].slice(0, size) : tokenRows[0].slice(-size)).join(" ");
-      for (let size = count; size >= 2; size -= 1) {
-        const value = build(size);
-        if (value.length < 6 || value.length > 160) continue;
-        if (/[.!?]$/.test(value) && size > 5) continue;
-        if (looksLikeRunningFragment(value)) return { count: size, sample: value };
-      }
-      return null;
-    })();
-  return candidate;
+  const build = (size) =>
+    (fromStart ? tokenRows[0].slice(0, size) : tokenRows[0].slice(-size)).join(" ");
+  for (let size = count; size >= 2; size -= 1) {
+    const value = build(size);
+    if (value.length < 6 || value.length > 160) continue;
+    if (/[.!?]$/.test(value) && size > 5) continue;
+    if (looksLikeRunningFragment(value)) return { count: size, sample: value };
+  }
+  return null;
 }
 
 function stripCommonEdgeTokens(text, fragment, fromStart) {
