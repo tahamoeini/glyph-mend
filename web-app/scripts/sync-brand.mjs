@@ -1,5 +1,5 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -17,10 +17,16 @@ for (const key of ["name", "shortName", "slug", "cliName", "slogan", "logoPath"]
 
 const relativeLogo = brand.logoPath.replace(/^\.\//, "");
 const sourceLogo = resolve(repoDir, relativeLogo);
-if (!sourceLogo.startsWith(`${repoDir}/`) && sourceLogo !== repoDir) {
-  throw new Error("branding.json logoPath must resolve inside the repository for brand:sync");
+const logoFromRepo = relative(repoDir, sourceLogo);
+if (
+  !logoFromRepo ||
+  logoFromRepo === ".." ||
+  logoFromRepo.startsWith(`..${sep}`) ||
+  isAbsolute(logoFromRepo)
+) {
+  throw new Error("branding.json logoPath must resolve to a file inside the repository for brand:sync");
 }
-const publicLogo = resolve(publicDir, relativeLogo);
+const publicLogo = resolve(publicDir, logoFromRepo);
 await mkdir(dirname(publicLogo), { recursive: true });
 await copyFile(sourceLogo, publicLogo);
 await copyFile(sourceLogo, resolve(publicDir, "icon.svg"));
