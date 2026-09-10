@@ -65,11 +65,11 @@ export async function loadWorkspace() {
     meta = await value.get(META, CURRENT);
   if (!meta) return null;
   const compatible = meta.checkpointRevision === CHECKPOINT_REVISION;
+  if (!compatible) await value.clear(PAGES);
   const [pdfBytes, pageValues, logs] = await Promise.all([
     value.get(PDF, CURRENT),
     compatible ? value.getAll(PAGES) : Promise.resolve([]),
     value.getAll(LOGS),
-    compatible ? Promise.resolve() : value.clear(PAGES),
   ]);
   return {
     ...meta,
