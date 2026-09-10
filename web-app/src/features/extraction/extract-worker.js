@@ -8,10 +8,60 @@ const FORMULA_CUE =
 let ocrWorker;
 let mupdf;
 let ocrProgressPage;
+let ocrDisabledReason = "";
 // Keep Tesseract's IndexedDB data separate from older releases. A stale or
 // partially-written traineddata file otherwise makes every later OCR batch
 // fail during initialization, even though the packaged language asset is fine.
 const OCR_CACHE_PATH = "pdf-sanitizer-ocr-v8";
+
+function trimSlash(value) {
+  return String(value || "").replace(/\/+$/, "");
+}
+
+async function resetOcrWorker() {
+  try {
+    await ocrWorker?.terminate?.();
+  } catch {
+    /* Best effort cleanup */
+  } finally {
+    ocrWorker = null;
+  }
+}
+
+function installOcrGuards() {
+  if (typeof self === "undefined" || self.__ocrGuardsInstalled) return;
+  self.__ocrGuardsInstalled = true;
+
+  const report = (kind, detail) =>
+    self.postMessage({
+      type: "ocr-error",
+      page: ocrProgressPage,
+      message: `${kind}: ${detail}`,
+    });
+
+  self.addEventListener("error", (event) => {
+    const message = event?.message || "Unknown worker error";
+    const filename = event?.filename || "";
+    if (/tesseract/i.test(filename) || /initialization failed/i.test(message)) {
+      report("Unhandled OCR runtime error", message);
+      event.preventDefault();
+      resetOcrWorker();
+    }
+  });
+
+  self.addEventListener("unhandledrejection", (event) => {
+    const reason = event?.reason;
+    const message =
+      typeof reason === "string"
+        ? reason
+        : reason?.message || JSON.stringify(reason || "Unknown rejection");
+    if (/tesseract|initialization failed|Cannot read properties of undefined \(reading 'resolve'\)/i.test(message)) {
+      report("Unhandled OCR rejection", message);
+      event.preventDefault();
+      resetOcrWorker();
+    }
+  });
+}
 
 const LATEX_SYMBOLS = new Map([
   ["≤", "\\leq"], ["≥", "\\geq"], ["≠", "\\neq"], ["≈", "\\approx"],
@@ -614,35 +664,43 @@ async function recognizePage(page, options, paths) {
   // Set the page first so those events are attributable to the page that
   // triggered OCR rather than being logged as "page undefined".
   ocrProgressPage = options.page;
+  installOcrGuards();
   if (!ocrWorker) {
-    try {
-      ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
-        workerPath: paths.workerPath,
-        corePath: paths.corePath,
-        langPath: paths.langPath,
-        cachePath: OCR_CACHE_PATH,
-        cacheMethod: "write",
-        // The extraction logic already runs inside a dedicated Worker. Avoid
-        // Blob URL indirection for Tesseract's nested worker so startup
-        // failures surface as deterministic URL load errors.
-        workerBlobURL: false,
-        logger: (event) =>
-          self.postMessage({
-            type: "ocr-progress",
-            page: ocrProgressPage,
-            status: event.status,
-            progress: event.progress,
-          }),
-        errorHandler: (error) => {
-          self.postMessage({
-            type: "ocr-error",
-            page: ocrProgressPage,
-            message: String(error),
-          });
-        },
-      });
-    } catch (error) {
-      throw new Error(`OCR initialization failed: ${error?.message || String(error)}`);
+    const workerPath = trimSlash(paths.workerPath);
+    const corePath = trimSlash(paths.corePath);
+    const langPath = trimSlash(paths.langPath);
+    const failures = [];
+    for (const cacheMethod of ["refresh", "write", "none"]) {
+      try {
+        ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
+          workerPath,
+          corePath,
+          langPath,
+          cachePath: OCR_CACHE_PATH,
+          cacheMethod,
+          workerBlobURL: false,
+          logger: (event) =>
+            self.postMessage({
+              type: "ocr-progress",
+              page: ocrProgressPage,
+              status: event.status,
+              progress: event.progress,
+            }),
+        });
+        break;
+      } catch (error) {
+        const message = error?.message || String(error);
+        failures.push(`${cacheMethod}: ${message}`);
+        self.postMessage({
+          type: "ocr-error",
+          page: ocrProgressPage,
+          message: `OCR init attempt failed (${cacheMethod} cache): ${message}`,
+        });
+        await resetOcrWorker();
+      }
+    }
+    if (!ocrWorker) {
+      throw new Error(`OCR initialization failed after retries: ${failures.join(" | ")}`);
     }
   }
   const image = cropPage(
@@ -650,7 +708,13 @@ async function recognizePage(page, options, paths) {
     rect(page.getBounds()),
     Math.max(1, Math.min(600, Number(options.ocrDpi) || 300)) / 72,
   );
-  const result = await ocrWorker.recognize(image.data, {}, { text: true, blocks: true });
+  let result;
+  try {
+    result = await ocrWorker.recognize(image.data, {}, { text: true, blocks: true });
+  } catch (error) {
+    await resetOcrWorker();
+    throw new Error(`OCR recognize failed: ${error?.message || String(error)}`);
+  }
   result.data._rasterWidth = image.width;
   result.data._rasterHeight = image.height;
   return result.data;
@@ -672,42 +736,54 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
 
   let ocrApplied = false;
   if (
-    options.forceOcr ||
-    (options.useOcr &&
-      blocks.reduce(
-        (count, value) => count + joinWrapped(value.lines).length,
-        0,
-      ) < 40)
+    !ocrDisabledReason &&
+    (options.forceOcr ||
+      (options.useOcr &&
+        blocks.reduce(
+          (count, value) => count + joinWrapped(value.lines).length,
+          0,
+        ) < 40))
   ) {
-    const ocrData = await recognizePage(
-      page,
-      { ...options, page: pageNumber },
-      ocrPaths,
-    );
-    const lines = ocrLines(ocrData);
-    const detected =
-      options.preserveVisuals === false
-        ? { candidates: [], excludeRanges: [], equationRanges: [] }
-        : ocrVisualCandidates(ocrData, lines, pageBounds);
-    ocrCandidates = detected.candidates;
-    ocrApplied = true;
-    entries.push(
-      ...ocrMarkdownEntries(ocrData, escapeMd, {
-        pageBounds,
-        rawHeight: ocrData._rasterHeight,
-        excludeRanges: detected.excludeRanges,
-        equationRanges: options.extractEquations ? detected.equationRanges : [],
-      }),
-    );
+    try {
+      const ocrData = await recognizePage(
+        page,
+        { ...options, page: pageNumber },
+        ocrPaths,
+      );
+      const lines = ocrLines(ocrData);
+      const detected =
+        options.preserveVisuals === false
+          ? { candidates: [], excludeRanges: [], equationRanges: [] }
+          : ocrVisualCandidates(ocrData, lines, pageBounds);
+      ocrCandidates = detected.candidates;
+      ocrApplied = true;
+      entries.push(
+        ...ocrMarkdownEntries(ocrData, escapeMd, {
+          pageBounds,
+          rawHeight: ocrData._rasterHeight,
+          excludeRanges: detected.excludeRanges,
+          equationRanges: options.extractEquations ? detected.equationRanges : [],
+        }),
+      );
 
-    const rawHeight = Math.max(
-      1,
-      Number(ocrData._rasterHeight) ||
-        Math.max(...lines.map((item) => item.y1), 1),
-    );
-    for (const item of lines) {
-      if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
-      if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
+      const rawHeight = Math.max(
+        1,
+        Number(ocrData._rasterHeight) ||
+          Math.max(...lines.map((item) => item.y1), 1),
+      );
+      for (const item of lines) {
+        if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
+        if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
+      }
+    } catch (error) {
+      const message = error?.message || String(error);
+      self.postMessage({
+        type: "ocr-error",
+        page: pageNumber,
+        message: `OCR disabled after failure on page ${pageNumber}: ${message}`,
+      });
+      ocrDisabledReason = message;
+      await resetOcrWorker();
     }
   }
 
@@ -877,6 +953,7 @@ if (typeof self !== "undefined")
     if (data.type !== "extract") return;
     let document;
     try {
+      ocrDisabledReason = "";
       self.postMessage({ type: "worker-started" });
       await loadMupdf();
       self.postMessage({ type: "engine-ready", engine: "mupdf-wasm" });
