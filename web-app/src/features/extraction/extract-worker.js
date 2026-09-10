@@ -457,7 +457,6 @@ export function looksLikeOcrEquation(text) {
     return false;
   const words = text.split(/\s+/).length;
   if (words > 24) return false;
-  if (/[=<>≤≥≠≈+−×÷]\s*$/u.test(text)) return false;
   const mathSymbols = (text.match(MATH_SYMBOLS) || []).length;
   const hasRelation = /[=<>≤≥≠≈]/.test(text);
   if (!hasRelation || mathSymbols === 0) return false;
@@ -545,8 +544,7 @@ function ocrVisualCandidates(data, lines, pageBounds) {
       item.text.length <= 220 &&
       item.text.split(/\s+/).length <= 28 &&
       /[=<>≤≥≠≈+−×÷∑∏∫√]/.test(item.text);
-    if (looksLikeOcrEquation(item.text) || (cued && !/[=<>≤≥≠≈+−×÷]\s*$/u.test(item.text)))
-      equationLines.push(item);
+    if (looksLikeOcrEquation(item.text) || cued) equationLines.push(item);
   }
 
   const groups = [];

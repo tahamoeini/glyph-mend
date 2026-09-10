@@ -72,10 +72,6 @@ function headingLevel(text) {
   if (/^(?:chapter|appendix)\s+(?:\d+|[ivxlcdm]+)\b/i.test(text)) return 1;
   if (/^(?:contents|list of (?:figures|tables)|preface|references|index)$/i.test(text))
     return 1;
-  // A cropped abbreviation such as "RM." is normally a continuation of body
-  // text, not a document heading. Preserve full one-word headings such as
-  // "INTRODUCTION" while refusing very short all-caps fragments.
-  if (/^(?:[A-Z]\.){2,}$|^[A-Z]{1,3}\.?$/.test(text)) return null;
   return text.length <= 90 && text.split(/\s+/).length <= 14 && upperRatio(text) > 0.82
     ? 1
     : null;
