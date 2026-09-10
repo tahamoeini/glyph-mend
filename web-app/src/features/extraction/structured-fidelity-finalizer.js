@@ -72,7 +72,9 @@ function structuralLine(text, size, bodySize, font = null) {
 
 function normalizedJsonBlocks(data) {
   const source = collectTextBlocks(data?.blocks);
-  const allLines = source.flatMap((block) => block.lines || []).filter((line) => lineText(line));
+  const allLines = source
+    .flatMap((block) => block.lines || [])
+    .filter((line) => lineText(line));
   const bodySize = median(
     allLines.map(lineSize).filter((size) => size > 4 && size < 40),
   );
@@ -118,6 +120,105 @@ function syntheticChars(line) {
   });
 }
 
+function charRect(args) {
+  const quad = Array.isArray(args?.[4]) ? args[4] : [];
+  if (quad.length < 4) return null;
+  const xs = quad.filter((_, index) => index % 2 === 0).map(Number);
+  const ys = quad.filter((_, index) => index % 2 === 1).map(Number);
+  if (!xs.length || !ys.length || ![...xs, ...ys].every(Number.isFinite))
+    return null;
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+function capturedText(chars) {
+  return chars.map((args) => String(args?.[0] || "")).join("");
+}
+
+function trimCaptured(chars) {
+  let start = 0;
+  let end = chars.length;
+  while (start < end && !String(chars[start]?.[0] || "").trim()) start += 1;
+  while (end > start && !String(chars[end - 1]?.[0] || "").trim()) end -= 1;
+  return chars.slice(start, end);
+}
+
+function capturedLine(chars, fallbackArgs) {
+  const clean = trimCaptured(chars);
+  if (!clean.length) return null;
+  const boxes = clean.map(charRect).filter(Boolean);
+  const bbox = boxes.length
+    ? [
+        Math.min(...boxes.map((box) => box[0])),
+        Math.min(...boxes.map((box) => box[1])),
+        Math.max(...boxes.map((box) => box[2])),
+        Math.max(...boxes.map((box) => box[3])),
+      ]
+    : rect(fallbackArgs?.[0]);
+  return {
+    beginArgs: bbox ? [bbox] : fallbackArgs,
+    chars: clean,
+  };
+}
+
+function splitCapturedCollapsed(blocks) {
+  if (blocks.length !== 1 || blocks[0].lines.length !== 1) return blocks;
+  const sourceLine = blocks[0].lines[0];
+  const chars = sourceLine.chars || [];
+  if (chars.length < 4) return blocks;
+  const sizes = chars
+    .filter((args) => String(args?.[0] || "").trim())
+    .map((args) => Number(args?.[3]))
+    .filter((size) => Number.isFinite(size) && size > 4 && size < 60);
+  const bodySize = median(sizes);
+  let contentStart = 0;
+  while (contentStart < chars.length && !String(chars[contentStart]?.[0] || "").trim())
+    contentStart += 1;
+
+  let titleEnd = contentStart;
+  const highThreshold = bodySize * 1.22;
+  let highVisible = 0;
+  while (titleEnd < chars.length) {
+    const value = String(chars[titleEnd]?.[0] || "");
+    const size = Number(chars[titleEnd]?.[3]);
+    if (!value.trim() || size >= highThreshold) {
+      if (value.trim() && size >= highThreshold) highVisible += 1;
+      titleEnd += 1;
+      continue;
+    }
+    break;
+  }
+  const titleChars = trimCaptured(chars.slice(contentStart, titleEnd));
+  const title = capturedText(titleChars).replace(/\s+/g, " ").trim();
+  const hasTitle = highVisible >= 3 && titleLike(title);
+  const bodyStart = hasTitle ? titleEnd : contentStart;
+  const remainder = chars.slice(bodyStart);
+  const remainderText = capturedText(remainder);
+  const captionMatches = [
+    ...remainderText.matchAll(/\b(?:Figure|Fig\.|Table)\s+\d+(?:\.\d+)*(?:[.:]|\b)/gi),
+  ];
+  let captionOffset = captionMatches.at(-1)?.index ?? -1;
+  if (captionOffset >= 0) {
+    const captionText = remainderText.slice(captionOffset).replace(/\s+/g, " ").trim();
+    if (captionText.split(/\s+/).length > 28 || captionText.length > 220)
+      captionOffset = -1;
+  }
+
+  if (!hasTitle && captionOffset < 0) return blocks;
+  const parts = [];
+  if (hasTitle) parts.push(titleChars);
+  if (captionOffset >= 0) {
+    parts.push(remainder.slice(0, captionOffset));
+    parts.push(remainder.slice(captionOffset));
+  } else {
+    parts.push(remainder);
+  }
+  const recovered = parts
+    .map((part) => capturedLine(part, sourceLine.beginArgs))
+    .filter(Boolean)
+    .map((line) => ({ beginArgs: line.beginArgs, lines: [line] }));
+  return recovered.length >= 2 ? recovered : blocks;
+}
+
 function replayJson(walker, blocks) {
   for (const block of blocks) {
     walker.beginTextBlock?.(block.bbox || lineBounds(block.lines));
@@ -158,7 +259,10 @@ export function installFinalStructuredFidelity(mupdf) {
       data = null;
     }
     const jsonBlocks = normalizedJsonBlocks(data);
-    const jsonLineCount = jsonBlocks.reduce((count, block) => count + block.lines.length, 0);
+    const jsonLineCount = jsonBlocks.reduce(
+      (count, block) => count + block.lines.length,
+      0,
+    );
 
     const captured = [];
     const images = [];
@@ -199,7 +303,7 @@ export function installFinalStructuredFidelity(mupdf) {
       jsonBlocks.length >= 2;
 
     if (preferJson) replayJson(walker, jsonBlocks);
-    else replayCaptured(walker, captured);
+    else replayCaptured(walker, splitCapturedCollapsed(captured));
     for (const args of images) walker.onImageBlock?.(...args);
     return result;
   };
