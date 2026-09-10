@@ -87,6 +87,76 @@ function repeatedEdgeSignatures(pages, headers, footers) {
   );
 }
 
+function normalizeEdgeToken(token) {
+  const value = String(token || "")
+    .replace(/^[_*`]+|[_*`]+$/g, "")
+    .replace(/\\([.!])/g, "$1")
+    .toLowerCase();
+  return /^(?:page)?\d{1,5}$/.test(value) || /^[ivxlcdm]{1,10}$/i.test(value)
+    ? "<page>"
+    : value;
+}
+
+function edgeLine(page, fromStart) {
+  const lines = String(page.text || "").split("\n").filter((line) => line.trim());
+  if (!lines.length) return "";
+  return plainMarkdownLine(fromStart ? lines[0] : lines.at(-1));
+}
+
+function commonEdgeTokens(pages, fromStart) {
+  if (pages.length < 2) return null;
+  const tokenRows = pages
+    .map((page) => edgeLine(page, fromStart).split(/\s+/).filter(Boolean))
+    .filter((tokens) => tokens.length >= 2);
+  if (tokenRows.length !== pages.length) return null;
+  const oriented = fromStart
+    ? tokenRows
+    : tokenRows.map((tokens) => [...tokens].reverse());
+  const max = Math.min(12, ...oriented.map((tokens) => tokens.length));
+  let count = 0;
+  for (; count < max; count += 1) {
+    const expected = normalizeEdgeToken(oriented[0][count]);
+    if (!oriented.every((tokens) => normalizeEdgeToken(tokens[count]) === expected))
+      break;
+  }
+  if (count < 2) return null;
+  const sample = (fromStart
+    ? tokenRows[0].slice(0, count)
+    : tokenRows[0].slice(-count)
+  ).join(" ");
+  if (sample.length < 6 || sample.length > 160) return null;
+  if (/[.!?]$/.test(sample) && count > 5) return null;
+  return { count, sample };
+}
+
+function stripCommonEdgeTokens(text, fragment, fromStart) {
+  if (!fragment) return text;
+  const lines = String(text || "").split("\n");
+  const indexes = lines
+    .map((line, index) => (line.trim() ? index : -1))
+    .filter((index) => index >= 0);
+  if (!indexes.length) return text;
+  const index = fromStart ? indexes[0] : indexes.at(-1);
+  const line = lines[index];
+  const prefixMatch = /^(\s*(?:#{1,6}\s+|>\s?)?)(.*)$/.exec(line);
+  const prefix = prefixMatch?.[1] || "";
+  const body = prefixMatch?.[2] || line;
+  const tokens = body.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length < fragment.count) return text;
+  const candidate = (fromStart
+    ? tokens.slice(0, fragment.count)
+    : tokens.slice(-fragment.count)
+  ).map(normalizeEdgeToken);
+  const expected = fragment.sample.split(/\s+/).map(normalizeEdgeToken);
+  if (candidate.length !== expected.length || candidate.some((value, i) => value !== expected[i]))
+    return text;
+  const remaining = fromStart
+    ? tokens.slice(fragment.count)
+    : tokens.slice(0, -fragment.count);
+  lines[index] = remaining.length ? `${prefix}${remaining.join(" ")}` : "";
+  return lines.join("\n");
+}
+
 function isPageLabel(value) {
   return /^\s*(?:page\s*)?(?:\d{1,5}|[ivxlcdm]{1,10})\s*$/i.test(
     plainMarkdownLine(value),
@@ -123,11 +193,16 @@ export function removeRunningMatter(
   { headers = true, footers = true } = {},
 ) {
   const repeated = repeatedEdgeSignatures(pages, headers, footers);
+  const commonHeader = headers ? commonEdgeTokens(pages, true) : null;
+  const commonFooter = footers ? commonEdgeTokens(pages, false) : null;
   return pages.map((page) => {
     const edges = selectedEdges(page, headers, footers);
     const pageHeaderKeys = new Set(edges.headers.map(signature));
     const pageFooterKeys = new Set(edges.footers.map(signature));
-    const lines = String(page.text || "").split("\n");
+    let source = String(page.text || "");
+    if (commonHeader) source = stripCommonEdgeTokens(source, commonHeader, true);
+    if (commonFooter) source = stripCommonEdgeTokens(source, commonFooter, false);
+    const lines = source.split("\n");
     const cleaned = lines
       .map((line) => {
         let value = line;
