@@ -108,6 +108,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Extract PDFs into restart-safe semantic Markdown, use a desktop GUI, "
             "and convert Markdown to DOCX."
         ),
+        epilog="Source code and issue tracker: https://github.com/tahamoeini/glyph-mend",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
