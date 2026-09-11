@@ -1,4 +1,9 @@
 import { openDB } from "idb";
+import {
+  parseUntrustedJson,
+  SECURITY_LIMITS,
+  validateWorkspacePayload,
+} from "../security/validation.js";
 // Keep the existing IndexedDB name so the GlyphMend rebrand does not orphan
 // users' resumable workspaces. This is a persistence compatibility identifier,
 // not the current product name.
@@ -148,7 +153,7 @@ export function serializeWorkspace(value) {
   );
 }
 export function deserializeWorkspace(text) {
-  const value = JSON.parse(text, (_key, item) => {
+  const value = parseUntrustedJson(text, (_key, item) => {
     if (item?.__binary === "array-buffer") return base64ToArray(item.base64);
     if (item?.__binary === "uint8-array")
       return new Uint8Array(base64ToArray(item.base64));
@@ -159,12 +164,12 @@ export function deserializeWorkspace(text) {
   if (typeof value.pdfBytes === "string")
     value.pdfBytes = base64ToArray(value.pdfBytes);
   const compatible = value.checkpointRevision === CHECKPOINT_REVISION;
-  return {
+  return validateWorkspacePayload({
     ...value,
     schema: 4,
     checkpointRevision: compatible ? CHECKPOINT_REVISION : 0,
     extractionVersion: compatible ? value.extractionVersion : -1,
-  };
+  });
 }
 function arrayToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -174,8 +179,14 @@ function arrayToBase64(buffer) {
   return btoa(value);
 }
 function base64ToArray(value) {
+  if (typeof value !== "string") throw new Error("Workspace binary payload is invalid.");
+  const maxEncodedChars = Math.ceil((SECURITY_LIMITS.workspacePdfBytes * 4) / 3) + 8;
+  if (value.length > maxEncodedChars)
+    throw new Error("Workspace binary payload exceeds the import byte ceiling.");
   const binary = atob(value),
     bytes = new Uint8Array(binary.length);
+  if (bytes.byteLength > SECURITY_LIMITS.workspacePdfBytes)
+    throw new Error("Workspace binary payload exceeds the import byte ceiling.");
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
 }

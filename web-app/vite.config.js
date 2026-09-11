@@ -2,6 +2,26 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { viteStaticCopy } from "vite-plugin-static-copy";
+import { CONTENT_SECURITY_POLICY } from "./src/security/policy.js";
+
+function strictCspPlugin() {
+  return {
+    name: "glyphmend-strict-csp",
+    enforce: "pre",
+    transformIndexHtml() {
+      return [
+        {
+          tag: "meta",
+          attrs: {
+            "http-equiv": "Content-Security-Policy",
+            content: CONTENT_SECURITY_POLICY,
+          },
+          injectTo: "head-prepend",
+        },
+      ];
+    },
+  };
+}
 
 export default defineConfig({
   base: "./",
@@ -25,6 +45,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    strictCspPlugin(),
     viteStaticCopy({
       targets: [
         { src: "node_modules/pdfjs-dist/wasm/*", dest: "wasm" },
