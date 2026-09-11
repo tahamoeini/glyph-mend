@@ -16,8 +16,6 @@ function minimalVisual(overrides = {}) {
 }
 
 it("rejects prototype-pollution keys anywhere in VisualIR", () => {
-  const poisoned = JSON.parse(JSON.stringify(minimalVisual())).styles = undefined;
-  void poisoned;
   const payload = JSON.parse(`{
     "schemaVersion":1,
     "id":"visual-security",
