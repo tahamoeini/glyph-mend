@@ -69,6 +69,19 @@ This file records executed upgrade steps in chronological order.
 	- `npm test src/shared/recognizer-capability.test.js src/features/recognition/math-worker.test.js src/features/recognition/visual-worker.test.js` passed in `web-app/`.
 	- The capability layer remains isolated from the canonical Markdown pipeline and is not yet wired into the main extraction orchestration.
 
+## Step 05 — Build a benchmark and golden-fixture harness before selecting models
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Added a small browser-local benchmark harness with hand-authored math and diagram fixtures; defined evidence-driven metrics for parse success, semantic equivalence, rendering comparisons, graph correctness, and serializer validity; and kept the harness intentionally deterministic with no committed model weights required.
+- Validation notes:
+	- `npm test src/shared/benchmark-harness.test.js` passed in `web-app/`.
+	- The harness specifically detects both a wrong equation AST and a deliberately wrong arrow direction.
+	- The benchmark result payload is machine-readable JSON for future model comparisons.
+
 
 
 ### AI coding agent execution rules
