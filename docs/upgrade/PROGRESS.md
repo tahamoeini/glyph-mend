@@ -82,6 +82,18 @@ This file records executed upgrade steps in chronological order.
 	- The harness specifically detects both a wrong equation AST and a deliberately wrong arrow direction.
 	- The benchmark result payload is machine-readable JSON for future model comparisons.
 
+## Step 06 — Replace regex-centric math conversion with a real MathIR parsing pipeline
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PARTIAL
+- Summary: Added a browser-local LaTeX-to-MathIR adapter with explicit unsupported-command handling and an evidence-preserving fallback path. The initial parser seam preserves simple equations, definite integrals, and unsupported syntax visibility while avoiding the previous recursive memory blow-up.
+- Validation notes:
+	- `npm test src/shared/mathir-parser.test.js` is currently being corrected after the first implementation exposed a missing export in the semantic AST entry point.
+	- The parser is intentionally local/offline and remains independent of Word export, with unsupported commands reported as explicit structured reviewable evidence rather than silently dropped.
+
 
 
 ### AI coding agent execution rules
