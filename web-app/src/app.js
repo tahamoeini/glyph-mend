@@ -30,6 +30,8 @@ import {
 } from "./shared/review-queue.js";
 import { DEFAULT_BRAND } from "./shared/brand.js";
 import { download, stem } from "./shared/download.js";
+import { renderAccessibleMathMarkdown } from "./shared/math-accessibility.js";
+import { visualIRToAccessibleDescription } from "./shared/visual-accessibility.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
@@ -80,6 +82,7 @@ const state = {
   checkpointError: null,
   reviewQueue: [],
   selectedReviewId: null,
+  sheetReturnFocus: { sidebar: null, inspector: null },
 };
 const optionIds = [
   "removeHeaders",
@@ -252,6 +255,7 @@ function setStatus(message, done = 0, total = 0) {
           : /open|start|read|extract/i.test(message)
             ? "Extracting document"
             : "Document status";
+  $("progressAnnouncement").textContent = message + ". " + $("progressPage").textContent;
 }
 function options() {
   return {
@@ -762,13 +766,22 @@ function renderMarkdown() {
       `<figure class="source-visual-preview" data-asset="${encodeURIComponent(id)}"><figcaption>Preserved source ${kind}</figcaption></figure>`,
   );
   $("renderedPreview").innerHTML = DOMPurify.sanitize(
-    marked.parse(source, { gfm: true }),
+    marked.parse(renderAccessibleMathMarkdown(source), { gfm: true }),
   );
   const assets = assetMap();
   $("renderedPreview")
     .querySelectorAll("[data-asset]")
     .forEach((figure) => {
       const asset = assets.get(decodeURIComponent(figure.dataset.asset));
+      if (asset?.visualIR) {
+        const description = visualIRToAccessibleDescription(asset.visualIR);
+        figure.setAttribute("role", "group");
+        figure.setAttribute("aria-label", description);
+        const text = document.createElement("p");
+        text.className = "visually-hidden";
+        text.textContent = description;
+        figure.append(text);
+      }
       if (!asset?.data) return;
       const url = URL.createObjectURL(
         new Blob([asset.data], { type: "image/png" }),
@@ -801,6 +814,7 @@ async function renderSource(pageNumber) {
       viewport = page.getViewport({ scale: state.previewScale }),
       canvas = $("pdfCanvas"),
       ctx = canvas.getContext("2d");
+    canvas.setAttribute("aria-label", `Source page ${number} of ${state.pageCount || number}`);
     if (renderToken !== state.previewRenderToken) {
       page.cleanup();
       return;
@@ -934,6 +948,11 @@ function assetMap() {
   );
 }
 
+function announceReview(message) {
+  const region = $("reviewQueueAnnouncement");
+  if (region) region.textContent = message;
+}
+
 function renderReviewQueue() {
   const items = state.reviewQueue;
   const summary = reviewQueueSummary(items);
@@ -954,7 +973,7 @@ function renderReviewQueue() {
   list.innerHTML = items.map((item, index) => {
     const active = item.id === selected?.id;
     return `
-      <article class="review-card ${active ? "active" : ""}" tabindex="0" role="button" data-review-id="${item.id}" aria-pressed="${active}">
+      <article class="review-card ${active ? "active" : ""}" tabindex="0" role="button" data-review-id="${item.id}" aria-pressed="${active}" aria-current="${active ? "true" : "false"}" aria-label="Equation ${index + 1}, page ${item.page}, disposition ${item.disposition}. Activate to inspect source evidence and reconstruction.">
         <header>
           <div>
             <strong>Equation ${index + 1}</strong>
@@ -987,10 +1006,22 @@ function renderSelectedReviewItem() {
   if (!details) return;
   if (!item) {
     details.innerHTML = '<p class="review-empty">Select an equation to inspect its metadata.</p>';
+    announceReview("No equation is selected.");
     return;
   }
+  announceReview(`Showing equation on page ${item.page}. Source evidence and proposed reconstruction are both available below.`);
   details.innerHTML = `
     <div class="review-detail-block">
+      <div class="review-comparison" role="group" aria-label="Source and reconstruction comparison">
+        <section aria-label="Preserved source evidence">
+          <h3>Preserved source evidence</h3>
+          <p>Page ${item.page}; source crop ${DOMPurify.sanitize(item.sourceAsset?.id || "unavailable")}. The original evidence remains preserved.</p>
+        </section>
+        <section aria-label="Proposed reconstruction">
+          <h3>Proposed reconstruction</h3>
+          <code>${DOMPurify.sanitize(item.candidate?.latex || "No reconstruction available.")}</code>
+        </section>
+      </div>
       <label class="field-label" for="reviewLatexEditor">Editable LaTeX<textarea id="reviewLatexEditor" rows="7">${DOMPurify.sanitize(item.candidate?.latex || "")}</textarea></label>
       <div class="review-actions">
         <button id="reviewAcceptButton" type="button" class="primary" ${item.validation?.mandatoryPassed ? "" : "disabled"}>Accept</button>
@@ -1000,7 +1031,7 @@ function renderSelectedReviewItem() {
       <details open class="review-meta">
         <summary>Metadata</summary>
         <dl>
-          <dt>Recognier</dt><dd>${DOMPurify.sanitize(item.candidate?.provider || "unknown")}</dd>
+          <dt>Recognizer</dt><dd>${DOMPurify.sanitize(item.candidate?.provider || "unknown")}</dd>
           <dt>Version</dt><dd>${DOMPurify.sanitize(item.candidate?.version || "unknown")}</dd>
           <dt>Confidence</dt><dd>${Number(item.confidence?.overall || 0).toFixed(2)}</dd>
           <dt>Disposition</dt><dd>${item.disposition}</dd>
@@ -1204,25 +1235,77 @@ function isCompactLayout() {
   return document.documentElement.dataset.layoutMode === "compact";
 }
 
-function closeSettingsSheet() {
-  document.body.classList.remove("sidebar-open");
-  if (isCompactLayout()) setSidebarExpanded(false);
+function focusableIn(container) {
+  return [...container.querySelectorAll('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')].filter((element) => !element.hidden && !element.closest("[inert]"));
 }
 
-function closeInspectorSheet() {
+function syncSheetAccessibility() {
+  const compact = isCompactLayout();
+  const sheets = [
+    { id: "settingsSidebar", className: "sidebar-open", label: "Document and extraction settings" },
+    { id: "resultsInspector", className: "inspector-open", label: "Results and exports" },
+  ];
+  for (const sheet of sheets) {
+    const element = $(sheet.id);
+    const modal = compact && document.body.classList.contains(sheet.className);
+    const inert = compact && !modal;
+    element.inert = inert;
+    if (inert) element.setAttribute("inert", "");
+    else element.removeAttribute("inert");
+    if (modal) {
+      element.setAttribute("role", "dialog");
+      element.setAttribute("aria-modal", "true");
+      element.setAttribute("aria-label", sheet.label);
+    } else {
+      element.removeAttribute("role");
+      element.removeAttribute("aria-modal");
+      if (!compact) element.inert = false;
+    }
+  }
+}
+
+function focusSheet(id) {
+  const first = focusableIn($(id))[0];
+  first?.focus();
+}
+
+function closeSettingsSheet({ restoreFocus = true } = {}) {
+  const wasOpen = document.body.classList.contains("sidebar-open");
+  document.body.classList.remove("sidebar-open");
+  if (isCompactLayout()) setSidebarExpanded(false);
+  syncSheetAccessibility();
+  if (wasOpen && restoreFocus) {
+    const target = state.sheetReturnFocus.sidebar || $("sidebarToggle");
+    target?.focus();
+    state.sheetReturnFocus.sidebar = null;
+  }
+}
+
+function closeInspectorSheet({ restoreFocus = true } = {}) {
+  const wasOpen = document.body.classList.contains("inspector-open");
   document.body.classList.remove("inspector-open");
   if (isCompactLayout()) setInspectorExpanded(false);
+  syncSheetAccessibility();
+  if (wasOpen && restoreFocus) {
+    const target = state.sheetReturnFocus.inspector || $("inspectorToggle");
+    target?.focus();
+    state.sheetReturnFocus.inspector = null;
+  }
 }
 
 function toggleSidebar() {
   if (isCompactLayout()) {
     const isOpen = document.body.classList.toggle("sidebar-open");
+    if (isOpen) state.sheetReturnFocus.sidebar = document.activeElement;
     setSidebarExpanded(isOpen);
-    closeInspectorSheet();
+    closeInspectorSheet({ restoreFocus: false });
+    syncSheetAccessibility();
+    if (isOpen) focusSheet("settingsSidebar");
     return;
   }
   const isCollapsed = document.body.classList.toggle("sidebar-collapsed");
   setSidebarExpanded(!isCollapsed);
+  syncSheetAccessibility();
   try {
     localStorage.setItem(sidebarStorageKey, isCollapsed ? "collapsed" : "open");
   } catch {}
@@ -1234,8 +1317,11 @@ function toggleInspector() {
     return;
   }
   const isOpen = document.body.classList.toggle("inspector-open");
+  if (isOpen) state.sheetReturnFocus.inspector = document.activeElement;
   setInspectorExpanded(isOpen);
-  closeSettingsSheet();
+  closeSettingsSheet({ restoreFocus: false });
+  syncSheetAccessibility();
+  if (isOpen) focusSheet("resultsInspector");
 }
 
 function restoreSidebarPreference() {
@@ -1254,9 +1340,13 @@ function syncWorkspaceLayoutState() {
   const mode = availableWidth < 700 ? "compact" : availableWidth < 1040 ? "medium" : availableWidth < 1440 ? "wide" : "extra-wide";
   document.documentElement.dataset.layoutMode = mode;
   const compact = mode === "compact";
-  if (!compact) document.body.classList.remove("sidebar-open", "inspector-open");
+  if (!compact) {
+    closeSettingsSheet({ restoreFocus: false });
+    closeInspectorSheet({ restoreFocus: false });
+  }
   setSidebarExpanded(compact ? document.body.classList.contains("sidebar-open") : !document.body.classList.contains("sidebar-collapsed"));
   setInspectorExpanded(compact && document.body.classList.contains("inspector-open"));
+  syncSheetAccessibility();
 }
 function bind() {
   syncAdaptivePreferences();
@@ -1437,6 +1527,27 @@ function bind() {
     if (event.key === "Escape") {
       closeSettingsSheet();
       closeInspectorSheet();
+      return;
+    }
+    if (event.key === "Tab" && isCompactLayout()) {
+      const openSheet = document.body.classList.contains("sidebar-open")
+        ? $("settingsSidebar")
+        : document.body.classList.contains("inspector-open")
+          ? $("resultsInspector")
+          : null;
+      if (openSheet) {
+        const focusable = focusableIn(openSheet);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     }
   });
   let installPrompt;

@@ -328,6 +328,33 @@ test("opens and closes the settings drawer on a small screen", async ({
   await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
 });
 
+test("keeps compact sheets keyboard operable and announced as dialogs", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 640, height: 800 });
+  await page.goto("/");
+  await page.locator("#markdownInput").setInputFiles({
+    name: "keyboard.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# Keyboard review"),
+  });
+
+  await page.locator("#sidebarToggle").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#settingsSidebar")).toHaveAttribute("role", "dialog");
+  await expect(page.locator("#settingsSidebar")).toHaveAttribute("aria-modal", "true");
+  await expect(page.locator("#settingsSidebar input").first()).toBeFocused();
+  await expect(page.locator("#resultsInspector")).toHaveAttribute("inert", "");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#sidebarToggle")).toBeFocused();
+  await expect(page.locator("#settingsSidebar")).not.toHaveAttribute("role", "dialog");
+
+  await page.locator("#compactInspectorButton").click();
+  await expect(page.locator("#resultsInspector")).toHaveAttribute("role", "dialog");
+  await expect(page.locator("#resultsInspector input").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#compactInspectorButton")).toBeFocused();
+});
 test("extracts a PDF through the structured WASM worker", async ({ page }) => {
   const errors = [];
   let wasmResponse;

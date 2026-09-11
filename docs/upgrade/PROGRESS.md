@@ -278,3 +278,19 @@ This file records executed upgrade steps in chronological order.
   - Browser application suite passed, including compact/medium/wide/extra-wide assertions and an editor-state resize regression.
   - Full browser unit suite and production build were run after the focused checks.
   - No dependency, backend, upload, or telemetry behavior was added.
+
+## Step 21 — Make accessibility and input modality first-class
+
+- Date: 2026-09-11
+- Repository HEAD: fec6d61
+- Branch: upgrade-plan
+- Package manager: npm for the browser workspace
+- Status: PASS
+- Summary: Extended the system-preference model into explicit runtime and DOM behavior. Reduced transparency now uses opaque content-elevated glass with no backdrop treatment; increased contrast strengthens foreground, boundaries, focus rings, and edges; forced colors have an explicit dataset fallback; and reduced motion removes transform/elastic motion while retaining only an effectively instant opacity transition. Compact settings and quality/export sheets now become modal dialogs with inert hidden panes, focus entry, Tab wrapping, Escape dismissal, and focus restoration. Progress and review selection announce through live regions, the source canvas has a text fallback, the Review Queue exposes preserved source evidence and proposed reconstruction as labelled text, display equations emit semantic MathML plus plain text, and VisualIR emits deterministic node/edge descriptions.
+- Validation notes:
+  - Focused accessibility/semantic tests passed: 4 tests.
+  - Full browser unit suite passed: 23 files, 140 tests.
+  - Browser app regression suite passed: 10 tests, including compact-sheet keyboard focus trapping and state-preserving responsive behavior.
+  - Production build passed; built dist/index.html and bundles were inspected for the new live regions and runtime hooks.
+  - No dependency, backend, upload, telemetry, or cloud-processing change was introduced.
+- Documentation: Added docs/upgrade/ACCESSIBILITY.md with implemented checks, manual browser/screen-reader matrix, and the explicit limitation that GlyphMend provides semantic MathML/text fallbacks without bundling a speech renderer or external scanner.

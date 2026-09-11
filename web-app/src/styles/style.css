@@ -473,6 +473,53 @@
   }
 }
 
+@layer accessibility-components {
+  .review-comparison {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0 0 14px;
+  }
+
+  .review-comparison section {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    background: var(--surface-content-inset);
+  }
+
+  .review-comparison h3 {
+    margin: 0 0 5px;
+    font-size: 12px;
+  }
+
+  .review-comparison p,
+  .review-comparison code {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .math-accessible {
+    margin: 14px 0;
+    padding: 8px 12px;
+    border-inline-start: 3px solid var(--accent-border);
+  }
+
+  .math-accessible math {
+    display: block;
+    overflow-x: auto;
+  }
+
+  @media (max-width: 560px) {
+    .review-comparison {
+      grid-template-columns: 1fr;
+    }
+  }
+}
 @layer components {
   .brand-lockup,
   .topbar-actions,
@@ -1968,7 +2015,9 @@
     --text-secondary: var(--text-primary);
     --text-tertiary: var(--text-primary);
     --glass-selected-overlay-edge: var(--border-emphasis);
-    --focus-ring: 0 0 0 3px rgba(10, 132, 255, 0.42);
+    --glass-highlight: transparent;
+    --glass-shadow: 0 2px 8px rgba(20, 28, 40, 0.24);
+    --focus-ring: 0 0 0 3px rgba(10, 92, 180, 0.62);
   }
 
   :root[data-transparency="reduce"],
@@ -1976,6 +2025,13 @@
     --glass-regular-fill: var(--surface-content-elevated);
     --glass-clear-fill: var(--surface-content-elevated);
     --glass-edge: var(--border-strong);
+    --glass-highlight: transparent;
+    --glass-shadow: var(--shadow-content);
+  }
+
+  :root[data-transparency="reduce"] .liquid-glass,
+  :root[data-contrast="more"] .liquid-glass {
+    background-image: none;
   }
 
   :root[data-transparency="reduce"] .liquid-glass,
@@ -1984,7 +2040,7 @@
     backdrop-filter: none;
   }
 
-  :root[data-motion="reduce"] html {
+  :root[data-motion="reduce"] {
     scroll-behavior: auto;
   }
 
@@ -1995,8 +2051,10 @@
   :root[data-motion="reduce"] .icon-button,
   :root[data-motion="reduce"] .downloads > button,
   :root[data-motion="reduce"] #toast {
-    transition-property: opacity, background-color, border-color, color, box-shadow;
-    transition-duration: 120ms;
+    transition-property: opacity;
+    transition-duration: 1ms;
+    transition-timing-function: step-end;
+    animation: none;
   }
 
   :root[data-motion="reduce"] button:active:not(:disabled),
@@ -2006,6 +2064,8 @@
 
   @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
     .liquid-glass {
+      background: var(--surface-content-elevated);
+      background-image: none;
       -webkit-backdrop-filter: none;
       backdrop-filter: none;
     }
@@ -2023,8 +2083,10 @@
     .icon-button,
     .downloads > button,
     #toast {
-      transition-property: opacity, background-color, border-color, color, box-shadow;
-      transition-duration: 120ms;
+      transition-property: opacity;
+      transition-duration: 1ms;
+      transition-timing-function: step-end;
+      animation: none;
     }
 
     button:active:not(:disabled),
@@ -2086,6 +2148,43 @@
       border-color: CanvasText;
     }
   }
+
+  :root[data-forced-colors="active"] {
+    --surface-content: Canvas;
+    --surface-content-elevated: Canvas;
+    --surface-content-inset: Canvas;
+    --text-primary: CanvasText;
+    --text-secondary: CanvasText;
+    --text-tertiary: CanvasText;
+    --border-subtle: CanvasText;
+    --border-strong: CanvasText;
+    --accent-fill: Highlight;
+    --accent-strong: HighlightText;
+    --glass-regular-fill: Canvas;
+    --glass-clear-fill: Canvas;
+    --glass-edge: CanvasText;
+  }
+
+  :root[data-forced-colors="active"] .content-panel,
+  :root[data-forced-colors="active"] .drop-zone,
+  :root[data-forced-colors="active"] .liquid-glass,
+  :root[data-forced-colors="active"] .metric-card,
+  :root[data-forced-colors="active"] .status-badge,
+  :root[data-forced-colors="active"] .downloads > button {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  :root[data-forced-colors="active"] .primary,
+  :root[data-forced-colors="active"] .liquid-glass-selected-overlay {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
 }
 
 @layer responsive {
@@ -2112,6 +2211,53 @@
   @container (min-width: 1440px) { .workspace { grid-template-columns: minmax(16rem, 0.55fr) minmax(32rem, 1.65fr) minmax(18rem, 0.7fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "sidebar editor inspector"; } .exports { display: block; overflow: auto; } .exports .inspector-section { border-right: 0; border-bottom: 1px solid var(--border-subtle); } }
   @media (max-width: 540px) { main { padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); } .topbar { margin: 8px 8px 0; padding: 0 10px; } .brand { display: none; } .welcome { margin-top: 38px; padding: 24px 18px 18px; } .welcome h1 { font-size: 38px; } .drop-zone { min-height: 200px; margin-top: 30px; padding: 22px; } .toolbar { padding: 8px 10px; } .prose { padding: 28px 20px 60px; } .page-controls { width: calc(100% - 24px); justify-content: center; } }
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .liquid-glass { background: var(--surface-content-elevated); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+}
+@layer accessibility-components {
+  .review-comparison {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0 0 14px;
+  }
+
+  .review-comparison section {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-control);
+    background: var(--surface-content-inset);
+  }
+
+  .review-comparison h3 {
+    margin: 0 0 5px;
+    font-size: 12px;
+  }
+
+  .review-comparison p,
+  .review-comparison code {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .math-accessible {
+    margin: 14px 0;
+    padding: 8px 12px;
+    border-inline-start: 3px solid var(--accent-border);
+  }
+
+  .math-accessible math {
+    display: block;
+    overflow-x: auto;
+  }
+
+  @media (max-width: 560px) {
+    .review-comparison {
+      grid-template-columns: 1fr;
+    }
+  }
 }
 @layer components {
   .design-system-fixture {

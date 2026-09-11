@@ -265,3 +265,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Recommended next action: Keep future workspace features within the semantic mode contract and test state preservation when adding panes.
 - Safe to continue unrelated work: yes
 - Resolution note: Resolved by the available-width layout system and browser regression coverage.
+
+## GM-UPG-016 — Accessibility and input-modality release matrix remains partly manual
+
+- Detected in step: Step 21 Make accessibility and input modality first-class
+- Date: 2026-09-11
+- Status: RESOLVED
+- Severity: low
+- Area: browser / accessibility / input modality
+- Dependency: browser and screen-reader combinations used by release QA
+- Description: The app previously exposed system preference datasets but did not make reduced-transparency material, compact-sheet focus, source/reconstruction comparison, or VisualIR accessibility descriptions explicit enough for reliable assistive technology use.
+- Evidence: web-app/src/app.js, web-app/src/styles/style.css, web-app/index.html, web-app/src/accessibility.test.js, web-app/src/shared/accessibility.test.js, and docs/upgrade/ACCESSIBILITY.md; focused tests, full unit tests, browser regressions, and production build passed.
+- What was attempted: Added opaque reduced-transparency surfaces, stronger contrast boundaries, forced-colors fallback tokens, reduced-motion suppression, coarse-pointer sizing, focus trapping/restoration, live progress/review announcements, semantic MathML/text fallback, and deterministic VisualIR node/edge descriptions.
+- Why it remains: Automated structural checks cannot replace a release pass with real browser/screen-reader combinations. No external accessibility scanner or speech-rendering dependency was added because the repository has no existing approved tool and the dependency rule requires a separate bundle/license review.
+- Recommended next action: Run the documented manual matrix in docs/upgrade/ACCESSIBILITY.md against the supported browser/screen-reader matrix before a production release.
+- Safe to continue unrelated work: yes
+- Resolution note: Core keyboard operation, preference adaptation, and non-visual review comparison are implemented and regression-tested; only cross-browser/screen-reader release verification remains manual.
