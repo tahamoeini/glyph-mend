@@ -31,6 +31,20 @@ This file records executed upgrade steps in chronological order.
 	- `npm run build` passed in `web-app/` after installing workspace dependencies.
 	- `npm run test:e2e` failed in `web-app/tests/ocr-baseline.spec.js` with the extraction worker reporting `Extraction worker failed`.
 
+## Step 02 — Introduce typed semantic asset contracts: ReconstructedAsset, MathIR, VisualIR, ChartIR
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Added a shared versioned semantic IR seam in `web-app/src/shared/semantic-ir.js` for reconstructed assets, math, visual, and chart contracts; documented serialization and versioning rules in the architecture ledger; and verified deterministic round-trips plus validation behavior without coupling the contracts to Mermaid, SVG, DOCX, or Word OMML.
+- Validation notes:
+	- `npm test src/shared/semantic-ir.test.js` passed in `web-app/`.
+	- `npm test` passed in `web-app/`.
+	- `python -m pytest tests/unit/test_docx_export.py` passed in the project virtual environment.
+
+
 
 ### AI coding agent execution rules
 
