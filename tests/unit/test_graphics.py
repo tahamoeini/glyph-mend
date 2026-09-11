@@ -68,3 +68,33 @@ def test_detect_vector_visual_ir_marks_ambiguous_arrowheads():
     visual_ir = detect_vector_visual_ir(page)[0]
     assert visual_ir["edges"] == []
     assert any("ambiguous" in warning.lower() for warning in visual_ir["warnings"])
+
+
+def test_mermaid_serialization_sanitizes_untrusted_labels_ids_edges_and_direction():
+    visual_ir = {
+        "geometry": {"direction": 'LR\n%%{init: {"securityLevel": "loose"}}%%'},
+        "nodes": [
+            {
+                "id": 'unsafe"]\nclick N1 "javascript:alert(1)',
+                "label": '<script>alert(1)</script> | bad; %%{init}%%',
+                "shape": "box",
+            },
+            {"id": "target", "label": "End", "shape": "box"},
+        ],
+        "edges": [
+            {
+                "from": 'unsafe"]\nclick N1 "javascript:alert(1)',
+                "to": "target",
+                "directed": True,
+                "label": "edge | click N1 javascript:alert(1);",
+            }
+        ],
+    }
+
+    markdown = visual_ir_to_mermaid(visual_ir)
+    assert markdown.startswith("```mermaid\nflowchart LR\n")
+    assert "<script" not in markdown
+    assert "click N1" not in markdown
+    assert "securityLevel" not in markdown
+    assert 'N1["' in markdown
+    assert "N1 -->|edge click N1 javascript:alert(1)| N2" in markdown
