@@ -1,4 +1,5 @@
 import { openDB } from "idb";
+import { assertSafeLeafFileName } from "../security/paths.js";
 import {
   parseUntrustedJson,
   SECURITY_LIMITS,
@@ -164,12 +165,14 @@ export function deserializeWorkspace(text) {
   if (typeof value.pdfBytes === "string")
     value.pdfBytes = base64ToArray(value.pdfBytes);
   const compatible = value.checkpointRevision === CHECKPOINT_REVISION;
-  return validateWorkspacePayload({
+  const validated = validateWorkspacePayload({
     ...value,
     schema: 4,
     checkpointRevision: compatible ? CHECKPOINT_REVISION : 0,
     extractionVersion: compatible ? value.extractionVersion : -1,
   });
+  validated.fileName = assertSafeLeafFileName(validated.fileName);
+  return validated;
 }
 function arrayToBase64(buffer) {
   const bytes = new Uint8Array(buffer);

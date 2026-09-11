@@ -19,6 +19,24 @@ it("round-trips PDF and visual binary data in exported workspaces", () => {
   expect([...restored.pages[1].assets[0].data]).toEqual([4, 5, 6]);
 });
 
+it("rejects imported workspace filenames that could create unsafe ZIP paths", () => {
+  for (const fileName of [
+    "../escape.pdf",
+    "..\\escape.pdf",
+    "/tmp/escape.pdf",
+    "C:\\escape.pdf",
+  ]) {
+    const serialized = serializeWorkspace({
+      schema: 4,
+      extractionVersion: 10,
+      fileName,
+      pdfBytes: new Uint8Array([1]),
+      pages: {},
+    });
+    expect(() => deserializeWorkspace(serialized)).toThrow(/leaf name/i);
+  }
+});
+
 describe("workspace checkpoint revisions", () => {
   it("marks newly exported workspaces with the current checkpoint revision", () => {
     const parsed = JSON.parse(
