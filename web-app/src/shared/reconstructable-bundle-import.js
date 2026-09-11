@@ -39,10 +39,24 @@ function findEocd(data, view) {
   for (let offset = data.byteLength - 22; offset >= minimum; offset -= 1) {
     if (view.getUint32(offset, true) !== EOCD_SIGNATURE) continue;
     if (offset + 22 > data.byteLength) continue;
+    const disk = view.getUint16(offset + 4, true);
+    const centralDisk = view.getUint16(offset + 6, true);
+    const entriesOnDisk = view.getUint16(offset + 8, true);
+    const entryCount = view.getUint16(offset + 10, true);
+    const centralSize = view.getUint32(offset + 12, true);
+    const centralOffset = view.getUint32(offset + 16, true);
     const commentLength = view.getUint16(offset + 20, true);
-    if (offset + 22 + commentLength === data.byteLength) return offset;
+    if (offset + 22 + commentLength !== data.byteLength) continue;
+    if (disk !== 0 || centralDisk !== 0 || entriesOnDisk !== entryCount) continue;
+    if (centralOffset + centralSize !== offset || centralOffset > offset) continue;
+    if (entryCount === 0 && centralSize !== 0) continue;
+    if (entryCount > 0) {
+      if (centralOffset + 46 > offset) continue;
+      if (view.getUint32(centralOffset, true) !== CENTRAL_SIGNATURE) continue;
+    }
+    return offset;
   }
-  throw new TypeError("ZIP end-of-central-directory record is missing.");
+  throw new TypeError("ZIP end-of-central-directory record is missing or malformed.");
 }
 
 export function preflightReconstructableZip(
@@ -74,7 +88,7 @@ export function preflightReconstructableZip(
     throw new RangeError(`ZIP bundle exceeds the ${limits.maxEntries}-entry limit.`);
   }
   if (eocd + 22 + commentLength !== data.byteLength) throw new TypeError("ZIP comment is truncated or malformed.");
-  if (centralOffset + centralSize > eocd || centralOffset + centralSize > data.byteLength) {
+  if (centralOffset + centralSize !== eocd || centralOffset + centralSize > data.byteLength) {
     throw new TypeError("ZIP central directory is outside the archive bounds.");
   }
 
