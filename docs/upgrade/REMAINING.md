@@ -264,7 +264,7 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Why it remains: The previous hard breakpoint has been removed from primary workspace behavior.
 - Recommended next action: Keep future workspace features within the semantic mode contract and test state preservation when adding panes.
 - Safe to continue unrelated work: yes
-- Resolution note: Resolved by the available-width layout system and browser regression coverage.
+- Resolution note: Resolved by the available-width layout system and regression coverage.
 
 ## GM-UPG-016 — Accessibility and input-modality release matrix remains partly manual
 
@@ -295,3 +295,51 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - What was attempted: Preserved the existing JSON import contract while explicitly marking ZIP import unsupported in manifest.import. No export-only behavior is presented as round-trip restoration.
 - Recommended next action: Design and implement a browser-only ZIP importer that validates schema/version, paths, checksums, source evidence, and semantic sidecars before restoring workspace state; add migration tests for future manifest versions.
 - Safe to continue unrelated work: yes
+
+## GM-UPG-018 — Step 23 security hardening was merged before its CI became green
+- Detected in step: Step 24 dependency/model licensing gate
+- Date: 2026-09-11
+- Status: FAILED
+- Severity: high
+- Area: repository / CI / security regression verification
+- Dependency: Step 23 security-hardening branch and merged PR #19
+- Description: Step 23 landed on `main` even though the pull-request browser workflow later reported `npm test` failure and skipped build/e2e, while the Python CI matrix reported pytest failures. `docs/upgrade/PROGRESS.md` also had no Step 23 run entry when Step 24 began.
+- Evidence: PR #19 merged commit `8fae396b5f7107a3d6dde40cd703df5f04f4f801`; browser Actions run `34634261919` failed at `npm test`; Python Actions run `34634261968` failed in pytest matrix jobs; Step 24 inspected `PROGRESS.md` and found it ending at Step 22.
+- Files / symbols involved: Step 23 security boundary tests and implementation, `.github/workflows/web-app.yml`, `.github/workflows/test.yml`, `docs/upgrade/PROGRESS.md`.
+- What was attempted: Step 24 did not reset or remove Step 23 work; it isolated licensing changes on a new branch and treated the failed CI as a prior-step gap rather than weakening security assertions.
+- Why it remains: The Step 23 test failures require separate diagnosis; licensing inventory work does not depend on changing the security implementation.
+- Recommended next action: Reproduce the failing browser/Python test cases, repair the implementation rather than tests/security policy, then add an accurate Step 23 progress entry with green verification.
+- Safe to continue unrelated work: yes
+- Resolution note: Unresolved; Step 24 intentionally does not claim Step 23 verification success.
+
+## GM-UPG-019 — Project licensing strategy is unresolved for MuPDF/PyMuPDF AGPL redistribution
+- Detected in step: Step 24 dependency/model licensing gate
+- Date: 2026-09-11
+- Status: BLOCKED
+- Severity: high
+- Area: licensing / distribution / browser and Python runtimes
+- Dependency: explicit GlyphMend project license/distribution strategy or applicable Artifex commercial licensing
+- Description: GlyphMend currently ships MuPDF browser JS/WASM (`AGPL-3.0-or-later`) and declares PyMuPDF/PyMuPDF4LLM 1.28.2, which upstream distributes under GNU AGPL v3 or Artifex commercial licensing. The repository has no top-level `LICENSE` file and GitHub reports no repository license, so Step 24 cannot infer that current public distribution satisfies AGPL obligations or that proprietary redistribution is authorized.
+- Evidence: `web-app/package-lock.json`, `web-app/vite.config.js`, `pyproject.toml`, GitHub repository metadata, and `docs/upgrade/DEPENDENCY_LICENSES.md`.
+- Files / symbols involved: `web-app/package.json`, `web-app/package-lock.json`, `web-app/vite.config.js`, `pyproject.toml`, `docs/upgrade/DEPENDENCY_LICENSES.md`.
+- What was attempted: Added explicit `BLOCKED_STRATEGY_REVIEW` status to the machine-readable license gate and documented browser/Python redistribution and source-disclosure implications without removing existing dependencies.
+- Why it remains: Choosing a project license or purchasing/recording a commercial license is a product/legal distribution decision outside this code-only step.
+- Recommended next action: Decide the intended GlyphMend distribution license. If AGPL is intended, document compliance/notices/source obligations. If not, obtain and record applicable Artifex commercial licensing before distribution, then update the inventory status.
+- Safe to continue unrelated work: yes
+- Resolution note: Blocked; no existing MuPDF-family dependency was removed solely because of this audit.
+
+## GM-UPG-020 — Candidate math/visual model weights and dataset terms remain unapproved
+- Detected in step: Step 24 dependency/model licensing gate
+- Date: 2026-09-11
+- Status: BLOCKED
+- Severity: medium
+- Area: browser / local ML / model redistribution
+- Dependency: exact model artifact selection with code, weight, dataset, runtime, bundle, and hash review
+- Description: Research candidates including Texo, UniMERNet, PP-FormulaNet, pix2tex/LaTeX-OCR, Flowchart2Mermaid-style VLMs, and any future visual-provider model are not production-approved merely because their code repositories or model cards expose an open-source license. Model weights and relevant training-data terms must be reviewed independently.
+- Evidence: `research/GlyphMend Upgrade Research.md`, existing provider seams, and `docs/upgrade/DEPENDENCY_LICENSES.md`. PP-FormulaNet S/L model metadata currently reports Apache-2.0, while other candidates still have unresolved weight/data terms; no production weight files are bundled in the repository.
+- Files / symbols involved: `web-app/src/features/recognition/math-provider.js`, `web-app/src/features/recognition/visual-provider.js`, `docs/upgrade/DEPENDENCY_LICENSES.md`.
+- What was attempted: Recorded candidate-by-candidate statuses and kept all unapproved models/runtimes optional and unbundled behind existing provider interfaces.
+- Why it remains: No exact production model files, hashes, training-data terms, and redistribution notices have been selected and approved end-to-end.
+- Recommended next action: For any candidate selected for benchmarking, record exact source URL/version/file SHA-256, code license, weight license, dataset terms, commercial restrictions, and runtime license before enabling it in production.
+- Safe to continue unrelated work: yes
+- Resolution note: Blocked by design; acceptance for Step 24 is satisfied by keeping every unknown model/renderer unbundled rather than calling it approved.
