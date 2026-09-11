@@ -12,6 +12,7 @@ const contentSurfaceIds = [
   "sourcePreview",
   "activityLog",
   "qualityReport",
+  "reviewQueuePanel",
 ];
 
 const legacyControlIds = [
@@ -66,6 +67,12 @@ const legacyControlIds = [
   "downloadText",
   "downloadReport",
   "downloadBundle",
+  "reviewQueueTotal",
+  "reviewQueueAccepted",
+  "reviewQueueReview",
+  "reviewQueuePreserved",
+  "reviewQueueList",
+  "reviewQueueDetails",
 ];
 
 const enabledOptionIds = [
@@ -120,6 +127,7 @@ describe("application UI contract", () => {
       expect(document.getElementById(tab.getAttribute("aria-controls"))).not.toBeNull();
     });
     expect(document.querySelectorAll(".downloads > button")).toHaveLength(5);
+    expect(document.getElementById("reviewQueuePanel")).not.toBeNull();
   });
 
   it("keeps liquid glass restricted to functional chrome", () => {

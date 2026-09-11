@@ -879,6 +879,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   const entries = [];
   const edges = { headers: [], footers: [] };
   let ocrCandidates = [];
+  const reviewItems = [];
 
   let ocrApplied = false;
   if (
@@ -935,6 +936,55 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         pageEquationText,
       );
       ocrCandidates.push(candidate);
+      reviewItems.push({
+        id: candidate.sourceAsset?.id || candidate.id || `p${pageNumber}-equation-${reviewItems.length + 1}`,
+        page: pageNumber,
+        kind: "equation",
+        sourceAsset: candidate.sourceAsset,
+        candidate: {
+          id: candidate.id,
+          kind: "equation",
+          latex: pageEquationText,
+          normalized: pageEquationText,
+          provider: candidate.sourceType || "raster",
+          version: "browser-local",
+          confidence: candidate.confidence,
+          modelHash: candidate.sourceAsset?.provenance?.modelHash || null,
+        },
+        validation: {
+          parseSuccess: false,
+          renderSuccess: false,
+          semanticEquivalent: false,
+          confidencePass: candidate.disposition === "accepted",
+          mandatoryPassed: false,
+          sourcePreserved: true,
+          notes: [candidate.evidence?.reason || "equation candidate detected"],
+        },
+        manifest: {
+          kind: "equation",
+          sourceAsset: candidate.sourceAsset,
+          reconstruction: {
+            format: "semantic-ir",
+            source: {
+              kind: candidate.disposition,
+              recognizer: {
+                name: candidate.sourceType || "unknown",
+                version: "browser-local",
+                preprocessVersion: "1",
+              },
+            },
+          },
+          provenance: {
+            producer: "extract-worker",
+            validationEvidence: {
+              level: candidate.disposition === "accepted" ? "high" : candidate.disposition === "review" ? "medium" : "low",
+              notes: [candidate.evidence?.reason || "equation candidate detected"],
+            },
+          },
+        },
+        disposition: candidate.disposition,
+        status: candidate.disposition,
+      });
     }
     for (const item of lines) {
       if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
@@ -1139,7 +1189,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     suspiciousGaps: 0,
     ocrApplied,
   };
-  return { text, bodySize, assets, edges, quality };
+  return { text, bodySize, assets, edges, quality, reviewItems };
 }
 
 function geometryYFromRaw(rawY, pageBounds, rawHeight) {

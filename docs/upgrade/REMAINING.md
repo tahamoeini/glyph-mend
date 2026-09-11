@@ -106,3 +106,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Open, intentionally deferred until an approved model/runtime is available and licensed for local use.
 
+## GM-UPG-006 — Review queue remains equations-first until other asset types are wired
+- Detected in step: Step 11 unified reconstruction Review Queue
+- Date: 2026-09-11
+- Status: OPEN
+- Severity: low
+- Area: browser / review queue / UI
+- Dependency: future reconstruction emitters for diagrams, charts, tables, and OCR regions
+- Description: The new unified review queue is structured to host multiple reconstructed asset types, but only equations are currently emitted into the queue and rendered in the inspector.
+- Evidence: The queue model and inspector surface are generic, while the extraction worker currently emits review items only for equation candidates.
+- Files / symbols involved: [web-app/src/shared/review-queue.js](web-app/src/shared/review-queue.js), [web-app/src/features/extraction/extract-worker.js](web-app/src/features/extraction/extract-worker.js), [web-app/src/app.js](web-app/src/app.js)
+- What was attempted: Built the queue state model, persistence seam, inspector UI, editable LaTeX workflow, and revert path for equations.
+- Why it remains: Non-equation reconstruction emitters are not yet wired into the queue.
+- Recommended next action: Add diagram, chart, table, and OCR-region review item emitters that reuse the same queue item contract.
+- Safe to continue unrelated work: yes
+- Resolution note: Open, by design, until the remaining reconstruction families are connected.
+

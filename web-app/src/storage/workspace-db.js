@@ -81,6 +81,7 @@ export async function loadWorkspace() {
     pdfBytes,
     pages: Object.fromEntries(pageValues.map((page) => [page.page, page])),
     logs,
+    reviewQueue: Array.isArray(meta.reviewQueue) ? meta.reviewQueue : [],
   };
 }
 export async function clearWorkspace() {
@@ -140,6 +141,7 @@ export function serializeWorkspace(value) {
       schema: 4,
       checkpointRevision: CHECKPOINT_REVISION,
       reconstructionVersion,
+      reviewQueue: Array.isArray(value?.reviewQueue) ? value.reviewQueue : [],
       exportedAt: new Date().toISOString(),
     },
     (_key, item) => {
@@ -171,6 +173,7 @@ export function deserializeWorkspace(text) {
     reconstructionVersion: Number.isFinite(Number(value.reconstructionVersion))
       ? Number(value.reconstructionVersion)
       : 1,
+    reviewQueue: Array.isArray(value.reviewQueue) ? value.reviewQueue : [],
   };
 }
 function arrayToBase64(buffer) {

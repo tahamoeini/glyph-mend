@@ -22,6 +22,12 @@ import {
   serializeWorkspace,
   startWorkspace,
 } from "./storage/workspace-db.js";
+import {
+  buildReviewQueue,
+  normalizeReviewItem,
+  reviewQueueDecide,
+  reviewQueueSummary,
+} from "./shared/review-queue.js";
 import { DEFAULT_BRAND } from "./shared/brand.js";
 import { download, stem } from "./shared/download.js";
 
@@ -72,6 +78,8 @@ const state = {
   previewRenderToken: 0,
   checkpointWrites: new Set(),
   checkpointError: null,
+  reviewQueue: [],
+  selectedReviewId: null,
 };
 const optionIds = [
   "removeHeaders",
@@ -275,6 +283,74 @@ function saveCheckpoint(checkpoint) {
     () => state.checkpointWrites.delete(write),
   );
 }
+
+function syncReviewQueue() {
+  state.reviewQueue = buildReviewQueue(state.pages);
+  if (state.reviewQueue.length && !state.selectedReviewId) {
+    state.selectedReviewId = state.reviewQueue[0].id;
+  }
+  if (!state.reviewQueue.some((item) => item.id === state.selectedReviewId)) {
+    state.selectedReviewId = state.reviewQueue[0]?.id || null;
+  }
+}
+
+function queueItemForPage(page) {
+  const candidate = page?.reviewCandidate || page?.equationCandidate || page?.candidate || null;
+  if (!candidate && !Array.isArray(page?.reviewItems)) return null;
+  const reviewItems = Array.isArray(page?.reviewItems) ? page.reviewItems : [];
+  if (reviewItems.length) return null;
+  if (!candidate) return null;
+  return normalizeReviewItem({
+    id: candidate.id || `page-${page.page}-equation-1`,
+    page: page.page,
+    kind: candidate.kind || "equation",
+    sourceAsset: candidate.sourceAsset || candidate.cropAsset || { id: `page-${page.page}-crop`, page: page.page, bbox: candidate.bbox || [0, 0, 0, 0] },
+    candidate,
+    validation: candidate.validation || {},
+    manifest: candidate.manifest || candidate.reconstruction || {},
+    parsed: candidate.parsed,
+    confidence: candidate.confidence,
+    disposition: candidate.disposition,
+    notes: candidate.notes || [],
+  });
+}
+
+function attachReviewItem(page, candidate) {
+  if (!candidate) return;
+  const reviewItem = normalizeReviewItem(candidate);
+  const existing = Array.isArray(page.reviewItems) ? page.reviewItems : [];
+  const index = existing.findIndex((item) => item.id === reviewItem.id);
+  if (index >= 0) existing[index] = reviewItem;
+  else existing.push(reviewItem);
+  page.reviewItems = existing;
+}
+
+function updateReviewItem(pageNumber, candidate) {
+  const page = state.pages[pageNumber];
+  if (!page) return;
+  const reviewItem = queueItemForPage({ ...page, reviewCandidate: candidate });
+  if (!reviewItem) return;
+  attachReviewItem(page, reviewItem);
+  syncReviewQueue();
+}
+
+function setReviewItemDisposition(itemId, action, nextLatex) {
+  const item = state.reviewQueue.find((candidate) => candidate.id === itemId);
+  if (!item) return null;
+  const target = nextLatex ? { ...item, candidate: { ...item.candidate, latex: nextLatex, normalized: nextLatex } } : item;
+  const updated = reviewQueueDecide(target, action);
+  const page = state.pages[updated.page];
+  if (!page) return updated;
+  page.reviewItems = (page.reviewItems || []).map((candidate) =>
+    candidate.id === updated.id ? updated : candidate,
+  );
+  syncReviewQueue();
+  return updated;
+}
+
+function selectedReviewItem() {
+  return state.reviewQueue.find((item) => item.id === state.selectedReviewId) || state.reviewQueue[0] || null;
+}
 async function waitForCheckpointWrites() {
   await Promise.allSettled([...state.checkpointWrites]);
   if (state.checkpointError) throw state.checkpointError;
@@ -290,6 +366,7 @@ function activateWorkspace() {
     ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
     : "Review and export imported Markdown";
   closeMobileSidebar();
+  syncReviewQueue();
   updateOutput();
   renderLog();
   requestAnimationFrame(() => syncTabIndicator());
@@ -435,8 +512,14 @@ function runBatch(batch, wanted) {
           quality: data.quality || {},
           engine: data.engine || state.engine,
         };
+        if (Array.isArray(data.reviewItems)) checkpoint.reviewItems = data.reviewItems.map(normalizeReviewItem);
+        if (data.reviewCandidate) {
+          checkpoint.reviewItems = checkpoint.reviewItems || [];
+          checkpoint.reviewItems.push(normalizeReviewItem(data.reviewCandidate));
+        }
         state.pages[data.page] = checkpoint;
         saveCheckpoint(checkpoint);
+        syncReviewQueue();
         const done = wanted.filter((page) => state.pages[page]).length;
         setStatus(`Extracting page ${data.page}`, done, wanted.length);
         log(
@@ -600,6 +683,7 @@ async function stop(cancel = false) {
   if (cancel) {
     state.pages = {};
     state.markdown = "";
+    state.reviewQueue = [];
     await startWorkspace(
       {
         fileName: state.fileName,
@@ -610,6 +694,7 @@ async function stop(cancel = false) {
         warnings: [],
         extractionVersion: EXTRACTION_VERSION,
         engine: state.engine,
+        reviewQueue: [],
       },
       state.pdfBytes,
     );
@@ -663,6 +748,8 @@ function updateOutput() {
   $("qualityBadge").textContent = enabled ? state.audit.status : "Waiting";
   $("qualityReport").innerHTML =
     `<div class="metric-card metric-status"><dt>Quality status</dt><dd>${state.audit.status}</dd></div><div class="metric-card"><dt>Pages</dt><dd>${Object.keys(state.pages).length}</dd></div><div class="metric-card"><dt>Words</dt><dd>${m.words.toLocaleString()}</dd></div><div class="metric-card${issueCount ? " quality-issue warning" : ""}"><dt>Issues</dt><dd>${issueCount}</dd></div><div class="metric-card"><dt>Headings</dt><dd>${m.headings}</dd></div><div class="metric-card"><dt>Tables</dt><dd>${m.tables}</dd></div><div class="metric-card"><dt>Equations</dt><dd>${m.equations}</dd></div><div class="metric-card"><dt>Visuals</dt><dd>${m.sourceVisuals}</dd></div>${state.audit.issues.map((issue) => `<div class="metric-card quality-issue ${issue.severity || "warning"}"><dt>${issue.code}</dt><dd>${issue.count}</dd></div>`).join("")}`;
+  renderReviewQueue();
+  renderSelectedReviewItem();
   renderMarkdown();
 }
 function renderMarkdown() {
@@ -744,6 +831,7 @@ async function persist() {
       markdown: state.markdown,
       options: state.options,
       warnings: state.warnings,
+      reviewQueue: state.reviewQueue,
     });
 }
 async function restore(value) {
@@ -752,6 +840,7 @@ async function restore(value) {
   Object.assign(state, value);
   state.logs = value.logs || [];
   state.warnings = value.warnings || [];
+  state.reviewQueue = Array.isArray(value.reviewQueue) ? value.reviewQueue.map(normalizeReviewItem) : [];
   if (value.extractionVersion !== EXTRACTION_VERSION) {
     state.pages = {};
     state.markdown = "";
@@ -773,11 +862,13 @@ async function restore(value) {
         warnings: state.warnings,
         extractionVersion: EXTRACTION_VERSION,
         engine: state.engine,
+        reviewQueue: state.reviewQueue,
       },
       state.pdfBytes,
     );
     await Promise.all(Object.values(state.pages).map(savePage));
   }
+  syncReviewQueue();
   optionIds.forEach((id) => {
     if (id in (state.options || {})) $(id).checked = state.options[id];
   });
@@ -788,6 +879,7 @@ async function restore(value) {
   renderSource(1);
   log("resume", "Workspace restored", {
     completedPages: Object.keys(state.pages).length,
+    reviewItems: state.reviewQueue.length,
     extractionVersion: EXTRACTION_VERSION,
   });
   toast(
@@ -807,6 +899,7 @@ function snapshot() {
     options: state.options,
     warnings: state.warnings,
     logs: state.logs,
+    reviewQueue: state.reviewQueue,
   };
 }
 function report() {
@@ -838,6 +931,110 @@ function assetMap() {
       .flatMap((page) => page.assets || [])
       .map((asset) => [asset.id, asset]),
   );
+}
+
+function renderReviewQueue() {
+  const items = state.reviewQueue;
+  const summary = reviewQueueSummary(items);
+  const panel = $("reviewQueuePanel");
+  const list = $("reviewQueueList");
+  if (!panel || !list) return;
+  $("reviewQueueTotal").textContent = String(summary.total);
+  $("reviewQueueAccepted").textContent = String(summary.accepted || 0);
+  $("reviewQueueReview").textContent = String(summary.review || 0);
+  $("reviewQueuePreserved").textContent = String(summary.preserved || 0);
+  if (!items.length) {
+    list.innerHTML = '<p class="review-empty">No review items are currently queued.</p>';
+    panel.setAttribute("aria-busy", "false");
+    return;
+  }
+  const selected = selectedReviewItem();
+  panel.setAttribute("aria-busy", "false");
+  list.innerHTML = items.map((item, index) => {
+    const active = item.id === selected?.id;
+    return `
+      <article class="review-card ${active ? "active" : ""}" tabindex="0" role="button" data-review-id="${item.id}" aria-pressed="${active}">
+        <header>
+          <div>
+            <strong>Equation ${index + 1}</strong>
+            <small>Page ${item.page} · ${item.disposition}</small>
+          </div>
+          <span class="status-badge ${item.disposition === "accepted" ? "pass" : item.disposition === "review" ? "warning" : "neutral"}">${item.disposition}</span>
+        </header>
+        <div class="review-crop" aria-hidden="true">${item.sourceAsset?.id ? `<span>${item.sourceAsset.id}</span>` : "<span>Preserved source crop</span>"}</div>
+        <code class="review-latex">${DOMPurify.sanitize(item.candidate?.latex || "")}</code>
+      </article>`;
+  }).join("");
+  list.querySelectorAll("[data-review-id]").forEach((card) => {
+    card.onclick = () => {
+      state.selectedReviewId = card.dataset.reviewId;
+      renderReviewQueue();
+      renderSelectedReviewItem();
+    };
+    card.onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        card.click();
+      }
+    };
+  });
+}
+
+function renderSelectedReviewItem() {
+  const item = selectedReviewItem();
+  const details = $("reviewQueueDetails");
+  if (!details) return;
+  if (!item) {
+    details.innerHTML = '<p class="review-empty">Select an equation to inspect its metadata.</p>';
+    return;
+  }
+  details.innerHTML = `
+    <div class="review-detail-block">
+      <label class="field-label" for="reviewLatexEditor">Editable LaTeX<textarea id="reviewLatexEditor" rows="7">${DOMPurify.sanitize(item.candidate?.latex || "")}</textarea></label>
+      <div class="review-actions">
+        <button id="reviewAcceptButton" type="button" class="primary" ${item.validation?.mandatoryPassed ? "" : "disabled"}>Accept</button>
+        <button id="reviewEditButton" type="button">Reparse & validate</button>
+        <button id="reviewRevertButton" type="button">Keep original</button>
+      </div>
+      <details open class="review-meta">
+        <summary>Metadata</summary>
+        <dl>
+          <dt>Recognier</dt><dd>${DOMPurify.sanitize(item.candidate?.provider || "unknown")}</dd>
+          <dt>Version</dt><dd>${DOMPurify.sanitize(item.candidate?.version || "unknown")}</dd>
+          <dt>Confidence</dt><dd>${Number(item.confidence?.overall || 0).toFixed(2)}</dd>
+          <dt>Disposition</dt><dd>${item.disposition}</dd>
+          <dt>Source asset</dt><dd>${DOMPurify.sanitize(item.sourceAsset?.id || "source-unknown")}</dd>
+        </dl>
+      </details>
+    </div>`;
+  $("reviewAcceptButton")?.addEventListener("click", () => {
+    const updated = setReviewItemDisposition(item.id, "accept");
+    if (updated) {
+      toast(updated.disposition === "accepted" ? "Equation accepted." : "Low-confidence items must stay in review.", updated.disposition !== "accepted");
+      renderReviewQueue();
+      renderSelectedReviewItem();
+      persist();
+    }
+  });
+  $("reviewEditButton")?.addEventListener("click", () => {
+    const latex = $("reviewLatexEditor")?.value || "";
+    const updated = setReviewItemDisposition(item.id, "edit", latex);
+    if (updated) {
+      toast(updated.disposition === "review" ? "Equation revalidated for review." : "Edited equation preserved as source evidence.", updated.disposition !== "review");
+      renderReviewQueue();
+      renderSelectedReviewItem();
+      persist();
+    }
+  });
+  $("reviewRevertButton")?.addEventListener("click", () => {
+    const updated = setReviewItemDisposition(item.id, "keep-original");
+    if (updated) {
+      toast("Kept the original source crop.");
+      renderReviewQueue();
+      renderSelectedReviewItem();
+      persist();
+    }
+  });
 }
 function logText() {
   return state.logs

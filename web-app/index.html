@@ -184,6 +184,19 @@
       <aside class="exports content-panel" aria-label="Results and exports">
         <div class="inspector-section results-heading"><div><p class="eyebrow">Results</p><h2>Quality overview</h2></div><span id="qualityBadge" class="status-badge neutral">Waiting</span></div>
         <div class="quality inspector-section"><dl id="qualityReport" class="metric-grid"><div class="metric-card"><dt>Pages processed</dt><dd>0</dd></div></dl></div>
+        <section class="inspector-section review-queue-panel" id="reviewQueuePanel" aria-label="Review queue" aria-busy="false">
+          <div class="section-title"><span>Review queue</span><small>Equations first</small></div>
+          <dl class="metric-grid review-queue-summary" aria-label="Review queue summary">
+            <div class="metric-card"><dt>Total</dt><dd id="reviewQueueTotal">0</dd></div>
+            <div class="metric-card"><dt>Accepted</dt><dd id="reviewQueueAccepted">0</dd></div>
+            <div class="metric-card"><dt>Review</dt><dd id="reviewQueueReview">0</dd></div>
+            <div class="metric-card"><dt>Preserved</dt><dd id="reviewQueuePreserved">0</dd></div>
+          </dl>
+          <div id="reviewQueueList" class="review-queue-list" role="list" aria-label="Queued reconstruction items"></div>
+          <div id="reviewQueueDetails" class="review-queue-details">
+            <p class="review-empty">Select an equation to inspect its reconstruction, confidence, and source crop.</p>
+          </div>
+        </section>
         <div class="inspector-section export-options"><div class="section-title"><span>Word settings</span><small>Optional</small></div><label class="field-label" for="docxTitle">Document title<input id="docxTitle" placeholder="Defaults to filename"></label><label class="control-row compact"><span><strong>Source page breaks</strong></span><span class="switch"><input id="docxPageBreaks" type="checkbox"><i aria-hidden="true"></i></span></label></div>
         <div class="inspector-section downloads"><div class="section-title"><span>Export locally</span><small>No upload</small></div>
           <button id="downloadMarkdown" type="button" disabled><span class="export-icon" aria-hidden="true">MD</span><span><strong>Markdown</strong><small>Semantic source</small></span><i aria-hidden="true"><svg class="icon"><use href="#icon-download"></use></svg></i></button>

@@ -134,6 +134,20 @@ This file records executed upgrade steps in chronological order.
 	- Provider output includes LaTeX candidates, confidence values, provider metadata, warnings, and resource/timing fields.
 	- The default behavior remains mock/local-only and safe for CI, while the architecture remains open for an approved model adapter in a future step.
 
+## Step 11 — Build the unified reconstruction Review Queue, starting with equations
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: main
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Added a browser-local review queue model for reconstructed equations, persisted it through workspace serialization and checkpoint restore, surfaced it in the results inspector with keyboard-accessible queue cards and editable LaTeX, and kept the source crop and provenance attached so accepted equations can always revert to preserved evidence. The queue is equations-first but intentionally data-modelled to host future diagram, chart, table, and OCR-region review items without changing the persistence shape.
+- Validation notes:
+	- `npm test src/shared/review-queue.test.js src/storage/review-queue-persistence.test.js src/features/extraction/extract-worker.test.js` passed in `web-app/`.
+	- `npm test src/ui-shell.test.js src/storage/workspace-db.test.js src/features/recognition/math-validation.test.js src/features/recognition/math-worker.test.js src/shared/semantic-ir.test.js` passed in `web-app/`.
+	- Review queue state now survives workspace serialization and reload checkpoints.
+	- Accepted equations can be reverted back to the preserved source crop without deleting source evidence.
+
 
 ### AI coding agent execution rules
 
