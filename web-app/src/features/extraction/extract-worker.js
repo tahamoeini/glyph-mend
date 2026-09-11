@@ -1,9 +1,12 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
+import { validateExtractionRequest } from "../../shared/security-boundaries.js";
 
 const FORMULA_CUE =
   /(?:equation|formula|expression|defined by|given by|satisfies|we have|becomes|therefore|hence|where)\s*:?[\s]*$/i;
+const MAX_RASTER_PIXELS = 40_000_000;
+const MAX_RASTER_BYTES = 32 * 1024 * 1024;
 let ocrWorker;
 let mupdf;
 let ocrProgressPage;
@@ -413,16 +416,22 @@ function cropPage(page, bbox, scale = 2) {
   const target = bbox.map((value) => Math.round(value * scale));
   if (target[2] <= target[0] || target[3] <= target[1])
     throw new Error("Invalid visual crop bounds.");
+  const width = target[2] - target[0];
+  const height = target[3] - target[1];
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width * height > MAX_RASTER_PIXELS)
+    throw new RangeError(`Visual raster exceeds the ${MAX_RASTER_PIXELS.toLocaleString()}-pixel safety limit.`);
   const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, target, false);
   pixmap.clear(255);
   const device = new mupdf.DrawDevice(mupdf.Matrix.scale(scale, scale), pixmap);
   page.run(device, mupdf.Matrix.identity);
   device.close();
   const data = new Uint8Array(pixmap.asPNG());
-  const width = pixmap.getWidth();
-  const height = pixmap.getHeight();
+  const renderedWidth = pixmap.getWidth();
+  const renderedHeight = pixmap.getHeight();
   pixmap.destroy?.();
-  return { data, width, height };
+  if (data.byteLength > MAX_RASTER_BYTES)
+    throw new RangeError(`Visual raster exceeds the ${MAX_RASTER_BYTES}-byte encoded safety limit.`);
+  return { data, width: renderedWidth, height: renderedHeight };
 }
 
 export function normalizeCropBounds(bbox, pageBounds, padding = 0) {
@@ -1200,8 +1209,17 @@ function geometryYFromRaw(rawY, pageBounds, rawHeight) {
 }
 
 if (typeof self !== "undefined")
-  self.onmessage = async ({ data }) => {
-    if (data.type !== "extract") return;
+  self.onmessage = async ({ data: rawData }) => {
+    let data;
+    try {
+      data = validateExtractionRequest(rawData, { baseUrl: self.location.href });
+    } catch (error) {
+      self.postMessage({
+        type: "error",
+        message: `Rejected extraction request: ${error?.message || String(error)}`,
+      });
+      return;
+    }
     let document;
     try {
       self.postMessage({ type: "worker-started" });
