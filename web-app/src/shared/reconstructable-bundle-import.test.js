@@ -79,7 +79,7 @@ it("sanitizes SVG at the bundle export boundary", async () => {
       page: 1,
       bbox: [0, 0, 20, 20],
       mimeType: "image/svg+xml",
-      svg: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(1)</script><a href="https://evil.invalid"><text>Safe</text></a><rect id="r" width="10" height="10"/></svg>',
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(1)</script><text>Safe</text><a href="https://evil.invalid"><text>External</text></a><rect id="r" width="10" height="10"/></svg>',
     }]]),
   });
   const entries = unzipSync(built.bytes);
