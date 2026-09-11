@@ -1,7 +1,10 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
-import { validateExtractionRequest } from "../../shared/security-boundaries.js";
+import {
+  ACTIVE_FORMAT_LIMITS,
+  validateExtractionRequest,
+} from "../../shared/security-boundaries.js";
 
 const FORMULA_CUE =
   /(?:equation|formula|expression|defined by|given by|satisfies|we have|becomes|therefore|hence|where)\s*:?[\s]*$/i;
@@ -820,40 +823,68 @@ function ocrVisualCandidates(data, lines, pageBounds) {
   };
 }
 
+export function ocrProgressMessage(pageNumber, event = {}) {
+  if (
+    !Number.isInteger(pageNumber) ||
+    pageNumber < 1 ||
+    pageNumber > ACTIVE_FORMAT_LIMITS.maxPageNumber
+  )
+    return null;
+  const progress = Number(event.progress);
+  return {
+    type: "ocr-progress",
+    page: pageNumber,
+    status: typeof event.status === "string" ? event.status : "",
+    progress: Number.isFinite(progress)
+      ? Math.max(0, Math.min(1, progress))
+      : 0,
+  };
+}
+
 async function ensureOcrWorker(options, paths) {
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
       workerPath: paths.workerPath,
       corePath: paths.corePath,
       langPath: paths.langPath,
-      logger: (event) =>
-        self.postMessage({
-          type: "ocr-progress",
-          page: ocrProgressPage,
-          status: event.status,
-          progress: event.progress,
-        }),
+      logger: (event) => {
+        const message = ocrProgressMessage(ocrProgressPage, event);
+        if (message) self.postMessage(message);
+      },
     });
   }
   return ocrWorker;
 }
 
-async function recognizeRaster(image, options, paths) {
-  const worker = await ensureOcrWorker(options, paths);
-  ocrProgressPage = options.page;
-  const result = await worker.recognize(image.data, {}, { text: true, blocks: true });
-  result.data._rasterWidth = image.width;
-  result.data._rasterHeight = image.height;
-  return result.data;
+async function recognizeRaster(image, options, paths, pageNumber) {
+  if (
+    !Number.isInteger(pageNumber) ||
+    pageNumber < 1 ||
+    pageNumber > ACTIVE_FORMAT_LIMITS.maxPageNumber
+  )
+    throw new TypeError(
+      `OCR page must be an integer from 1 to ${ACTIVE_FORMAT_LIMITS.maxPageNumber}.`,
+    );
+
+  ocrProgressPage = pageNumber;
+  try {
+    const worker = await ensureOcrWorker(options, paths);
+    const result = await worker.recognize(image.data, {}, { text: true, blocks: true });
+    result.data._rasterWidth = image.width;
+    result.data._rasterHeight = image.height;
+    return result.data;
+  } finally {
+    if (ocrProgressPage === pageNumber) ocrProgressPage = undefined;
+  }
 }
 
-async function recognizePage(page, options, paths) {
+async function recognizePage(page, options, paths, pageNumber) {
   const image = cropPage(
     page,
     rect(page.getBounds()),
     Math.max(1, Math.min(600, Number(options.ocrDpi) || 300)) / 72,
   );
-  return recognizeRaster(image, options, paths);
+  return recognizeRaster(image, options, paths, pageNumber);
 }
 
 async function tableMarkdownForVisual(rendered, caption, options, paths, pageNumber) {
@@ -866,8 +897,9 @@ async function tableMarkdownForVisual(rendered, caption, options, paths, pageNum
   try {
     const data = await recognizeRaster(
       rendered,
-      { ...options, page: pageNumber },
+      options,
       paths,
+      pageNumber,
     );
     return ocrTableMarkdown(data);
   } catch {
@@ -901,8 +933,9 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   ) {
     const ocrData = await recognizePage(
       page,
-      { ...options, page: pageNumber },
+      options,
       ocrPaths,
+      pageNumber,
     );
     const lines = ocrLines(ocrData);
     const detected =
