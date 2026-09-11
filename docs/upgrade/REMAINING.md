@@ -122,3 +122,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Open, by design, until the remaining reconstruction families are connected.
 
+## GM-UPG-007 — VisualIR recovery and native vector adapter landed
+- Detected in step: Step 12 native PDF vector structure recovery
+- Date: 2026-09-11
+- Status: RESOLVED
+- Severity: low
+- Area: Python / PDF vector recovery / graphics
+- Dependency: native PDF vector drawing inspection and VisualIR adapter layer
+- Description: The native vector recovery path now uses VisualIR as the internal contract, with Mermaid generation preserved only as an adapter for legacy markdown output.
+- Evidence: [src/pdf_sanitizer/visual_ir.py](src/pdf_sanitizer/visual_ir.py), [src/pdf_sanitizer/extractor.py](src/pdf_sanitizer/extractor.py), [src/pdf_sanitizer/renderer.py](src/pdf_sanitizer/renderer.py), [tests/unit/test_graphics.py](tests/unit/test_graphics.py)
+- Files / symbols involved: [src/pdf_sanitizer/visual_ir.py](src/pdf_sanitizer/visual_ir.py), [src/pdf_sanitizer/extractor.py](src/pdf_sanitizer/extractor.py), [src/pdf_sanitizer/renderer.py](src/pdf_sanitizer/renderer.py), [tests/unit/test_graphics.py](tests/unit/test_graphics.py)
+- What was attempted: Built a VisualIR recovery core, rewired the extractor and renderer boundaries, and added deterministic tests for direction, ambiguity, and disconnected nodes.
+- Why it remains: The implementation and focused validation are complete; only future native-visual expansion to other asset families remains.
+- Recommended next action: Carry the same VisualIR-first pattern into any future diagram or chart recovery work if needed.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved by landing the VisualIR recovery core and adapter boundary refactor for Step 12.
+

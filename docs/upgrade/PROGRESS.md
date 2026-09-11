@@ -148,6 +148,19 @@ This file records executed upgrade steps in chronological order.
 	- Review queue state now survives workspace serialization and reload checkpoints.
 	- Accepted equations can be reverted back to the preserved source crop without deleting source evidence.
 
+## Step 12 — Implement VisualIR and deterministic recovery from native PDF vector structure
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: main
+- Package manager: `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Added a native VisualIR recovery core for PDF vector structure, kept Mermaid as a boundary adapter, wired the extractor and renderer to consume the new contract, and added deterministic Python tests for connector direction, disconnected nodes, and ambiguous connector handling.
+- Validation notes:
+	- `python -m pytest tests/unit/test_graphics.py -q` passed in the project virtual environment.
+	- VisualIR recovery now emits structured nodes, edges, warnings, provenance, and confidence fields instead of making Mermaid the recovery primitive.
+	- The Python extraction and rendering paths now adapt from VisualIR to Mermaid only at the boundary.
+
 
 ### AI coding agent execution rules
 
