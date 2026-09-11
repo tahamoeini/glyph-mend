@@ -83,7 +83,10 @@ function escapeXml(value) {
 function sanitizeMermaidLabel(value) {
   return String(value ?? "")
     .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/[<>|`;]/g, " ")
+    .replace(/%%\{[\s\S]*?\}%%/g, " ")
+    .replace(/\bclick\s+[A-Za-z0-9_.:-]+\b/gi, " ")
+    .replace(/\b(?:javascript|vbscript|data|file)\s*:/gi, " ")
+    .replace(/[<>|`;%]/g, " ")
     .replace(/&/g, " and ")
     .replace(/"/g, "'")
     .replace(/\\/g, "\\\\")
@@ -125,7 +128,7 @@ function safeIdentifier(value, fallback = "Item") {
 function sanitizePlantUmlLabel(value) {
   return String(value ?? "")
     .replace(/[<>\r\n]/g, " ")
-    .replace(/[|@!]/g, " ")
+    .replace(/[|@!\[\]]/g, " ")
     .replace(/:/g, " - ")
     .replace(/\s+/g, " ")
     .trim() || "Item";

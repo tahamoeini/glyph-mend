@@ -23,11 +23,11 @@
         "@tesseract.js-data/eng": "^1.0.0",
         "docx": "^9.5.1",
         "dompurify": "^3.2.6",
-        "fflate": "^0.8.2",
+        "fflate": "^0.8.3",
         "idb": "^8.0.3",
         "marked": "^16.2.1",
         "mupdf": "^1.28.1",
-        "pdfjs-dist": "^5.4.149",
+        "pdfjs-dist": "^5.5.207",
         "tesseract.js": "^7.0.0"
     },
     "devDependencies": {

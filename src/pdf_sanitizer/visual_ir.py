@@ -111,7 +111,10 @@ def _shape_for_rect(rect: BBox) -> str:
 
 def _escape_mermaid_label(value: str) -> str:
     text = re.sub(r"[\x00-\x1f\x7f]", " ", str(value))
-    text = re.sub(r"[<>|`;]", " ", text)
+    text = re.sub(r"%%\{.*?\}%%", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bclick\s+[A-Za-z0-9_.:-]+\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(?:javascript|vbscript|data|file)\s*:", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"[<>|`;%]", " ", text)
     text = text.replace("&", " and ").replace('"', "'").replace("\\", "\\\\")
     return re.sub(r"\s+", " ", text).strip() or "node"
 

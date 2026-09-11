@@ -1,6 +1,6 @@
 import { strToU8, zipSync } from "fflate";
 import { chartIRExportSidecars } from "./chart-rendering.js";
-import { routeVisualOutput } from "./visual-rendering.js";
+import { routeVisualOutput, sanitizeGeneratedSvgMarkup } from "./visual-rendering.js";
 
 export const RECONSTRUCTABLE_BUNDLE_VERSION = 1;
 export const RECONSTRUCTABLE_BUNDLE_SCHEMA = "glyphmend.reconstructable-bundle";
@@ -69,6 +69,11 @@ function bytes(value) {
   if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   if (typeof value === "string") return stringBytes(value);
   return new Uint8Array();
+}
+
+function sanitizedSvgBytes(value) {
+  const source = typeof value === "string" ? value : new TextDecoder().decode(bytes(value));
+  return stringBytes(sanitizeGeneratedSvgMarkup(source));
 }
 
 export function assertSafeBundlePath(path, limits = RECONSTRUCTABLE_BUNDLE_LIMITS) {
@@ -197,7 +202,7 @@ async function sha256(value) {
 
 function sourceAssetFor(asset, sourceAssets) {
   const sourceId = sourceMetadata(asset).sourceAssetId;
-  return sourceAssets.get(String(sourceId)) || (asset?.data ? asset : null);
+  return sourceAssets.get(String(sourceId)) || (asset?.data || asset?.svg ? asset : null);
 }
 
 function addSemanticFiles(files, entry, asset, sourceAssets, limits) {
@@ -205,12 +210,18 @@ function addSemanticFiles(files, entry, asset, sourceAssets, limits) {
   const sourceAsset = sourceAssetFor(asset, sourceAssets);
   if (sourceAsset?.data || sourceAsset?.svg) {
     const originalToken = safeToken(sourceAsset.id || token);
-    const originalPath = `assets/originals/${originalToken}.${extensionFor(sourceAsset)}`;
-    addFile(files, originalPath, sourceAsset.data || sourceAsset.svg, limits);
+    const extension = extensionFor(sourceAsset);
+    const originalPath = `assets/originals/${originalToken}.${extension}`;
+    const sourceValue = extension === "svg"
+      ? sanitizedSvgBytes(sourceAsset.data || sourceAsset.svg)
+      : sourceAsset.data || sourceAsset.svg;
+    addFile(files, originalPath, sourceValue, limits);
     entry.source.assetPath = originalPath;
   }
   if (asset?.svg) {
-    entry.reconstruction.paths.push(addFile(files, `assets/rendered/${token}.svg`, asset.svg, limits));
+    entry.reconstruction.paths.push(
+      addFile(files, `assets/rendered/${token}.svg`, sanitizedSvgBytes(asset.svg), limits),
+    );
   }
   if (asset?.visualIR) {
     entry.reconstruction.paths.push(addJson(files, `assets/reconstructed/${token}.visual.json`, asset.visualIR, limits));
@@ -306,8 +317,8 @@ export async function buildReconstructableBundle({
     files: checksums,
     assets: manifestAssets,
     import: {
-      supported: false,
-      note: "ZIP bundle import is tracked separately from the existing JSON workspace checkpoint import.",
+      supported: true,
+      note: "Browser import validates ZIP metadata, paths, resource ceilings, manifest checksums, and semantic assets before restoring the workspace.",
     },
   };
   addJson(files, "manifest.json", manifest, limits);

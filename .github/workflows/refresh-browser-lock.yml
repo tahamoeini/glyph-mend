@@ -1,0 +1,41 @@
+name: Refresh browser lockfile
+on:
+  push:
+    branches: [finalize-release]
+    paths:
+      - web-app/package.json
+      - .github/workflows/refresh-browser-lock.yml
+permissions:
+  contents: write
+jobs:
+  refresh:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: finalize-release
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web-app/package-lock.json
+      - name: Refresh lockfile within reviewed manifest ranges
+        working-directory: web-app
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Verify resolved security versions
+        working-directory: web-app
+        run: |
+          node -e "const l=require('./package-lock.json'); const p=l.packages; console.log('fflate',p['node_modules/fflate'].version); console.log('pdfjs-dist',p['node_modules/pdfjs-dist'].version); if(p['node_modules/fflate'].version!=='0.8.3') process.exit(1); if(p['node_modules/pdfjs-dist'].version!=='5.5.207') process.exit(1)"
+      - name: Commit refreshed lockfile
+        run: |
+          if git diff --quiet -- web-app/package-lock.json; then
+            echo 'Lockfile already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add web-app/package-lock.json
+          git commit -m 'Refresh patched browser lockfile'
+          git push origin HEAD:finalize-release
