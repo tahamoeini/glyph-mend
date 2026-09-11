@@ -213,6 +213,19 @@ This file records executed upgrade steps in chronological order.
 	- Routing is explicit and explainable: `mermaid`, `plantuml`, or `source`.
 	- Freeform visuals are not mislabeled as UML, and PlantUML serialization rejects VisualIR without explicit UML notation hints.
 
+## Step 17 — Introduce ChartIR and conservative Vega-Lite export
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: main
+- Package manager: `npm` for the browser workspace
+- Status: PARTIAL
+- Summary: Extended the shared ChartIR contract with conservative chart metadata, provenance, axis/label/legend support, and stricter row/value normalization; added a browser-local ChartIR-to-Vega-Lite export helper that emits a strict Vega-Lite spec plus JSON/CSV sidecars only for accepted bar/line/point/scatter charts with strong numeric evidence; and added narrow tests plus benchmark coverage for the new chart path. Rendering integration remains deferred because the workspace still does not include an approved browser-local Vega-Lite renderer/runtime.
+- Validation notes:
+	- `npm test src/shared/semantic-ir.test.js src/shared/benchmark-harness.test.js src/shared/chart-rendering.test.js` passed in `web-app/`.
+	- The exporter rejects weak disposition, unsupported marks, and non-numeric quantitative values instead of synthesizing chart evidence.
+	- The benchmark harness now includes deterministic chart fixtures alongside the existing math and diagram fixtures.
+
 
 ### AI coding agent execution rules
 

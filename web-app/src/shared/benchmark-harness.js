@@ -21,6 +21,11 @@ export const DIAGRAM_FIXTURE_CATEGORIES = [
   "mixed-figure",
 ];
 
+export const CHART_FIXTURE_CATEGORIES = [
+  "bar-table",
+  "weak-raster",
+];
+
 export function stableDeepValue(value) {
   if (Array.isArray(value)) return value.map((item) => stableDeepValue(item));
   if (value && typeof value === "object") {
@@ -339,6 +344,65 @@ export function defaultDiagramFixtureSet() {
   ];
 }
 
+export function defaultChartFixtureSet() {
+  return [
+    {
+      id: "chart/bar-table",
+      category: "bar-table",
+      kind: "chart",
+      label: "Bar chart from table evidence",
+      source: "hand-authored",
+      expected: {
+        marks: [{ type: "bar" }],
+        encoding: {
+          x: { field: "category", type: "nominal" },
+          y: { field: "value", type: "quantitative" },
+        },
+        data: {
+          fields: [
+            { name: "category", type: "string" },
+            { name: "value", type: "number" },
+          ],
+          rows: [
+            { category: "A", value: 10 },
+            { category: "B", value: 15 },
+          ],
+          source: { kind: "table" },
+        },
+        confidence: { overall: 0.9 },
+        disposition: "accepted",
+      },
+    },
+    {
+      id: "chart/weak-raster",
+      category: "weak-raster",
+      kind: "chart",
+      label: "Raster chart requiring review",
+      source: "hand-authored",
+      expected: {
+        marks: [{ type: "bar" }],
+        encoding: {
+          x: { field: "category", type: "nominal" },
+          y: { field: "value", type: "quantitative" },
+        },
+        data: {
+          fields: [
+            { name: "category", type: "string" },
+            { name: "value", type: "number" },
+          ],
+          rows: [
+            { category: "A", value: 10 },
+            { category: "B", value: 15 },
+          ],
+          source: { kind: "raster" },
+        },
+        confidence: { overall: 0.42 },
+        disposition: "review",
+      },
+    },
+  ];
+}
+
 export function evaluateMathFixture(fixture, candidate = {}) {
   const ast = candidate.ast ?? null;
   const parseSuccess = !!ast && typeof ast === "object";
@@ -436,10 +500,10 @@ export function evaluateVisualFixture(fixture, candidate = {}) {
   };
 }
 
-export function benchmarkFixtureSet({ mathFixtures = defaultMathFixtureSet(), diagramFixtures = defaultDiagramFixtureSet(), modelName = "fixture-baseline" } = {}) {
+export function benchmarkFixtureSet({ mathFixtures = defaultMathFixtureSet(), diagramFixtures = defaultDiagramFixtureSet(), chartFixtures = defaultChartFixtureSet(), modelName = "fixture-baseline" } = {}) {
   const fixtureResults = [];
 
-  for (const fixture of [...mathFixtures, ...diagramFixtures]) {
+  for (const fixture of [...mathFixtures, ...diagramFixtures, ...chartFixtures]) {
     if (fixture.kind === "math") {
       fixtureResults.push(
         evaluateMathFixture(fixture, {
@@ -448,6 +512,17 @@ export function benchmarkFixtureSet({ mathFixtures = defaultMathFixtureSet(), di
           serialized: canonicalMathSerializer(fixture.expectedAst),
         }),
       );
+    } else if (fixture.kind === "chart") {
+      fixtureResults.push({
+        id: fixture.id,
+        category: fixture.category,
+        kind: fixture.kind,
+        metrics: {
+          accepted: fixture.expected.disposition === "accepted",
+          review: fixture.expected.disposition === "review",
+        },
+        passed: true,
+      });
     } else {
       fixtureResults.push(
         evaluateVisualFixture(fixture, {

@@ -326,13 +326,17 @@ it("round-trips ChartIR with minimal data and metadata", () => {
     kind: "chart",
     data: {
       fields: [
-        { name: "label", type: "string", extra: true },
-        { name: "value", type: "number" },
+        { name: "label", type: "string", extra: true, title: "Category", unit: "items" },
+        { name: "value", type: "number", provenance: { source: "table" } },
       ],
-      rows: [{ label: "A", value: 1 }],
+      rows: [{ rowId: "row-1", values: { label: "A", value: 1 }, provenance: { source: "ocr" } }],
+      source: { kind: "table", page: 4, bbox: [10, 20, 30, 40] },
     },
-    marks: [{ type: "bar", encoding: { x: "label", y: "value" } }],
+    marks: [{ type: "bar", role: "series", channel: "primary", provenance: { source: "deterministic" } }],
     encoding: { x: { field: "label", type: "nominal" }, y: { field: "value", type: "quantitative" } },
+    axes: [{ channel: "x", title: "Category", field: "label" }],
+    labels: [{ text: "Sales", channel: "y", position: "top" }],
+    legend: { title: "Legend" },
     geometry: { bbox: [1, 2, 3, 4] },
     provenance: { producer: "extract-worker", version: "10" },
     confidence: { overall: 0.76 },
@@ -343,6 +347,9 @@ it("round-trips ChartIR with minimal data and metadata", () => {
   const parsed = deserializeChartIR(serializeChartIR(chart));
   expect(parsed.data.fields[0].extra).toBe(true);
   expect(parsed.chartTag).toBe("baseline");
+  expect(parsed.data.source.kind).toBe("table");
+  expect(parsed.axes[0].channel).toBe("x");
+  expect(parsed.labels[0].text).toBe("Sales");
 });
 
 it("rejects invalid ChartIR data sections", () => {

@@ -512,24 +512,54 @@ function normalizeVisualShape(shape, path) {
 
 function normalizeChartData(value) {
   const data = requiredObject(value, "ChartIR.data");
-  const out = cloneUnknownFields(data, new Set(["fields", "rows", "values"]));
+  const out = cloneUnknownFields(data, new Set(["fields", "rows", "values", "source"]));
   if (data.fields !== undefined) {
     if (!Array.isArray(data.fields)) throw new TypeError("ChartIR.data.fields must be an array.");
     out.fields = data.fields.map((field, index) => {
       const value = requiredObject(field, `ChartIR.data.fields[${index}]`);
-      const fieldOut = cloneUnknownFields(value, new Set(["name", "type"]));
+      const fieldOut = cloneUnknownFields(value, new Set(["name", "type", "title", "unit", "scale", "provenance"]));
       fieldOut.name = requiredString(value.name, `ChartIR.data.fields[${index}].name`);
       fieldOut.type = requiredString(value.type, `ChartIR.data.fields[${index}].type`);
+      if (value.title !== undefined) fieldOut.title = requiredString(value.title, `ChartIR.data.fields[${index}].title`);
+      if (value.unit !== undefined) fieldOut.unit = requiredString(value.unit, `ChartIR.data.fields[${index}].unit`);
+      if (value.scale !== undefined) fieldOut.scale = deepNormalize(requiredObject(value.scale, `ChartIR.data.fields[${index}].scale`));
+      if (value.provenance !== undefined)
+        fieldOut.provenance = deepNormalize(requiredObject(value.provenance, `ChartIR.data.fields[${index}].provenance`));
       return fieldOut;
     });
   }
   if (data.rows !== undefined) {
     if (!Array.isArray(data.rows)) throw new TypeError("ChartIR.data.rows must be an array.");
-    out.rows = data.rows.map((row) => deepNormalize(requiredObject(row, "ChartIR.data.rows[]")));
+    out.rows = data.rows.map((row, index) => {
+      const value = requiredObject(row, `ChartIR.data.rows[${index}]`);
+      const rowOut = cloneUnknownFields(value, new Set(["values", "provenance", "rowId"])) ;
+      if (value.rowId !== undefined) rowOut.rowId = requiredString(value.rowId, `ChartIR.data.rows[${index}].rowId`);
+      if (value.values !== undefined) {
+        if (!isPlainObject(value.values)) throw new TypeError(`ChartIR.data.rows[${index}].values must be an object.`);
+        rowOut.values = deepNormalize(value.values);
+      } else {
+        rowOut.values = deepNormalize(value);
+      }
+      if (value.provenance !== undefined)
+        rowOut.provenance = deepNormalize(requiredObject(value.provenance, `ChartIR.data.rows[${index}].provenance`));
+      return rowOut;
+    });
   }
   if (data.values !== undefined) {
     if (!Array.isArray(data.values)) throw new TypeError("ChartIR.data.values must be an array.");
     out.values = data.values.map((row) => deepNormalize(row));
+  }
+  if (data.source !== undefined) {
+    const source = requiredObject(data.source, "ChartIR.data.source");
+    const outSource = cloneUnknownFields(source, new Set(["kind", "href", "checksum", "page", "bbox", "provenance"]));
+    if (source.kind !== undefined) outSource.kind = requiredString(source.kind, "ChartIR.data.source.kind");
+    if (source.href !== undefined) outSource.href = requiredString(source.href, "ChartIR.data.source.href");
+    if (source.checksum !== undefined) outSource.checksum = requiredString(source.checksum, "ChartIR.data.source.checksum");
+    if (source.page !== undefined) outSource.page = requiredPositiveInteger(source.page, "ChartIR.data.source.page");
+    if (source.bbox !== undefined) outSource.bbox = requiredBBox(source.bbox, "ChartIR.data.source.bbox");
+    if (source.provenance !== undefined)
+      outSource.provenance = deepNormalize(requiredObject(source.provenance, "ChartIR.data.source.provenance"));
+    out.source = outSource;
   }
   if (!Object.keys(out).length) throw new TypeError("ChartIR.data must include recovered data.");
   return out;
@@ -537,19 +567,51 @@ function normalizeChartData(value) {
 
 function normalizeChartMark(mark, index) {
   const value = requiredObject(mark, `ChartIR.marks[${index}]`);
-  const out = cloneUnknownFields(value, new Set(["type"]));
+  const out = cloneUnknownFields(value, new Set(["type", "role", "channel", "scale", "field", "axis", "legend", "provenance"]));
   out.type = requiredString(value.type, `ChartIR.marks[${index}].type`);
   if (value.role !== undefined) out.role = requiredString(value.role, `ChartIR.marks[${index}].role`);
+  if (value.channel !== undefined) out.channel = requiredString(value.channel, `ChartIR.marks[${index}].channel`);
+  if (value.field !== undefined) out.field = requiredString(value.field, `ChartIR.marks[${index}].field`);
+  if (value.scale !== undefined) out.scale = deepNormalize(requiredObject(value.scale, `ChartIR.marks[${index}].scale`));
+  if (value.axis !== undefined) out.axis = deepNormalize(requiredObject(value.axis, `ChartIR.marks[${index}].axis`));
+  if (value.legend !== undefined) out.legend = deepNormalize(requiredObject(value.legend, `ChartIR.marks[${index}].legend`));
   if (value.geometry !== undefined)
     out.geometry = deepNormalize(requiredObject(value.geometry, `ChartIR.marks[${index}].geometry`));
   if (value.style !== undefined)
     out.style = deepNormalize(requiredObject(value.style, `ChartIR.marks[${index}].style`));
+  if (value.provenance !== undefined)
+    out.provenance = deepNormalize(requiredObject(value.provenance, `ChartIR.marks[${index}].provenance`));
   return out;
 }
 
 function normalizeEncoding(value) {
   const encoding = requiredObject(value, "ChartIR.encoding");
-  return deepNormalize(encoding);
+  const out = cloneUnknownFields(encoding, new Set(["x", "y", "color", "size", "shape", "tooltip", "column", "row", "detail", "opacity", "theta", "radius", "text", "order", "facet"]));
+  for (const [channel, channelValue] of Object.entries(encoding)) {
+    if (!isPlainObject(channelValue)) {
+      if (typeof channelValue === "string") out[channel] = { field: channelValue };
+      else out[channel] = deepNormalize(channelValue);
+      continue;
+    }
+    const channelOut = cloneUnknownFields(channelValue, new Set(["field", "type", "aggregate", "bin", "axis", "legend", "scale", "title", "value", "sort", "timeUnit", "stack", "format", "provenance"]));
+    if (channelValue.field !== undefined) channelOut.field = requiredString(channelValue.field, `ChartIR.encoding.${channel}.field`);
+    if (channelValue.type !== undefined) channelOut.type = requiredString(channelValue.type, `ChartIR.encoding.${channel}.type`);
+    if (channelValue.aggregate !== undefined) channelOut.aggregate = requiredString(channelValue.aggregate, `ChartIR.encoding.${channel}.aggregate`);
+    if (channelValue.bin !== undefined) channelOut.bin = channelValue.bin === true ? true : deepNormalize(requiredObject(channelValue.bin, `ChartIR.encoding.${channel}.bin`));
+    if (channelValue.axis !== undefined) channelOut.axis = deepNormalize(requiredObject(channelValue.axis, `ChartIR.encoding.${channel}.axis`));
+    if (channelValue.legend !== undefined) channelOut.legend = deepNormalize(requiredObject(channelValue.legend, `ChartIR.encoding.${channel}.legend`));
+    if (channelValue.scale !== undefined) channelOut.scale = deepNormalize(requiredObject(channelValue.scale, `ChartIR.encoding.${channel}.scale`));
+    if (channelValue.title !== undefined) channelOut.title = requiredString(channelValue.title, `ChartIR.encoding.${channel}.title`);
+    if (channelValue.value !== undefined) channelOut.value = deepNormalize(channelValue.value);
+    if (channelValue.sort !== undefined) channelOut.sort = deepNormalize(channelValue.sort);
+    if (channelValue.timeUnit !== undefined) channelOut.timeUnit = requiredString(channelValue.timeUnit, `ChartIR.encoding.${channel}.timeUnit`);
+    if (channelValue.stack !== undefined) channelOut.stack = requiredString(channelValue.stack, `ChartIR.encoding.${channel}.stack`);
+    if (channelValue.format !== undefined) channelOut.format = requiredString(channelValue.format, `ChartIR.encoding.${channel}.format`);
+    if (channelValue.provenance !== undefined)
+      channelOut.provenance = deepNormalize(requiredObject(channelValue.provenance, `ChartIR.encoding.${channel}.provenance`));
+    out[channel] = channelOut;
+  }
+  return out;
 }
 
 function normalizeBaseContract(value, label) {
@@ -750,6 +812,42 @@ export function parseChartIR(value) {
   out.provenance = normalizeProvenance(source.provenance, "ChartIR.provenance");
   out.confidence = normalizeConfidence(source.confidence, "ChartIR.confidence");
   out.disposition = requiredEnum(source.disposition, DISPOSITIONS, "ChartIR.disposition");
+  if (source.axes !== undefined) {
+    if (!Array.isArray(source.axes)) throw new TypeError("ChartIR.axes must be an array.");
+    out.axes = source.axes.map((axis, index) => {
+      const value = requiredObject(axis, `ChartIR.axes[${index}]`);
+      const axisOut = cloneUnknownFields(value, new Set(["channel", "title", "field", "type", "scale", "domain", "range", "format", "provenance"]));
+      axisOut.channel = requiredString(value.channel, `ChartIR.axes[${index}].channel`);
+      if (value.title !== undefined) axisOut.title = requiredString(value.title, `ChartIR.axes[${index}].title`);
+      if (value.field !== undefined) axisOut.field = requiredString(value.field, `ChartIR.axes[${index}].field`);
+      if (value.type !== undefined) axisOut.type = requiredString(value.type, `ChartIR.axes[${index}].type`);
+      if (value.scale !== undefined) axisOut.scale = deepNormalize(requiredObject(value.scale, `ChartIR.axes[${index}].scale`));
+      if (value.domain !== undefined) axisOut.domain = deepNormalize(value.domain);
+      if (value.range !== undefined) axisOut.range = deepNormalize(value.range);
+      if (value.format !== undefined) axisOut.format = requiredString(value.format, `ChartIR.axes[${index}].format`);
+      if (value.provenance !== undefined)
+        axisOut.provenance = deepNormalize(requiredObject(value.provenance, `ChartIR.axes[${index}].provenance`));
+      return axisOut;
+    });
+  }
+  if (source.labels !== undefined) {
+    if (!Array.isArray(source.labels)) throw new TypeError("ChartIR.labels must be an array.");
+    out.labels = source.labels.map((label, index) => {
+      const value = requiredObject(label, `ChartIR.labels[${index}]`);
+      const labelOut = cloneUnknownFields(value, new Set(["text", "field", "channel", "position", "align", "baseline", "provenance"]));
+      labelOut.text = requiredString(value.text, `ChartIR.labels[${index}].text`);
+      if (value.field !== undefined) labelOut.field = requiredString(value.field, `ChartIR.labels[${index}].field`);
+      if (value.channel !== undefined) labelOut.channel = requiredString(value.channel, `ChartIR.labels[${index}].channel`);
+      if (value.position !== undefined) labelOut.position = requiredString(value.position, `ChartIR.labels[${index}].position`);
+      if (value.align !== undefined) labelOut.align = requiredString(value.align, `ChartIR.labels[${index}].align`);
+      if (value.baseline !== undefined) labelOut.baseline = requiredString(value.baseline, `ChartIR.labels[${index}].baseline`);
+      if (value.provenance !== undefined)
+        labelOut.provenance = deepNormalize(requiredObject(value.provenance, `ChartIR.labels[${index}].provenance`));
+      return labelOut;
+    });
+  }
+  if (source.legend !== undefined)
+    out.legend = deepNormalize(requiredObject(source.legend, "ChartIR.legend"));
   const warnings = optionalStringArray(source.warnings, "ChartIR.warnings");
   if (warnings !== undefined) out.warnings = warnings;
   const errors = optionalStringArray(source.errors, "ChartIR.errors");
