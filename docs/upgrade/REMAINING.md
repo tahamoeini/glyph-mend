@@ -74,3 +74,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Local-only benchmark corpora policy is now encoded in the harness and documented as a safe repository boundary.
 
+## GM-UPG-004 — Equation candidate provenance and crop preservation
+- Detected in step: Step 08 robust equation-region detection and source-crop preservation
+- Date: 2026-09-11
+- Status: RESOLVED
+- Severity: medium
+- Area: browser / extraction / equation detection
+- Dependency: local PDF text and image extraction in the browser worker
+- Description: The extraction pipeline now records a reversible local crop asset and flow-safe detection metadata for equation candidates instead of silently converting ambiguous prose into math.
+- Evidence: [web-app/src/features/extraction/extract-worker.js](web-app/src/features/extraction/extract-worker.js), [web-app/src/features/extraction/extract-worker.test.js](web-app/src/features/extraction/extract-worker.test.js)
+- Files / symbols involved: `buildEquationCandidate`, `normalizeCropBounds`, `normalizeBackground`, `deskewIfNeeded`, `pageMarkdown`
+- What was attempted: Added deterministic normalization helpers and a structured candidate record with page/bbox/crop, evidence, quality signals, and confidence/disposition; added fixtures covering prose mistaken as math and valid equations near prose.
+- Why it remains: The feature is intentionally conservative and falls back to preserved visuals when confidence is low, which is the correct safety posture for this upgrade stage.
+- Recommended next action: Keep this as the evidence-preserving baseline while the next step wires validation to parse/render comparison and review gating.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved as a safe, conservative groundwork step for robust equation detection and crop preservation.
+

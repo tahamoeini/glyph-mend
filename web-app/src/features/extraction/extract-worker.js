@@ -425,6 +425,112 @@ function cropPage(page, bbox, scale = 2) {
   return { data, width, height };
 }
 
+export function normalizeCropBounds(bbox, pageBounds, padding = 0) {
+  const [left, top, right, bottom] = pageBounds;
+  return [
+    Math.max(left, bbox[0] - padding),
+    Math.max(top, bbox[1] - padding),
+    Math.min(right, bbox[2] + padding),
+    Math.min(bottom, bbox[3] + padding),
+  ];
+}
+
+export function normalizeBackground(rendered, fallbackBackground = 255) {
+  if (!rendered?.data || !rendered.width || !rendered.height) {
+    return { background: fallbackBackground, normalized: true, brightness: fallbackBackground };
+  }
+  let total = 0;
+  let count = 0;
+  for (let index = 0; index < rendered.data.length; index += 4) {
+    const r = rendered.data[index];
+    const g = rendered.data[index + 1];
+    const b = rendered.data[index + 2];
+    total += (r + g + b) / 3;
+    count += 1;
+  }
+  const brightness = count ? total / count : fallbackBackground;
+  return {
+    background: brightness > 220 ? 255 : 0,
+    normalized: true,
+    brightness,
+    threshold: brightness > 220 ? 245 : 210,
+  };
+}
+
+export function deskewIfNeeded(bbox, pageBounds) {
+  const width = bbox[2] - bbox[0];
+  const height = bbox[3] - bbox[1];
+  const pageWidth = pageBounds[2] - pageBounds[0];
+  const pageHeight = pageBounds[3] - pageBounds[1];
+  const skew = Math.min(1, Math.max(0, Math.abs(width / Math.max(1, pageWidth) - height / Math.max(1, pageHeight))));
+  return {
+    skew,
+    needsDeskew: skew > 0.18,
+    bbox: [...bbox],
+  };
+}
+
+export function buildEquationCandidate(pageNumber, candidate, rendered, sourceType = "raster", text = "") {
+  const baseText = String(text || candidate?.text || "").trim();
+  const mathScore = (baseText.match(/[=<>≤≥≠≈+−×÷∑∏∫√∞]/g) || []).length * 2 +
+    (baseText.match(/[A-Za-z]\s*[_^]\s*[A-Za-z0-9({\[]/g) || []).length * 2 +
+    (baseText.match(/\b(?:sin|cos|tan|log|ln|exp|max|min|arg|maximize|minimize)\b/gi) || []).length;
+  const confidence = Math.min(0.99, Math.max(0.15, 0.52 + mathScore * 0.09));
+  const disposition = confidence >= 0.82 ? "accepted" : confidence >= 0.55 ? "review" : "preserved";
+  const cropBBox = Array.isArray(candidate?.bbox) ? candidate.bbox.map(Number) : [0, 0, 1, 1];
+  const normalized = normalizeCropBounds(cropBBox, [0, 0, 1, 1], 0);
+  const background = normalizeBackground(rendered);
+  const deskew = deskewIfNeeded(normalized, [0, 0, 1, 1]);
+  const cropId = `p${pageNumber}-equation-${Math.round(cropBBox[0])}-${Math.round(cropBBox[1])}`;
+  const sourceAsset = {
+    id: cropId,
+    page: pageNumber,
+    kind: "equation",
+    bbox: cropBBox,
+    sourceType,
+    crop: {
+      format: "png",
+      width: rendered?.width || 0,
+      height: rendered?.height || 0,
+      data: rendered?.data || new Uint8Array(),
+    },
+    provenance: {
+      source: "local-pdf-page",
+      pageNumber,
+      cropNormalized: true,
+      preserved: true,
+      reversible: true,
+    },
+  };
+
+  return {
+    ...candidate,
+    page: pageNumber,
+    sourceType,
+    bbox: cropBBox,
+    sourceAsset,
+    evidence: {
+      text: baseText,
+      source: "pdf-structure-text",
+      reason: "equation-like text and math symbol density",
+      cue: baseText && /[=<>≤≥≠≈+−×÷∑∏∫√∞]/.test(baseText) ? "math-symbol-density" : "text-layout",
+    },
+    qualitySignals: {
+      resolution: rendered?.width && rendered?.height ? Math.round(rendered.width * rendered.height / 1000) : 0,
+      skew: deskew.skew,
+      noise: background.brightness > 220 ? 0.12 : 0.18,
+      backgroundNormalized: background.normalized,
+    },
+    confidence: {
+      overall: Number(confidence.toFixed(3)),
+      symbolDensity: Number(Math.min(1, Math.max(0, mathScore / 10)).toFixed(3)),
+      geometry: 0.5,
+    },
+    disposition,
+    cropAsset: sourceAsset,
+  };
+}
+
 function paddedBbox(bbox, pageBounds, padding = 0) {
   const [left, top, right, bottom] = pageBounds;
   return [
@@ -682,13 +788,16 @@ function ocrVisualCandidates(data, lines, pageBounds) {
       right - pageWidth * 0.065,
       geometry.y(rawY1),
     ];
-    candidates.push({
+    const text = group.map((item) => item.text).join(" ");
+    const candidate = {
       kind: "equation",
       bbox,
       y: bbox[1],
       rawY0,
       rawY1,
-    });
+      text,
+    };
+    candidates.push(candidate);
   }
 
   return {
@@ -806,6 +915,27 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       Number(ocrData._rasterHeight) ||
         Math.max(...lines.map((item) => item.y1), 1),
     );
+    const [left, top, right, bottom] = pageBounds;
+    const pageWidth = right - left;
+    const equationGroups = detected.equationRanges || [];
+    for (const group of equationGroups) {
+      const pageEquationText = group.latex || group.text || "";
+      const pageBBox = [
+        left + pageWidth * 0.065,
+        geometryYFromRaw(group.y0, pageBounds, rawHeight),
+        right - pageWidth * 0.065,
+        geometryYFromRaw(group.y1, pageBounds, rawHeight),
+      ];
+      const crop = cropPage(page, pageBBox, 2.6);
+      const candidate = buildEquationCandidate(
+        pageNumber,
+        { kind: "equation", bbox: pageBBox, y: pageBBox[1], text: pageEquationText },
+        crop,
+        pageEquationText.includes("\\") ? "native" : "raster",
+        pageEquationText,
+      );
+      ocrCandidates.push(candidate);
+    }
     for (const item of lines) {
       if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
       if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
@@ -1010,6 +1140,13 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     ocrApplied,
   };
   return { text, bodySize, assets, edges, quality };
+}
+
+function geometryYFromRaw(rawY, pageBounds, rawHeight) {
+  const [left, top, right, bottom] = pageBounds;
+  const pageHeight = bottom - top;
+  const normalized = Math.max(0, Math.min(1, rawY / Math.max(1, rawHeight)));
+  return top + normalized * pageHeight;
 }
 
 if (typeof self !== "undefined")

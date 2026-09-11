@@ -107,6 +107,19 @@ This file records executed upgrade steps in chronological order.
 	- Generated DOCX XML includes `<m:f>`, `<m:rad>`, `<m:nary>`, and script elements in the zipped `word/document.xml`.
 	- The export remains browser-only and local/offline; no backend or cloud inference was introduced.
 
+## Step 08 — Implement robust equation-region detection and source-crop preservation
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Added a deterministic equation-candidate stage in `web-app/src/features/extraction/extract-worker.js` that records page/bbox provenance, source-type metadata, reversible crop data, evidence, quality signals, and confidence/disposition without invoking generic OCR as mathematical truth. The detector still preserves weak math as source visuals instead of inventing equations from prose, and the extraction tests cover prose mistaken for math plus valid math embedded near text.
+- Validation notes:
+	- `npm test src/features/extraction/extract-worker.test.js` passed in `web-app/`.
+	- The equation candidate now carries `page`, `sourceAsset`, `cropAsset`, `evidence`, `qualitySignals`, and `confidence` fields with a reversible local crop asset.
+	- Weak or prose-like candidates default to `preserved` rather than silently accepted as equations.
+	- Browser-local processing remains offline and does not add a new dependency.
 
 
 ### AI coding agent execution rules
