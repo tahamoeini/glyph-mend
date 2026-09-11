@@ -34,7 +34,7 @@ test("serves a restrictive CSP and keeps imported Markdown inert", async ({ page
     buffer: Buffer.from(maliciousMarkdown),
   });
 
-  await expect(page.locator("#markdownEditor")).toContainText("Untrusted document");
+  await expect(page.locator("#markdownEditor")).toHaveValue(/Untrusted document/);
   await expect(page.locator("#renderedPreview")).toContainText("Untrusted document");
   await expect(
     page.locator("#renderedPreview img, #renderedPreview svg, #renderedPreview script"),
