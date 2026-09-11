@@ -187,6 +187,19 @@ This file records executed upgrade steps in chronological order.
 	- The staged raster worker now returns canonical VisualIR with deterministic Mermaid serialization for the supported simple flowchart path.
 	- Non-simple or ambiguous raster inputs are preserved with diagnostics rather than reconstructed as false positives.
 
+## Step 15 — Add optional local ML visual recognizer only as a fallback
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: main
+- Package manager: `npm` for the browser workspace
+- Status: PARTIAL
+- Summary: Added an optional VisualRecognizerProvider interface behind `visual-worker`, including a mock CI provider, deterministic-first execution order, ML-to-VisualIR conversion/validation, confidence and timing metadata, and contradiction-aware review downgrades. The browser remains fully functional with ML disabled, and provider failure stays isolated from deterministic extraction and source preservation.
+- Validation notes:
+	- `npm test src/features/recognition/visual-worker.test.js src/shared/recognizer-capability.test.js src/shared/benchmark-harness.test.js` passed in `web-app/`.
+	- The worker metadata now reports provider, providerKind, modelHash, featureFlag, and mlEnabled state.
+	- ML predictions are validated against deterministic evidence and are downgraded to review when they contradict the deterministic topology.
+
 
 ### AI coding agent execution rules
 

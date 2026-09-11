@@ -170,3 +170,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Blocked only on the missing approved local CV dependency; the adapter seam and conservative preserve/review behavior are in place.
 
+## GM-UPG-010 — Optional visual ML provider remains interface-only until an approved model/runtime is selected
+- Detected in step: Step 15 optional local ML visual recognizer fallback
+- Date: 2026-09-11
+- Status: BLOCKED
+- Severity: medium
+- Area: browser / recognition / visual ML
+- Dependency: approved local visual model/runtime bundle and license review
+- Description: The optional visual recognizer provider interface is in place, with a mock CI provider and deterministic-first worker orchestration, but no approved local ML visual model or runtime has been selected or licensed for shipping.
+- Evidence: [web-app/src/features/recognition/visual-provider.js](web-app/src/features/recognition/visual-provider.js) implements the provider seam and mock CI path; the repository still lacks a committed ML model bundle or licensed runtime for production use.
+- Files / symbols involved: [web-app/src/features/recognition/visual-worker.js](web-app/src/features/recognition/visual-worker.js), [web-app/src/features/recognition/visual-provider.js](web-app/src/features/recognition/visual-provider.js), [web-app/src/features/recognition/visual-worker.test.js](web-app/src/features/recognition/visual-worker.test.js)
+- What was attempted: Added provider metadata, deterministic-first invocation order, ML-to-VisualIR conversion, confidence/timing/resource metadata, and contradiction-aware review downgrades behind the worker seam.
+- Why it remains: The repo does not yet include an approved local visual ML runtime or model bundle, so shipping a real ML recognizer would violate the dependency/licensing rule.
+- Recommended next action: Select and license an approved local visual model/runtime, then swap the mock provider for that implementation behind the existing interface and feature flag.
+- Safe to continue unrelated work: yes
+- Resolution note: Blocked only on missing model/runtime approval; the provider seam and ML gating are implemented and test-covered.
+

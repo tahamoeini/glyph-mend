@@ -56,6 +56,7 @@ export function workerResultEnvelope(result, meta = {}) {
       version: meta.version || "unknown",
       modelHash: meta.modelHash || null,
       capability: meta.capability || "unknown",
+      ...meta,
     },
   };
 }
