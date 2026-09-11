@@ -131,11 +131,15 @@ async function clearAppCaches() {
   );
 }
 export function serializeWorkspace(value) {
+  const reconstructionVersion = Number.isFinite(Number(value?.reconstructionVersion))
+    ? Number(value.reconstructionVersion)
+    : 1;
   return JSON.stringify(
     {
       ...value,
       schema: 4,
       checkpointRevision: CHECKPOINT_REVISION,
+      reconstructionVersion,
       exportedAt: new Date().toISOString(),
     },
     (_key, item) => {
@@ -164,6 +168,9 @@ export function deserializeWorkspace(text) {
     schema: 4,
     checkpointRevision: compatible ? CHECKPOINT_REVISION : 0,
     extractionVersion: compatible ? value.extractionVersion : -1,
+    reconstructionVersion: Number.isFinite(Number(value.reconstructionVersion))
+      ? Number(value.reconstructionVersion)
+      : 1,
   };
 }
 function arrayToBase64(buffer) {

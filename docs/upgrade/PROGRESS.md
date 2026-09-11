@@ -44,6 +44,32 @@ This file records executed upgrade steps in chronological order.
 	- `npm test` passed in `web-app/`.
 	- `python -m pytest tests/unit/test_docx_export.py` passed in the project virtual environment.
 
+## Step 03 — Add provenance, confidence, disposition, and reconstruction-version primitives
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Extended the shared semantic IR seam with provenance, named confidence components, validation evidence, reconstruction-version defaults, and a configurable disposition policy; reused the workspace versioning semantics for older manifests; and documented the asymmetric rule that false positive reconstruction is worse than unresolved source evidence.
+- Validation notes:
+	- `npm test src/shared/semantic-ir.test.js` passed in `web-app/`.
+	- `npm test` passed in `web-app/`.
+	- `python -m pytest tests/unit/test_docx_export.py` passed in the project virtual environment.
+
+## Step 03 — Add provenance, confidence, disposition, and reconstruction-version primitives
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Extended the shared semantic IR seam with provenance, named confidence components, validation evidence, reconstruction-version defaults, and a configurable disposition policy; reused the workspace versioning semantics for older manifests; and documented the asymmetric rule that false positive reconstruction is worse than unresolved source evidence.
+- Validation notes:
+	- `npm test src/shared/semantic-ir.test.js` passed in `web-app/`.
+	- `npm test` passed in `web-app/`.
+	- `python -m pytest tests/unit/test_docx_export.py` passed in the project virtual environment.
+
 
 
 ### AI coding agent execution rules

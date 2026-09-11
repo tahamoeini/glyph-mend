@@ -3,6 +3,13 @@ const MATH_IR_SCHEMA_VERSION = 1;
 const VISUAL_IR_SCHEMA_VERSION = 1;
 const CHART_IR_SCHEMA_VERSION = 1;
 
+const DEFAULT_POLICY_THRESHOLDS = Object.freeze({
+  accept: 0.82,
+  review: 0.55,
+});
+const VALIDATION_EVIDENCE_LEVELS = new Set(["high", "medium", "low", "missing"]);
+const DEFAULT_RECONSTRUCTION_VERSION = 1;
+
 const RECONSTRUCTED_ASSET_KINDS = new Set([
   "equation",
   "flowchart",
@@ -153,7 +160,48 @@ function requiredStringMap(value, label) {
   for (const [key, item] of Object.entries(object)) {
     out[key] = requiredFiniteNumber(item, `${label}.${key}`);
   }
-  if (!Object.keys(out).length) throw new TypeError(`${label} must include at least one component.`);
+  return out;
+}
+
+function normalizeConfidenceComponents(value, label) {
+  const components = requiredStringMap(value, label);
+  return Object.fromEntries(
+    Object.entries(components).sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+function normalizeEvidence(value, label) {
+  const evidence = requiredObject(value, label);
+  const out = cloneUnknownFields(evidence, new Set(["level"]));
+  out.level = requiredEnum(evidence.level, VALIDATION_EVIDENCE_LEVELS, `${label}.level`);
+  if (evidence.notes !== undefined) {
+    if (!Array.isArray(evidence.notes) || !evidence.notes.every((item) => typeof item === "string"))
+      throw new TypeError(`${label}.notes must be an array of strings.`);
+    out.notes = evidence.notes.map((item) => item.trim()).filter(Boolean);
+  }
+  if (evidence.sources !== undefined) {
+    if (!Array.isArray(evidence.sources)) throw new TypeError(`${label}.sources must be an array.`);
+    out.sources = evidence.sources.map((source, index) => {
+      const item = requiredObject(source, `${label}.sources[${index}]`);
+      const entry = cloneUnknownFields(item, new Set(["kind", "value"]));
+      entry.kind = requiredString(item.kind, `${label}.sources[${index}].kind`);
+      entry.value = requiredString(item.value, `${label}.sources[${index}].value`);
+      if (item.href !== undefined) entry.href = requiredString(item.href, `${label}.sources[${index}].href`);
+      return entry;
+    });
+  }
+  return out;
+}
+
+function normalizeRecognizer(value, label) {
+  const recognizer = requiredObject(value, label);
+  const out = cloneUnknownFields(recognizer, new Set(["name"]));
+  out.name = requiredString(recognizer.name, `${label}.name`);
+  if (recognizer.version !== undefined) out.version = requiredString(recognizer.version, `${label}.version`);
+  if (recognizer.modelHash !== undefined)
+    out.modelHash = requiredString(recognizer.modelHash, `${label}.modelHash`);
+  if (recognizer.preprocessVersion !== undefined)
+    out.preprocessVersion = requiredString(recognizer.preprocessVersion, `${label}.preprocessVersion`);
   return out;
 }
 
@@ -167,7 +215,7 @@ function cloneUnknownFields(source, knownKeys) {
 
 function normalizeSourceAsset(value) {
   const source = requiredObject(value, "ReconstructedAsset.sourceAsset");
-  const out = cloneUnknownFields(source, new Set(["id"]));
+  const out = cloneUnknownFields(source, new Set(["id", "page", "bbox"]));
   out.id = requiredString(source.id, "ReconstructedAsset.sourceAsset.id");
   if (source.kind !== undefined) out.kind = requiredString(source.kind, "ReconstructedAsset.sourceAsset.kind");
   if (source.page !== undefined)
@@ -187,6 +235,11 @@ function normalizeReconstruction(value) {
   out.source = requiredObject(reconstruction.source, "ReconstructedAsset.reconstruction.source");
   out.source = cloneUnknownFields(reconstruction.source, new Set(["kind"]));
   out.source.kind = requiredString(reconstruction.source.kind, "ReconstructedAsset.reconstruction.source.kind");
+  if (reconstruction.source.recognizer !== undefined)
+    out.source.recognizer = normalizeRecognizer(
+      reconstruction.source.recognizer,
+      "ReconstructedAsset.reconstruction.source.recognizer",
+    );
   if (reconstruction.source.version !== undefined)
     out.source.version = requiredString(
       reconstruction.source.version,
@@ -207,20 +260,192 @@ function normalizeReconstruction(value) {
 
 function normalizeProvenance(value, label) {
   const provenance = requiredObject(value, label);
-  const out = cloneUnknownFields(provenance, new Set(["producer"]));
+  const out = cloneUnknownFields(provenance, new Set(["producer", "recognizer", "validationEvidence"]));
   out.producer = requiredString(provenance.producer, `${label}.producer`);
+  if (provenance.recognizer !== undefined)
+    out.recognizer = normalizeRecognizer(provenance.recognizer, `${label}.recognizer`);
   if (provenance.version !== undefined)
     out.version = requiredString(provenance.version, `${label}.version`);
   if (provenance.algorithmVersion !== undefined)
     out.algorithmVersion = requiredString(provenance.algorithmVersion, `${label}.algorithmVersion`);
   if (provenance.model !== undefined)
     out.model = requiredString(provenance.model, `${label}.model`);
+  if (provenance.validationEvidence !== undefined)
+    out.validationEvidence = normalizeEvidence(
+      provenance.validationEvidence,
+      `${label}.validationEvidence`,
+    );
   return out;
 }
 
 function normalizeConfidence(value, label) {
   if (value === undefined) return undefined;
-  return requiredStringMap(value, label);
+  return normalizeConfidenceComponents(value, label);
+}
+
+function normalizeAssetConfidence(value, label) {
+  if (!value) return undefined;
+  const components = normalizeConfidenceComponents(value, label);
+  const out = { ...components };
+  if (value.overall !== undefined) out.overall = requiredFiniteNumber(value.overall, `${label}.overall`);
+  if (value.quality !== undefined) out.quality = requiredFiniteNumber(value.quality, `${label}.quality`);
+  return out;
+}
+
+function weightedConfidenceScore(components) {
+  const weights = {
+    recognition: 1,
+    parseValidity: 1,
+    visualSimilarity: 1,
+    cropQuality: 1,
+    nodeAccuracy: 1,
+    topologyConfidence: 1,
+    structural: 1,
+    semantic: 1,
+    overall: 1,
+    quality: 1,
+  };
+  let totalWeight = 0;
+  let sum = 0;
+  for (const [name, value] of Object.entries(components || {})) {
+    const weight = weights[name] || 0.5;
+    totalWeight += weight;
+    sum += value * weight;
+  }
+  return totalWeight ? sum / totalWeight : 0;
+}
+
+function evidenceRank(level) {
+  return { high: 3, medium: 2, low: 1, missing: 0 }[level] ?? 0;
+}
+
+export function defaultReconstructionVersion() {
+  return 1;
+}
+
+export function normalizeConfidencePolicy(input = {}) {
+  const thresholds = { ...DEFAULT_POLICY_THRESHOLDS };
+  if (input.accept !== undefined) thresholds.accept = requiredFiniteNumber(input.accept, "policy.accept");
+  if (input.review !== undefined) thresholds.review = requiredFiniteNumber(input.review, "policy.review");
+  if (thresholds.accept < thresholds.review)
+    throw new TypeError("policy.accept must be greater than or equal to policy.review.");
+  return Object.freeze(thresholds);
+}
+
+export function dispositionForEvidence(value, policy = DEFAULT_POLICY_THRESHOLDS) {
+  const thresholds = normalizeConfidencePolicy(policy);
+  const hasConfidenceInput = !!value.confidence;
+  const confidence = hasConfidenceInput
+    ? normalizeAssetConfidence(value.confidence, "evidence.confidence") || {}
+    : {};
+  const hasConfidence = Object.keys(confidence).length > 0;
+  const score = weightedConfidenceScore(confidence);
+  const evidence = value.validationEvidence ? normalizeEvidence(value.validationEvidence, "evidence.validationEvidence") : null;
+  const evidenceLevel = evidence ? evidenceRank(evidence.level) : 0;
+
+  if (value.disposition) return requiredEnum(value.disposition, DISPOSITIONS, "evidence.disposition");
+  if (!hasConfidenceInput && !evidence) return "preserved";
+  if (!hasConfidence && !evidence) return "preserved";
+  if (evidenceLevel >= evidenceRank("high") && score >= thresholds.accept) return "accepted";
+  if (evidenceLevel >= evidenceRank("medium") && score >= thresholds.review) return "review";
+  if (score >= thresholds.accept) return "accepted";
+  if (score >= thresholds.review) return "review";
+  return "preserved";
+}
+
+export function reconstructionPolicy(input = {}) {
+  const thresholds = normalizeConfidencePolicy(input.thresholds || input);
+  return Object.freeze({
+    thresholds,
+    decide(value) {
+      return dispositionForEvidence(value, thresholds);
+    },
+    accepted(value) {
+      return dispositionForEvidence(value, thresholds) === "accepted";
+    },
+    review(value) {
+      return dispositionForEvidence(value, thresholds) === "review";
+    },
+    preserved(value) {
+      return dispositionForEvidence(value, thresholds) === "preserved";
+    },
+  });
+}
+
+export function normalizeReconstructedAsset(value, policy = DEFAULT_POLICY_THRESHOLDS) {
+  const parsed = parseReconstructedAsset(value);
+  const confidence = normalizeAssetConfidence(parsed.confidence || {}, "ReconstructedAsset.confidence") || {};
+  const provenance = parsed.provenance || {};
+  const validationEvidence = provenance.validationEvidence ? normalizeEvidence(provenance.validationEvidence, "ReconstructedAsset.provenance.validationEvidence") : null;
+  const policyEngine = reconstructionPolicy(policy);
+  const disposition = dispositionForEvidence(
+    {
+      confidence,
+      validationEvidence,
+      disposition: parsed.disposition,
+    },
+    policyEngine.thresholds,
+  );
+  return finalizeContract({
+    ...parsed,
+    confidence,
+    provenance: validationEvidence
+      ? { ...provenance, validationEvidence }
+      : provenance,
+    disposition,
+    reconstructionVersion: Number.isFinite(Number(parsed.reconstructionVersion))
+      ? Number(parsed.reconstructionVersion)
+      : DEFAULT_RECONSTRUCTION_VERSION,
+  });
+}
+
+export function defaultReconstructedAsset(source = {}, policy = DEFAULT_POLICY_THRESHOLDS) {
+  const input = requiredObject(source, "ReconstructedAsset");
+  const provenance = isPlainObject(input.provenance) ? { ...input.provenance } : {};
+  if (!provenance.producer) provenance.producer = "unknown";
+  const confidence = isPlainObject(input.confidence) ? { ...input.confidence } : undefined;
+  const policyEngine = reconstructionPolicy(policy);
+  const disposition = dispositionForEvidence(
+    {
+      confidence,
+      validationEvidence: provenance.validationEvidence,
+      disposition: input.disposition,
+    },
+    policyEngine.thresholds,
+  );
+  return normalizeReconstructedAsset({
+    ...input,
+    schemaVersion: Number.isFinite(Number(input.schemaVersion)) ? Number(input.schemaVersion) : RECONSTRUCTED_ASSET_SCHEMA_VERSION,
+    id: input.id || "asset-unknown",
+    page: Number.isFinite(Number(input.page)) ? Number(input.page) : 1,
+    bbox: Array.isArray(input.bbox) ? input.bbox : [0, 0, 0, 0],
+    kind: input.kind || "unknown",
+    sourceType: input.sourceType || "mixed",
+    sourceAsset: input.sourceAsset || {
+      id: input.id || "source-unknown",
+      page: Number.isFinite(Number(input.page)) ? Number(input.page) : 1,
+      bbox: Array.isArray(input.bbox) ? input.bbox : [0, 0, 0, 0],
+    },
+    reconstruction: input.reconstruction || {
+      format: "semantic-ir",
+      source: {
+        kind: "preserved",
+        recognizer: {
+          name: "unknown",
+          version: "unknown",
+          preprocessVersion: "unknown",
+        },
+      },
+    },
+    confidence: confidence || {},
+    provenance,
+    reconstructionVersion: Number.isFinite(Number(input.reconstructionVersion))
+      ? Number(input.reconstructionVersion)
+      : DEFAULT_RECONSTRUCTION_VERSION,
+    disposition,
+    warnings: Array.isArray(input.warnings) ? input.warnings : [],
+    errors: Array.isArray(input.errors) ? input.errors : [],
+  }, policyEngine.thresholds);
 }
 
 function normalizeNode(node, label) {
@@ -373,9 +598,12 @@ export function parseReconstructedAsset(value) {
   out.sourceType = requiredEnum(source.sourceType, SOURCE_TYPES, "ReconstructedAsset.sourceType");
   out.sourceAsset = normalizeSourceAsset(source.sourceAsset);
   out.reconstruction = normalizeReconstruction(source.reconstruction);
-  out.confidence = normalizeConfidence(source.confidence, "ReconstructedAsset.confidence");
+  out.confidence = normalizeAssetConfidence(source.confidence, "ReconstructedAsset.confidence");
   out.provenance = normalizeProvenance(source.provenance, "ReconstructedAsset.provenance");
-  out.disposition = requiredEnum(source.disposition, DISPOSITIONS, "ReconstructedAsset.disposition");
+  out.reconstructionVersion = Number.isFinite(Number(source.reconstructionVersion))
+    ? Number(source.reconstructionVersion)
+    : DEFAULT_RECONSTRUCTION_VERSION;
+  out.disposition = requiredEnum(source.disposition || "preserved", DISPOSITIONS, "ReconstructedAsset.disposition");
   const warnings = optionalStringArray(source.warnings, "ReconstructedAsset.warnings");
   if (warnings !== undefined) out.warnings = warnings;
   const errors = optionalStringArray(source.errors, "ReconstructedAsset.errors");
@@ -538,6 +766,8 @@ export function deserializeChartIR(value) {
 }
 
 export {
+  DEFAULT_POLICY_THRESHOLDS,
+  DEFAULT_RECONSTRUCTION_VERSION,
   RECONSTRUCTED_ASSET_SCHEMA_VERSION,
   MATH_IR_SCHEMA_VERSION,
   VISUAL_IR_SCHEMA_VERSION,

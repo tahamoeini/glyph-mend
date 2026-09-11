@@ -17,3 +17,4 @@ These are the current high-level invariants for the GlyphMend upgrade process.
 - Unknown fields are preserved so later upgrade steps can remain forward-compatible while the current seam stays narrow.
 - Validation is lightweight and local to the shared contract module; the production extractors may adopt these contracts later through adapters.
 - `ReconstructedAsset` is the routing layer that keeps recognizers from coupling directly to output-specific formats.
+- False positive reconstruction is worse than unresolved source evidence; policy should prefer preserved or review states over speculative acceptance.
