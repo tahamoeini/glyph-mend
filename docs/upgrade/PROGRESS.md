@@ -312,3 +312,21 @@ This file records executed upgrade steps in chronological order.
 - Documentation: Added docs/upgrade/RECONSTRUCTABLE_BUNDLE.md describing the schema, evidence boundary, deterministic naming, privacy constraints, and Word/GlyphMend editability distinction.
 - Remaining boundary: ZIP bundle import and full round-trip restoration are not implemented or implied; the existing JSON workspace checkpoint import remains backward-compatible and the ZIP import work is tracked separately in REMAINING.md.
 - Safe to continue unrelated work: yes
+
+## Step 24 — Create a dependency/model licensing gate and SBOM-style inventory
+
+- Date: 2026-09-11
+- Base repository HEAD: `8fae396b5f7107a3d6dde40cd703df5f04f4f801`
+- Branch: `step-24-license-sbom`
+- Package manager: `npm` for the browser workspace; Python runtime dependencies declared in `pyproject.toml`
+- Status: PARTIAL
+- Summary: Added a deny-by-default direct-production dependency license gate, a human-readable SBOM-style inventory, explicit review states for browser/Python runtime dependencies and copied WASM/model artifacts, and separate review treatment for code, model weights, and training-data terms. Existing MuPDF/PyMuPDF/PyMuPDF4LLM licensing is recorded as a project-strategy blocker rather than silently approved. Candidate math/visual models remain unbundled when weight/data terms are incomplete.
+- Validation notes:
+  - Repository and package manifests were inspected remotely at exact refs because this execution environment could not resolve `github.com` for a local clone; therefore a local uncommitted `git status` could not be inspected.
+  - `web-app/scripts/license-report.mjs` checks every direct browser dependency and explicitly copied Tesseract WASM runtime against reviewed lockfile license expressions, and rejects unreviewed new Python runtime dependency names.
+  - `web-app/package.json` now exposes `npm run license:report` and `npm run license:check`; browser CI runs the gate immediately after `npm ci`.
+  - No new production dependency, model, renderer, backend, telemetry, upload, or cloud inference path was added.
+  - Step 23 was found to have been merged before its browser/Python CI was green; that prior-step inconsistency is recorded in `REMAINING.md` and prevents claiming a clean repository-wide verification baseline for Step 24.
+- Documentation: Added `docs/upgrade/DEPENDENCY_LICENSES.md` with purpose, code/weight/data licensing, browser/commercial/source-disclosure implications, source/version/hash information where available, and review status for current runtimes, copied WASM/model assets, renderers, and research model candidates.
+- Remaining blockers: project-wide licensing strategy for MuPDF/PyMuPDF-family AGPL/commercial distribution; unresolved exact weight/data terms for unselected math/visual models; inherited Step 23 CI failures.
+- Safe to continue unrelated work: yes

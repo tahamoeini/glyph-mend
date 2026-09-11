@@ -6,6 +6,8 @@
     "scripts": {
         "brand:sync": "node ./scripts/sync-brand.mjs",
         "native:deps": "node ./scripts/ensure-native-deps.mjs",
+        "license:report": "node ./scripts/license-report.mjs",
+        "license:check": "node ./scripts/license-report.mjs --check",
         "predev": "npm run brand:sync && npm run native:deps",
         "dev": "vite",
         "prebuild": "npm run brand:sync && npm run native:deps",
