@@ -12,6 +12,7 @@ const contentSurfaceIds = [
   "sourcePreview",
   "activityLog",
   "qualityReport",
+  "reviewQueuePanel",
 ];
 
 const legacyControlIds = [
@@ -66,6 +67,12 @@ const legacyControlIds = [
   "downloadText",
   "downloadReport",
   "downloadBundle",
+  "reviewQueueTotal",
+  "reviewQueueAccepted",
+  "reviewQueueReview",
+  "reviewQueuePreserved",
+  "reviewQueueList",
+  "reviewQueueDetails",
 ];
 
 const enabledOptionIds = [
@@ -120,13 +127,14 @@ describe("application UI contract", () => {
       expect(document.getElementById(tab.getAttribute("aria-controls"))).not.toBeNull();
     });
     expect(document.querySelectorAll(".downloads > button")).toHaveLength(5);
+    expect(document.getElementById("reviewQueuePanel")).not.toBeNull();
   });
 
   it("keeps liquid glass restricted to functional chrome", () => {
     expect(document.querySelectorAll(".liquid-glass")).toHaveLength(3);
-    expect(document.querySelector(".topbar.liquid-glass-toolbar")).not.toBeNull();
-    expect(document.getElementById("settingsSidebar").classList.contains("liquid-glass-sidebar")).toBe(true);
-    expect(document.querySelector(".page-controls.liquid-glass-capsule")).not.toBeNull();
+    expect(document.querySelector(".topbar.liquid-glass-regular")).not.toBeNull();
+    expect(document.getElementById("settingsSidebar").classList.contains("liquid-glass-regular")).toBe(true);
+    expect(document.querySelector(".page-controls.liquid-glass-clear")).not.toBeNull();
 
     contentSurfaceIds.forEach((id) => {
       const element = document.getElementById(id);
@@ -137,7 +145,7 @@ describe("application UI contract", () => {
 
   it("uses a shared selection indicator for tabs and preserves roving tabindex", () => {
     const tablist = document.querySelector('.tabs[role="tablist"]');
-    const indicator = tablist.querySelector(".liquid-selection-indicator");
+    const indicator = tablist.querySelector(".liquid-glass-selected-overlay");
     const tabs = [...tablist.querySelectorAll('[role="tab"]')];
 
     expect(indicator).not.toBeNull();
@@ -160,6 +168,7 @@ describe("application UI contract", () => {
     [
       "themeButton",
       "sidebarToggle",
+  "inspectorToggle",
       "extractButton",
       "previousPage",
       "nextPage",

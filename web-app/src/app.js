@@ -1,7 +1,7 @@
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import DOMPurify from "dompurify";
-import { strToU8, zipSync } from "fflate";
+
 import { marked } from "marked";
 import { registerSW } from "virtual:pwa-register";
 import {
@@ -22,8 +22,17 @@ import {
   serializeWorkspace,
   startWorkspace,
 } from "./storage/workspace-db.js";
+import {
+  buildReviewQueue,
+  normalizeReviewItem,
+  reviewQueueDecide,
+  reviewQueueSummary,
+} from "./shared/review-queue.js";
 import { DEFAULT_BRAND } from "./shared/brand.js";
 import { download, stem } from "./shared/download.js";
+import { renderAccessibleMathMarkdown } from "./shared/math-accessibility.js";
+import { visualIRToAccessibleDescription } from "./shared/visual-accessibility.js";
+import { buildReconstructableBundle } from "./shared/reconstructable-bundle.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
@@ -72,6 +81,9 @@ const state = {
   previewRenderToken: 0,
   checkpointWrites: new Set(),
   checkpointError: null,
+  reviewQueue: [],
+  selectedReviewId: null,
+  sheetReturnFocus: { sidebar: null, inspector: null },
 };
 const optionIds = [
   "removeHeaders",
@@ -100,7 +112,6 @@ const media = {
   highContrast: queryMedia("(prefers-contrast: more)"),
   forcedColors: queryMedia("(forced-colors: active)"),
   coarsePointer: queryMedia("(pointer: coarse)"),
-  mobileSidebar: queryMedia("(max-width: 820px)"),
 };
 
 function currentBrand() {
@@ -178,7 +189,7 @@ function syncThemePreference() {
 
 function syncTabIndicator(container = document.querySelector(".tabs")) {
   if (!container) return;
-  const indicator = container.querySelector(".liquid-selection-indicator");
+  const indicator = container.querySelector(".liquid-glass-selected-overlay");
   const activeTab = container.querySelector(".tab.active");
   if (!indicator || !activeTab) return;
   if (!activeTab.offsetWidth) {
@@ -245,6 +256,7 @@ function setStatus(message, done = 0, total = 0) {
           : /open|start|read|extract/i.test(message)
             ? "Extracting document"
             : "Document status";
+  $("progressAnnouncement").textContent = message + ". " + $("progressPage").textContent;
 }
 function options() {
   return {
@@ -275,6 +287,74 @@ function saveCheckpoint(checkpoint) {
     () => state.checkpointWrites.delete(write),
   );
 }
+
+function syncReviewQueue() {
+  state.reviewQueue = buildReviewQueue(state.pages);
+  if (state.reviewQueue.length && !state.selectedReviewId) {
+    state.selectedReviewId = state.reviewQueue[0].id;
+  }
+  if (!state.reviewQueue.some((item) => item.id === state.selectedReviewId)) {
+    state.selectedReviewId = state.reviewQueue[0]?.id || null;
+  }
+}
+
+function queueItemForPage(page) {
+  const candidate = page?.reviewCandidate || page?.equationCandidate || page?.candidate || null;
+  if (!candidate && !Array.isArray(page?.reviewItems)) return null;
+  const reviewItems = Array.isArray(page?.reviewItems) ? page.reviewItems : [];
+  if (reviewItems.length) return null;
+  if (!candidate) return null;
+  return normalizeReviewItem({
+    id: candidate.id || `page-${page.page}-equation-1`,
+    page: page.page,
+    kind: candidate.kind || "equation",
+    sourceAsset: candidate.sourceAsset || candidate.cropAsset || { id: `page-${page.page}-crop`, page: page.page, bbox: candidate.bbox || [0, 0, 0, 0] },
+    candidate,
+    validation: candidate.validation || {},
+    manifest: candidate.manifest || candidate.reconstruction || {},
+    parsed: candidate.parsed,
+    confidence: candidate.confidence,
+    disposition: candidate.disposition,
+    notes: candidate.notes || [],
+  });
+}
+
+function attachReviewItem(page, candidate) {
+  if (!candidate) return;
+  const reviewItem = normalizeReviewItem(candidate);
+  const existing = Array.isArray(page.reviewItems) ? page.reviewItems : [];
+  const index = existing.findIndex((item) => item.id === reviewItem.id);
+  if (index >= 0) existing[index] = reviewItem;
+  else existing.push(reviewItem);
+  page.reviewItems = existing;
+}
+
+function updateReviewItem(pageNumber, candidate) {
+  const page = state.pages[pageNumber];
+  if (!page) return;
+  const reviewItem = queueItemForPage({ ...page, reviewCandidate: candidate });
+  if (!reviewItem) return;
+  attachReviewItem(page, reviewItem);
+  syncReviewQueue();
+}
+
+function setReviewItemDisposition(itemId, action, nextLatex) {
+  const item = state.reviewQueue.find((candidate) => candidate.id === itemId);
+  if (!item) return null;
+  const target = nextLatex ? { ...item, candidate: { ...item.candidate, latex: nextLatex, normalized: nextLatex } } : item;
+  const updated = reviewQueueDecide(target, action);
+  const page = state.pages[updated.page];
+  if (!page) return updated;
+  page.reviewItems = (page.reviewItems || []).map((candidate) =>
+    candidate.id === updated.id ? updated : candidate,
+  );
+  syncReviewQueue();
+  return updated;
+}
+
+function selectedReviewItem() {
+  return state.reviewQueue.find((item) => item.id === state.selectedReviewId) || state.reviewQueue[0] || null;
+}
 async function waitForCheckpointWrites() {
   await Promise.allSettled([...state.checkpointWrites]);
   if (state.checkpointError) throw state.checkpointError;
@@ -289,7 +369,10 @@ function activateWorkspace() {
   $("topFileMeta").textContent = state.pageCount
     ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
     : "Review and export imported Markdown";
-  closeMobileSidebar();
+  closeSettingsSheet();
+  closeInspectorSheet();
+  $("compactActionDock").classList.remove("hidden");
+  syncReviewQueue();
   updateOutput();
   renderLog();
   requestAnimationFrame(() => syncTabIndicator());
@@ -435,8 +518,14 @@ function runBatch(batch, wanted) {
           quality: data.quality || {},
           engine: data.engine || state.engine,
         };
+        if (Array.isArray(data.reviewItems)) checkpoint.reviewItems = data.reviewItems.map(normalizeReviewItem);
+        if (data.reviewCandidate) {
+          checkpoint.reviewItems = checkpoint.reviewItems || [];
+          checkpoint.reviewItems.push(normalizeReviewItem(data.reviewCandidate));
+        }
         state.pages[data.page] = checkpoint;
         saveCheckpoint(checkpoint);
+        syncReviewQueue();
         const done = wanted.filter((page) => state.pages[page]).length;
         setStatus(`Extracting page ${data.page}`, done, wanted.length);
         log(
@@ -600,6 +689,7 @@ async function stop(cancel = false) {
   if (cancel) {
     state.pages = {};
     state.markdown = "";
+    state.reviewQueue = [];
     await startWorkspace(
       {
         fileName: state.fileName,
@@ -610,6 +700,7 @@ async function stop(cancel = false) {
         warnings: [],
         extractionVersion: EXTRACTION_VERSION,
         engine: state.engine,
+        reviewQueue: [],
       },
       state.pdfBytes,
     );
@@ -663,6 +754,8 @@ function updateOutput() {
   $("qualityBadge").textContent = enabled ? state.audit.status : "Waiting";
   $("qualityReport").innerHTML =
     `<div class="metric-card metric-status"><dt>Quality status</dt><dd>${state.audit.status}</dd></div><div class="metric-card"><dt>Pages</dt><dd>${Object.keys(state.pages).length}</dd></div><div class="metric-card"><dt>Words</dt><dd>${m.words.toLocaleString()}</dd></div><div class="metric-card${issueCount ? " quality-issue warning" : ""}"><dt>Issues</dt><dd>${issueCount}</dd></div><div class="metric-card"><dt>Headings</dt><dd>${m.headings}</dd></div><div class="metric-card"><dt>Tables</dt><dd>${m.tables}</dd></div><div class="metric-card"><dt>Equations</dt><dd>${m.equations}</dd></div><div class="metric-card"><dt>Visuals</dt><dd>${m.sourceVisuals}</dd></div>${state.audit.issues.map((issue) => `<div class="metric-card quality-issue ${issue.severity || "warning"}"><dt>${issue.code}</dt><dd>${issue.count}</dd></div>`).join("")}`;
+  renderReviewQueue();
+  renderSelectedReviewItem();
   renderMarkdown();
 }
 function renderMarkdown() {
@@ -674,13 +767,22 @@ function renderMarkdown() {
       `<figure class="source-visual-preview" data-asset="${encodeURIComponent(id)}"><figcaption>Preserved source ${kind}</figcaption></figure>`,
   );
   $("renderedPreview").innerHTML = DOMPurify.sanitize(
-    marked.parse(source, { gfm: true }),
+    marked.parse(renderAccessibleMathMarkdown(source), { gfm: true }),
   );
   const assets = assetMap();
   $("renderedPreview")
     .querySelectorAll("[data-asset]")
     .forEach((figure) => {
       const asset = assets.get(decodeURIComponent(figure.dataset.asset));
+      if (asset?.visualIR) {
+        const description = visualIRToAccessibleDescription(asset.visualIR);
+        figure.setAttribute("role", "group");
+        figure.setAttribute("aria-label", description);
+        const text = document.createElement("p");
+        text.className = "visually-hidden";
+        text.textContent = description;
+        figure.append(text);
+      }
       if (!asset?.data) return;
       const url = URL.createObjectURL(
         new Blob([asset.data], { type: "image/png" }),
@@ -713,6 +815,7 @@ async function renderSource(pageNumber) {
       viewport = page.getViewport({ scale: state.previewScale }),
       canvas = $("pdfCanvas"),
       ctx = canvas.getContext("2d");
+    canvas.setAttribute("aria-label", `Source page ${number} of ${state.pageCount || number}`);
     if (renderToken !== state.previewRenderToken) {
       page.cleanup();
       return;
@@ -744,6 +847,7 @@ async function persist() {
       markdown: state.markdown,
       options: state.options,
       warnings: state.warnings,
+      reviewQueue: state.reviewQueue,
     });
 }
 async function restore(value) {
@@ -752,6 +856,7 @@ async function restore(value) {
   Object.assign(state, value);
   state.logs = value.logs || [];
   state.warnings = value.warnings || [];
+  state.reviewQueue = Array.isArray(value.reviewQueue) ? value.reviewQueue.map(normalizeReviewItem) : [];
   if (value.extractionVersion !== EXTRACTION_VERSION) {
     state.pages = {};
     state.markdown = "";
@@ -773,11 +878,13 @@ async function restore(value) {
         warnings: state.warnings,
         extractionVersion: EXTRACTION_VERSION,
         engine: state.engine,
+        reviewQueue: state.reviewQueue,
       },
       state.pdfBytes,
     );
     await Promise.all(Object.values(state.pages).map(savePage));
   }
+  syncReviewQueue();
   optionIds.forEach((id) => {
     if (id in (state.options || {})) $(id).checked = state.options[id];
   });
@@ -788,6 +895,7 @@ async function restore(value) {
   renderSource(1);
   log("resume", "Workspace restored", {
     completedPages: Object.keys(state.pages).length,
+    reviewItems: state.reviewQueue.length,
     extractionVersion: EXTRACTION_VERSION,
   });
   toast(
@@ -807,6 +915,7 @@ function snapshot() {
     options: state.options,
     warnings: state.warnings,
     logs: state.logs,
+    reviewQueue: state.reviewQueue,
   };
 }
 function report() {
@@ -838,6 +947,127 @@ function assetMap() {
       .flatMap((page) => page.assets || [])
       .map((asset) => [asset.id, asset]),
   );
+}
+
+function announceReview(message) {
+  const region = $("reviewQueueAnnouncement");
+  if (region) region.textContent = message;
+}
+
+function renderReviewQueue() {
+  const items = state.reviewQueue;
+  const summary = reviewQueueSummary(items);
+  const panel = $("reviewQueuePanel");
+  const list = $("reviewQueueList");
+  if (!panel || !list) return;
+  $("reviewQueueTotal").textContent = String(summary.total);
+  $("reviewQueueAccepted").textContent = String(summary.accepted || 0);
+  $("reviewQueueReview").textContent = String(summary.review || 0);
+  $("reviewQueuePreserved").textContent = String(summary.preserved || 0);
+  if (!items.length) {
+    list.innerHTML = '<p class="review-empty">No review items are currently queued.</p>';
+    panel.setAttribute("aria-busy", "false");
+    return;
+  }
+  const selected = selectedReviewItem();
+  panel.setAttribute("aria-busy", "false");
+  list.innerHTML = items.map((item, index) => {
+    const active = item.id === selected?.id;
+    return `
+      <article class="review-card ${active ? "active" : ""}" tabindex="0" role="button" data-review-id="${item.id}" aria-pressed="${active}" aria-current="${active ? "true" : "false"}" aria-label="Equation ${index + 1}, page ${item.page}, disposition ${item.disposition}. Activate to inspect source evidence and reconstruction.">
+        <header>
+          <div>
+            <strong>Equation ${index + 1}</strong>
+            <small>Page ${item.page} · ${item.disposition}</small>
+          </div>
+          <span class="status-badge ${item.disposition === "accepted" ? "pass" : item.disposition === "review" ? "warning" : "neutral"}">${item.disposition}</span>
+        </header>
+        <div class="review-crop" aria-hidden="true">${item.sourceAsset?.id ? `<span>${item.sourceAsset.id}</span>` : "<span>Preserved source crop</span>"}</div>
+        <code class="review-latex">${DOMPurify.sanitize(item.candidate?.latex || "")}</code>
+      </article>`;
+  }).join("");
+  list.querySelectorAll("[data-review-id]").forEach((card) => {
+    card.onclick = () => {
+      state.selectedReviewId = card.dataset.reviewId;
+      renderReviewQueue();
+      renderSelectedReviewItem();
+    };
+    card.onkeydown = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        card.click();
+      }
+    };
+  });
+}
+
+function renderSelectedReviewItem() {
+  const item = selectedReviewItem();
+  const details = $("reviewQueueDetails");
+  if (!details) return;
+  if (!item) {
+    details.innerHTML = '<p class="review-empty">Select an equation to inspect its metadata.</p>';
+    announceReview("No equation is selected.");
+    return;
+  }
+  announceReview(`Showing equation on page ${item.page}. Source evidence and proposed reconstruction are both available below.`);
+  details.innerHTML = `
+    <div class="review-detail-block">
+      <div class="review-comparison" role="group" aria-label="Source and reconstruction comparison">
+        <section aria-label="Preserved source evidence">
+          <h3>Preserved source evidence</h3>
+          <p>Page ${item.page}; source crop ${DOMPurify.sanitize(item.sourceAsset?.id || "unavailable")}. The original evidence remains preserved.</p>
+        </section>
+        <section aria-label="Proposed reconstruction">
+          <h3>Proposed reconstruction</h3>
+          <code>${DOMPurify.sanitize(item.candidate?.latex || "No reconstruction available.")}</code>
+        </section>
+      </div>
+      <label class="field-label" for="reviewLatexEditor">Editable LaTeX<textarea id="reviewLatexEditor" rows="7">${DOMPurify.sanitize(item.candidate?.latex || "")}</textarea></label>
+      <div class="review-actions">
+        <button id="reviewAcceptButton" type="button" class="primary" ${item.validation?.mandatoryPassed ? "" : "disabled"}>Accept</button>
+        <button id="reviewEditButton" type="button">Reparse & validate</button>
+        <button id="reviewRevertButton" type="button">Keep original</button>
+      </div>
+      <details open class="review-meta">
+        <summary>Metadata</summary>
+        <dl>
+          <dt>Recognizer</dt><dd>${DOMPurify.sanitize(item.candidate?.provider || "unknown")}</dd>
+          <dt>Version</dt><dd>${DOMPurify.sanitize(item.candidate?.version || "unknown")}</dd>
+          <dt>Confidence</dt><dd>${Number(item.confidence?.overall || 0).toFixed(2)}</dd>
+          <dt>Disposition</dt><dd>${item.disposition}</dd>
+          <dt>Source asset</dt><dd>${DOMPurify.sanitize(item.sourceAsset?.id || "source-unknown")}</dd>
+        </dl>
+      </details>
+    </div>`;
+  $("reviewAcceptButton")?.addEventListener("click", () => {
+    const updated = setReviewItemDisposition(item.id, "accept");
+    if (updated) {
+      toast(updated.disposition === "accepted" ? "Equation accepted." : "Low-confidence items must stay in review.", updated.disposition !== "accepted");
+      renderReviewQueue();
+      renderSelectedReviewItem();
+      persist();
+    }
+  });
+  $("reviewEditButton")?.addEventListener("click", () => {
+    const latex = $("reviewLatexEditor")?.value || "";
+    const updated = setReviewItemDisposition(item.id, "edit", latex);
+    if (updated) {
+      toast(updated.disposition === "review" ? "Equation revalidated for review." : "Edited equation preserved as source evidence.", updated.disposition !== "review");
+      renderReviewQueue();
+      renderSelectedReviewItem();
+      persist();
+    }
+  });
+  $("reviewRevertButton")?.addEventListener("click", () => {
+    const updated = setReviewItemDisposition(item.id, "keep-original");
+    if (updated) {
+      toast("Kept the original source crop.");
+      renderReviewQueue();
+      renderSelectedReviewItem();
+      persist();
+    }
+  });
 }
 function logText() {
   return state.logs
@@ -884,19 +1114,35 @@ function save(kind) {
     );
   if (kind === "log")
     download(new Blob([logText()], { type: "text/plain" }), `${base}.log`);
-  if (kind === "bundle") {
-    const files = {
-      [`${base}.md`]: strToU8(state.markdown),
-      [`${base}.txt`]: strToU8(plainText(state.markdown)),
-      [`${base}.report.json`]: strToU8(JSON.stringify(report(), null, 2)),
-      [`${base}.log`]: strToU8(logText()),
-    };
-    for (const asset of assetMap().values())
-      files[`assets/${asset.id}.png`] = asset.data;
-    download(
-      new Blob([zipSync(files, { level: 6 })], { type: "application/zip" }),
-      `${base}.browser-export.zip`,
+  if (kind === "bundle") void saveBundle(base);
+}
+async function saveBundle(base) {
+  try {
+    $("downloadBundle").disabled = true;
+    $("downloadBundle").querySelector("small").textContent = "Building reconstructable bundle…";
+    const { markdownToDocx } = await import("./features/export/docx-export.js");
+    const docx = await markdownToDocx(
+      state.markdown,
+      $("docxTitle").value || stem(state.fileName),
+      { pageBreaks: $("docxPageBreaks").checked, assets: assetMap() },
     );
+    const { blob } = await buildReconstructableBundle({
+      baseName: base,
+      markdown: state.markdown,
+      docxBytes: await docx.arrayBuffer(),
+      pdfBytes: state.pdfBytes,
+      assets: assetMap(),
+      reviewItems: state.reviewQueue,
+      qualityReport: report(),
+    });
+    download(blob, base + ".reconstructable.zip");
+    toast("Reconstructable bundle created.");
+  } catch (error) {
+    log("bundle-error", error.message, {}, "error");
+    toast("Bundle export failed: " + error.message, true);
+  } finally {
+    $("downloadBundle").disabled = false;
+    $("downloadBundle").querySelector("small").textContent = "DOCX, source evidence, provenance, and semantic assets";
   }
 }
 async function saveDocx() {
@@ -966,47 +1212,127 @@ function setSidebarExpanded(isExpanded) {
   $("sidebarToggle").setAttribute("aria-expanded", String(isExpanded));
 }
 
-function closeMobileSidebar() {
+function setInspectorExpanded(isExpanded) {
+  $("inspectorToggle").setAttribute("aria-expanded", String(isExpanded));
+}
+
+function isCompactLayout() {
+  return document.documentElement.dataset.layoutMode === "compact";
+}
+
+function focusableIn(container) {
+  return [...container.querySelectorAll('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')].filter((element) => !element.hidden && !element.closest("[inert]"));
+}
+
+function syncSheetAccessibility() {
+  const compact = isCompactLayout();
+  const sheets = [
+    { id: "settingsSidebar", className: "sidebar-open", label: "Document and extraction settings" },
+    { id: "resultsInspector", className: "inspector-open", label: "Results and exports" },
+  ];
+  for (const sheet of sheets) {
+    const element = $(sheet.id);
+    const modal = compact && document.body.classList.contains(sheet.className);
+    const inert = compact && !modal;
+    element.inert = inert;
+    if (inert) element.setAttribute("inert", "");
+    else element.removeAttribute("inert");
+    if (modal) {
+      element.setAttribute("role", "dialog");
+      element.setAttribute("aria-modal", "true");
+      element.setAttribute("aria-label", sheet.label);
+    } else {
+      element.removeAttribute("role");
+      element.removeAttribute("aria-modal");
+      if (!compact) element.inert = false;
+    }
+  }
+}
+
+function focusSheet(id) {
+  const first = focusableIn($(id))[0];
+  first?.focus();
+}
+
+function closeSettingsSheet({ restoreFocus = true } = {}) {
+  const wasOpen = document.body.classList.contains("sidebar-open");
   document.body.classList.remove("sidebar-open");
-  if (media.mobileSidebar.matches) setSidebarExpanded(false);
+  if (isCompactLayout()) setSidebarExpanded(false);
+  syncSheetAccessibility();
+  if (wasOpen && restoreFocus) {
+    const target = state.sheetReturnFocus.sidebar || $("sidebarToggle");
+    target?.focus();
+    state.sheetReturnFocus.sidebar = null;
+  }
+}
+
+function closeInspectorSheet({ restoreFocus = true } = {}) {
+  const wasOpen = document.body.classList.contains("inspector-open");
+  document.body.classList.remove("inspector-open");
+  if (isCompactLayout()) setInspectorExpanded(false);
+  syncSheetAccessibility();
+  if (wasOpen && restoreFocus) {
+    const target = state.sheetReturnFocus.inspector || $("inspectorToggle");
+    target?.focus();
+    state.sheetReturnFocus.inspector = null;
+  }
 }
 
 function toggleSidebar() {
-  if (media.mobileSidebar.matches) {
+  if (isCompactLayout()) {
     const isOpen = document.body.classList.toggle("sidebar-open");
+    if (isOpen) state.sheetReturnFocus.sidebar = document.activeElement;
     setSidebarExpanded(isOpen);
+    closeInspectorSheet({ restoreFocus: false });
+    syncSheetAccessibility();
+    if (isOpen) focusSheet("settingsSidebar");
     return;
   }
   const isCollapsed = document.body.classList.toggle("sidebar-collapsed");
   setSidebarExpanded(!isCollapsed);
+  syncSheetAccessibility();
   try {
     localStorage.setItem(sidebarStorageKey, isCollapsed ? "collapsed" : "open");
   } catch {}
 }
 
+function toggleInspector() {
+  if (!isCompactLayout()) {
+    $("resultsInspector").scrollIntoView({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  const isOpen = document.body.classList.toggle("inspector-open");
+  if (isOpen) state.sheetReturnFocus.inspector = document.activeElement;
+  setInspectorExpanded(isOpen);
+  closeSettingsSheet({ restoreFocus: false });
+  syncSheetAccessibility();
+  if (isOpen) focusSheet("resultsInspector");
+}
+
 function restoreSidebarPreference() {
   let isCollapsed = false;
   try {
-    const stored =
-      localStorage.getItem(sidebarStorageKey) ||
-      localStorage.getItem(legacySidebarStorageKey);
+    const stored = localStorage.getItem(sidebarStorageKey) || localStorage.getItem(legacySidebarStorageKey);
     isCollapsed = stored === "collapsed";
-    if (stored && !localStorage.getItem(sidebarStorageKey))
-      localStorage.setItem(sidebarStorageKey, stored);
+    if (stored && !localStorage.getItem(sidebarStorageKey)) localStorage.setItem(sidebarStorageKey, stored);
   } catch {}
   document.body.classList.toggle("sidebar-collapsed", isCollapsed);
-  syncSidebarResponsiveState();
+  syncWorkspaceLayoutState();
 }
 
-function syncSidebarResponsiveState() {
-  setSidebarExpanded(
-    media.mobileSidebar.matches
-      ? document.body.classList.contains("sidebar-open")
-      : !document.body.classList.contains("sidebar-collapsed"),
-  );
-  if (!media.mobileSidebar.matches) document.body.classList.remove("sidebar-open");
+function syncWorkspaceLayoutState() {
+  const availableWidth = document.querySelector("main")?.clientWidth || window.innerWidth;
+  const mode = availableWidth < 700 ? "compact" : availableWidth < 1040 ? "medium" : availableWidth < 1440 ? "wide" : "extra-wide";
+  document.documentElement.dataset.layoutMode = mode;
+  const compact = mode === "compact";
+  if (!compact) {
+    closeSettingsSheet({ restoreFocus: false });
+    closeInspectorSheet({ restoreFocus: false });
+  }
+  setSidebarExpanded(compact ? document.body.classList.contains("sidebar-open") : !document.body.classList.contains("sidebar-collapsed"));
+  setInspectorExpanded(compact && document.body.classList.contains("inspector-open"));
+  syncSheetAccessibility();
 }
-
 function bind() {
   syncAdaptivePreferences();
   syncThemePreference();
@@ -1155,9 +1481,12 @@ function bind() {
       localStorage.setItem(appearanceStorageKey, theme);
     } catch {}
     document.documentElement.dataset.appearance = "manual";
-  };
-  $("sidebarToggle").onclick = toggleSidebar;
-  $("sidebarBackdrop").onclick = closeMobileSidebar;
+  };  $("sidebarToggle").onclick = toggleSidebar;
+  $("inspectorToggle").onclick = toggleInspector;
+  $("compactSettingsButton").onclick = toggleSidebar;
+  $("compactInspectorButton").onclick = toggleInspector;
+  $("sidebarBackdrop").onclick = closeSettingsSheet;
+  $("inspectorBackdrop").onclick = closeInspectorSheet;
   onMediaChange(media.colorScheme, () => {
     syncAdaptivePreferences();
     if (!readStoredTheme()) {
@@ -1171,10 +1500,8 @@ function bind() {
     media.highContrast,
     media.forcedColors,
     media.coarsePointer,
-  ].forEach((queryList) => onMediaChange(queryList, syncAdaptivePreferences));
-  onMediaChange(media.mobileSidebar, syncSidebarResponsiveState);
-  window.addEventListener("resize", () => {
-    syncSidebarResponsiveState();
+  ].forEach((queryList) => onMediaChange(queryList, syncAdaptivePreferences));  window.addEventListener("resize", () => {
+    syncWorkspaceLayoutState();
     syncTabIndicator();
   });
   window.addEventListener("keydown", (event) => {
@@ -1182,7 +1509,31 @@ function bind() {
       event.preventDefault();
       $("searchInput").focus();
     }
-    if (event.key === "Escape") closeMobileSidebar();
+    if (event.key === "Escape") {
+      closeSettingsSheet();
+      closeInspectorSheet();
+      return;
+    }
+    if (event.key === "Tab" && isCompactLayout()) {
+      const openSheet = document.body.classList.contains("sidebar-open")
+        ? $("settingsSidebar")
+        : document.body.classList.contains("inspector-open")
+          ? $("resultsInspector")
+          : null;
+      if (openSheet) {
+        const focusable = focusableIn(openSheet);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }
   });
   let installPrompt;
   window.addEventListener("beforeinstallprompt", (e) => {

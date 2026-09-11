@@ -122,3 +122,16 @@ CI performs the browser checks and uploads the static build. Python code outside
 The end-to-end test starts a local Vite server and launches Chromium. On a new Linux machine, run `npx playwright install --with-deps chromium` once before `npm run test:e2e`; CI already performs that setup.
 
 If you switch the same checkout between Windows and WSL, keep using the npm scripts instead of calling Vite or Vitest directly so the native dependency preflight can restore the correct Rollup/esbuild packages.
+
+## DOCX visual export meaning
+
+The browser exporter uses three levels:
+
+- The complete browser bundle preserves canonical Markdown plus available visual semantic source in a manifest.
+- DOCX embeds accepted Mermaid-compatible or supplied PlantUML/Vega-Lite SVG as vector media when an SVG artifact and Word-compatible raster fallback are available.
+- DOCX uses native editable Word shapes only for the strict VisualIR subset documented in the upgrade architecture. Unsupported or ambiguous diagrams remain faithful SVG/source evidence.
+
+Word editability means Word can select and change the emitted shape, text box, connector, or arrow. It is not semantic editability: the Word file is downstream output and does not replace GlyphMend’s Markdown, VisualIR, ChartIR, provenance, confidence, or review state.
+## Interface materials
+
+GlyphMend uses a **HIG-aligned Liquid Glass interpretation**, not native Liquid Glass. The internal [design-system fixture](./design-system.html) demonstrates opaque document surfaces (`content/background`, `content/elevated`, and `content/inset`) plus limited chrome-only glass (`glass/regular`, `glass/clear`, and `glass/selected-overlay`). The same semantic tokens drive light and dark modes; no Apple proprietary fonts are bundled.

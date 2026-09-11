@@ -1,9 +1,11 @@
 import { expect, it } from "vitest";
 import {
+  buildEquationCandidate,
   captionFor,
   jsonFallbackBlocks,
   latexMarkdown,
   looksLikeOcrEquation,
+  normalizeBackground,
   ocrTableMarkdown,
   textFallbackBlocks,
 } from "./extract-worker.js";
@@ -101,6 +103,47 @@ it("rejects Revenue Management prose and incomplete OCR equations", () => {
   expect(looksLikeOcrEquation("p2 = p1 P(D1 > y1)")).toBe(true);
   expect(looksLikeOcrEquation("Sy <<")).toBe(false);
   expect(looksLikeOcrEquation("x =")).toBe(false);
+});
+
+it("records source provenance and a reversible crop for OCR equation candidates", () => {
+  const candidate = buildEquationCandidate(
+    3,
+    { kind: "equation", bbox: [60, 110, 300, 150], text: "x = y + 1" },
+    { data: new Uint8Array([255, 255, 255, 255, 0, 0, 0, 255]), width: 2, height: 1 },
+    "raster",
+    "x = y + 1",
+  );
+
+  expect(candidate.page).toBe(3);
+  expect(candidate.sourceAsset.page).toBe(3);
+  expect(candidate.sourceAsset.bbox).toEqual([60, 110, 300, 150]);
+  expect(candidate.sourceAsset.crop.format).toBe("png");
+  expect(candidate.sourceAsset.crop.data.length).toBeGreaterThan(0);
+  expect(candidate.evidence.text).toContain("x = y + 1");
+  expect(["accepted", "review", "preserved"]).toContain(candidate.disposition);
+});
+
+it("keeps prose from being mistaken for a math region while preserving nearby valid equations", () => {
+  const proseCandidate = buildEquationCandidate(
+    4,
+    { kind: "equation", bbox: [40, 80, 220, 100], text: "This paragraph does not form an equation" },
+    { data: new Uint8Array([255, 255, 255, 255]), width: 1, height: 1 },
+    "raster",
+    "This paragraph does not form an equation",
+  );
+  const mathCandidate = buildEquationCandidate(
+    4,
+    { kind: "equation", bbox: [40, 120, 220, 150], text: "p ≤ μ + ½" },
+    { data: new Uint8Array([255, 255, 255, 255]), width: 1, height: 1 },
+    "raster",
+    "p ≤ μ + ½",
+  );
+
+  expect(proseCandidate.disposition).toBe("preserved");
+  expect(mathCandidate.disposition).not.toBe("preserved");
+  expect(
+    normalizeBackground({ data: new Uint8Array([240, 240, 240, 255]), width: 1, height: 1 }).background,
+  ).toBe(255);
 });
 
 it("recovers text nested below MuPDF structural grouping blocks", () => {

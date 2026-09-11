@@ -17,7 +17,8 @@ from .extractor import (
     _overlaps_any,
     _picture_boxes,
 )
-from .graphics import VectorDiagram, detect_vector_diagrams, format_bbox, rect_area
+from .graphics import format_bbox, rect_area
+from .visual_ir import detect_vector_diagrams, visual_ir_to_mermaid
 from .progress import ProgressCallback, emit_progress
 from .running_matter import strip_running_matter
 from .sanitize import sanitize_markdown
@@ -58,7 +59,7 @@ def render_page_markdown(
             pos = _insertion_pos(page_boxes, rect, len(text))
             replacements.append(_Replacement(pos, pos, table_md, 100, rect))
 
-    diagrams: list[VectorDiagram] = []
+    diagrams: list[Any] = []
     if config.detect_vector_flows:
         diagrams = detect_vector_diagrams(page, excluded_bboxes=table_bboxes)
     diagram_bboxes = [item.bbox for item in diagrams]
@@ -87,11 +88,12 @@ def render_page_markdown(
 
     for diagram in diagrams:
         span = _box_span(page_boxes, diagram.bbox, threshold=0.30)
+        markdown = visual_ir_to_mermaid(diagram.visual_ir)
         if span:
-            replacements.append(_Replacement(span[0], span[1], diagram.markdown, 90, diagram.bbox))
+            replacements.append(_Replacement(span[0], span[1], markdown, 90, diagram.bbox))
         else:
             pos = _insertion_pos(page_boxes, diagram.bbox, len(text))
-            replacements.append(_Replacement(pos, pos, diagram.markdown, 90, diagram.bbox))
+            replacements.append(_Replacement(pos, pos, markdown, 90, diagram.bbox))
 
     if config.include_visual_placeholders:
         native_text = (page.get_text("text") or "").strip()

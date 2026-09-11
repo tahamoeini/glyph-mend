@@ -73,8 +73,8 @@ async function evaluateThemeTokens(page) {
       textTertiary: parse(style.getPropertyValue("--text-tertiary")),
       accentText: parse(style.getPropertyValue("--accent-text")),
       textOnAccent: parse(style.getPropertyValue("--text-on-accent")),
-      materialContent: parse(style.getPropertyValue("--material-content")),
-      materialInset: parse(style.getPropertyValue("--material-content-inset")),
+      materialContent: parse(style.getPropertyValue("--surface-content-background")),
+      materialInset: parse(style.getPropertyValue("--surface-content-inset")),
       accentFill: parse(style.getPropertyValue("--accent-fill")),
       theme: root.dataset.theme,
       appearance: root.dataset.appearance,
@@ -104,7 +104,7 @@ test("loads the complete local application shell", async ({ page }) => {
     "aria-label",
     /mode/,
   );
-  await expect(page.locator(".liquid-selection-indicator")).toHaveCount(1);
+  await expect(page.locator(".liquid-glass-selected-overlay")).toHaveCount(1);
 });
 
 test("keeps settings, document views, and exports accessible", async ({
@@ -154,10 +154,10 @@ test("keeps content opaque and liquid glass limited to functional layers", async
     buffer: Buffer.from("# Review\n\nFunctional chrome should float above content."),
   });
 
-  await expect(page.locator(".topbar.liquid-glass-toolbar")).toBeVisible();
-  await expect(page.locator("#settingsSidebar.liquid-glass-sidebar")).toBeVisible();
+  await expect(page.locator(".topbar.liquid-glass-regular")).toBeVisible();
+  await expect(page.locator("#settingsSidebar.liquid-glass-regular")).toBeVisible();
   await page.locator("#sourceTab").click();
-  await expect(page.locator(".page-controls.liquid-glass-capsule")).toBeVisible();
+  await expect(page.locator(".page-controls.liquid-glass-clear")).toBeVisible();
   await expect(page.locator("#welcome.liquid-glass")).toHaveCount(0);
   await expect(page.locator(".editor.liquid-glass")).toHaveCount(0);
   await expect(page.locator(".exports.liquid-glass")).toHaveCount(0);
@@ -238,42 +238,52 @@ test("adapts to reduced motion, reduced transparency, high contrast, and coarse 
   expect(Number.parseFloat(styles.controlMinWidth)).toBeGreaterThanOrEqual(44);
 });
 
-test("keeps the editor primary across key responsive widths", async ({ page }) => {
-  const widths = [320, 375, 430, 768, 820, 1024, 1180, 1440, 1728];
+test("adapts workspace panes by available width without losing editor state", async ({ page }) => {
+  const modes = [
+    { width: 375, mode: "compact", panes: 1 },
+    { width: 900, mode: "medium", panes: 2 },
+    { width: 1200, mode: "wide", panes: 2 },
+    { width: 1600, mode: "extra-wide", panes: 3 },
+  ];
 
-  for (const width of widths) {
-    await page.setViewportSize({
-      width,
-      height: width < 768 ? 900 : 1024,
-    });
+  for (const { width, mode, panes } of modes) {
+    await page.setViewportSize({ width, height: 960 });
     await page.goto("/");
     await page.locator("#markdownInput").setInputFiles({
-      name: `responsive-${width}.md`,
+      name: `layout-${mode}.md`,
       mimeType: "text/markdown",
-      buffer: Buffer.from(`# Width ${width}\n\nResponsive workspace validation.`),
+      buffer: Buffer.from(`# ${mode}\n\nResponsive workspace validation.`),
     });
-
-    await expect(page.locator("#workspace")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-layout-mode", mode);
     await expect(page.locator(".editor")).toBeVisible();
-    await expect(page.locator("#markdownEditor")).toBeVisible();
-    await expect(page.locator(".tabs")).toBeVisible();
-    await expect(page.locator(".toolbar")).toBeVisible();
-    await expect(page.locator(".downloads")).toBeVisible();
-
-    if (width <= 820) {
-      await expect(page.locator("#sidebarToggle")).toHaveAttribute(
-        "aria-expanded",
-        "false",
-      );
+    if (mode === "compact") {
+      await expect(page.locator("#compactActionDock")).toBeVisible();
+      await expect(page.locator("body")).not.toHaveClass(/inspector-open/);
+      await expect(page.locator("#resultsInspector")).toHaveCSS("pointer-events", "none");
     } else {
-      await expect(page.locator("#sidebarToggle")).toHaveAttribute(
-        "aria-expanded",
-        "true",
-      );
+      await expect(page.locator("#resultsInspector")).toBeVisible();
     }
+    const columns = await page.locator("#workspace").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
+    expect(columns).toBeGreaterThanOrEqual(panes);
   }
-});
 
+  await page.setViewportSize({ width: 1200, height: 960 });
+  await page.goto("/");
+  await page.locator("#markdownInput").setInputFiles({
+    name: "resize-state.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# Resize state\n\nOriginal content."),
+  });
+  await page.locator("#markdownEditor").fill("# Resize state\n\nEdited before resize.");
+  await page.locator("#previewTab").click();
+  await page.setViewportSize({ width: 600, height: 960 });
+  await expect(page.locator("html")).toHaveAttribute("data-layout-mode", "compact");
+  await expect(page.locator("#previewTab")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#markdownEditor")).toHaveValue("# Resize state\n\nEdited before resize.");
+  await page.locator("#compactInspectorButton").click();
+  await expect(page.locator("body")).toHaveClass(/inspector-open/);
+  await expect(page.locator("#downloadMarkdown")).toBeEnabled();
+});
 test("keeps theme token contrast above WCAG thresholds in light and dark modes", async ({
   page,
 }) => {
@@ -296,7 +306,7 @@ test("keeps theme token contrast above WCAG thresholds in light and dark modes",
 test("opens and closes the settings drawer on a small screen", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 700, height: 800 });
+  await page.setViewportSize({ width: 640, height: 800 });
   await page.goto("/");
   await page.locator("#markdownInput").setInputFiles({
     name: "mobile.md",
@@ -314,10 +324,37 @@ test("opens and closes the settings drawer on a small screen", async ({
     "aria-expanded",
     "true",
   );
-  await page.locator("#sidebarBackdrop").click({ position: { x: 690, y: 400 } });
+  await page.locator("#sidebarBackdrop").click();
   await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
 });
 
+test("keeps compact sheets keyboard operable and announced as dialogs", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 640, height: 800 });
+  await page.goto("/");
+  await page.locator("#markdownInput").setInputFiles({
+    name: "keyboard.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# Keyboard review"),
+  });
+
+  await page.locator("#sidebarToggle").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#settingsSidebar")).toHaveAttribute("role", "dialog");
+  await expect(page.locator("#settingsSidebar")).toHaveAttribute("aria-modal", "true");
+  await expect(page.locator("#settingsSidebar input").first()).toBeFocused();
+  await expect(page.locator("#resultsInspector")).toHaveAttribute("inert", "");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#sidebarToggle")).toBeFocused();
+  await expect(page.locator("#settingsSidebar")).not.toHaveAttribute("role", "dialog");
+
+  await page.locator("#compactInspectorButton").click();
+  await expect(page.locator("#resultsInspector")).toHaveAttribute("role", "dialog");
+  await expect(page.locator("#resultsInspector input").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#compactInspectorButton")).toBeFocused();
+});
 test("extracts a PDF through the structured WASM worker", async ({ page }) => {
   const errors = [];
   let wasmResponse;

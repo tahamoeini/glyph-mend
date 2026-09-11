@@ -83,7 +83,7 @@ export function applyBrand(brand, root = document) {
     node.style.filter = "none";
     const mark = node.closest(".brand-mark");
     if (mark) {
-      mark.style.background = "var(--material-content-elevated)";
+      mark.style.background = "var(--surface-content-elevated)";
       mark.style.border = "1px solid var(--border-subtle)";
     }
   });

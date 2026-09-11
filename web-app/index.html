@@ -96,14 +96,14 @@
     </symbol>
   </svg>
   <input id="pdfInput" class="visually-hidden" type="file" accept="application/pdf,.pdf">
-  <header class="topbar liquid-glass liquid-glass-regular liquid-glass-toolbar">
+  <header class="topbar liquid-glass liquid-glass-regular">
     <div class="brand-lockup" aria-label="GlyphMend" data-brand-aria-label><span class="brand-mark" aria-hidden="true"><img data-brand-logo src="./brand/glyphmend-mark.svg" alt="" width="22" height="22" style="display:block;filter:brightness(0) invert(1)"></span><a class="brand" href="#" data-brand-name>GlyphMend</a></div>
     <div id="topDocumentContext" class="top-document-context" aria-live="polite"><strong id="topFileName">Document workspace</strong><span id="topFileMeta">Private, local document processing</span></div>
     <div class="topbar-actions" role="group" aria-label="Application controls">
       <div class="privacy"><i aria-hidden="true"></i><span>Local processing only</span></div>
       <button id="installButton" class="topbar-button hidden" type="button">Install app</button>
       <button id="themeButton" class="icon-button topbar-button" type="button" aria-label="Switch to dark mode" title="Change appearance"><svg class="icon" aria-hidden="true"><use href="#icon-appearance"></use></svg></button>
-      <button id="sidebarToggle" class="icon-button topbar-button sidebar-toggle" type="button" aria-controls="settingsSidebar" aria-expanded="true" aria-label="Toggle settings sidebar" title="Toggle settings"><svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg></button>
+      <button id="inspectorToggle" class="icon-button topbar-button inspector-toggle" type="button" aria-controls="resultsInspector" aria-expanded="false" aria-label="Toggle quality and export" title="Quality and export"><svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg></button><button id="sidebarToggle" class="icon-button topbar-button sidebar-toggle" type="button" aria-controls="settingsSidebar" aria-expanded="true" aria-label="Toggle settings sidebar" title="Toggle settings"><svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg></button>
     </div>
   </header>
   <main>
@@ -126,7 +126,7 @@
       </div>
     </section>
     <section id="workspace" class="workspace hidden" aria-label="Document workspace" aria-busy="false">
-      <aside id="settingsSidebar" class="sidebar liquid-glass liquid-glass-regular liquid-glass-sidebar" aria-label="Document and extraction settings">
+      <aside id="settingsSidebar" class="sidebar liquid-glass liquid-glass-regular" aria-label="Document and extraction settings">
         <div class="sidebar-header"><div class="file-summary"><div class="pdf-badge" aria-hidden="true">PDF</div><div><strong id="fileName"></strong><span id="fileMeta"></span></div></div><label class="change-file" for="pdfInput">Choose another PDF</label></div>
         <div class="sidebar-scroll">
           <fieldset class="control-section">
@@ -167,33 +167,47 @@
           <details class="workspace-tools control-section"><summary><span>Workspace data</span><small>Checkpoint controls</small><span class="summary-icon" aria-hidden="true"><svg class="icon"><use href="#icon-chevron-down"></use></svg></span></summary><div class="inline-actions"><button id="exportWorkspaceButton" class="text-button" type="button">Export checkpoint</button><button id="clearWorkspaceButton" class="text-button danger-text" type="button">Forget saved data</button><small>To clear the app’s full local cache, use Reset local data on the welcome screen.</small></div></details>
         </div>
         <div class="action-dock">
-          <div class="progress-card" aria-live="polite"><div class="progress-heading"><span id="progressStage">Ready to extract</span><strong id="progressText">0%</strong></div><strong id="statusText">Ready</strong><span id="progressPage" class="progress-page">Configure the document, then start extraction.</span><progress id="progress" max="100" value="0">0%</progress></div>
+          <div class="progress-card" aria-live="polite"><div class="progress-heading"><span id="progressStage">Ready to extract</span><strong id="progressText">0%</strong></div><strong id="statusText">Ready</strong><span id="progressPage" class="progress-page">Configure the document, then start extraction.</span><progress id="progress" max="100" value="0">0%</progress><span id="progressAnnouncement" class="visually-hidden" aria-live="polite" aria-atomic="true"></span></div>
           <button id="extractButton" class="primary" type="button"><span id="extractButtonLabel">Extract document</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow-right"></use></svg></button>
           <div class="running-actions"><button id="pauseButton" class="quiet hidden" type="button">Pause</button><button id="cancelButton" class="danger hidden" type="button">Cancel</button></div>
         </div>
       </aside>
-      <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="Close settings"></button>
+      <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="Close settings"></button><button id="inspectorBackdrop" class="inspector-backdrop" type="button" aria-label="Close quality and export"></button>
       <section class="editor content-panel" aria-label="Document editor">
-        <div class="editor-header"><div class="tabs" role="tablist" aria-label="Document views"><div class="liquid-selection-indicator" aria-hidden="true"></div><button id="markdownTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="markdownEditor" data-tab="markdown" tabindex="0">Markdown</button><button id="previewTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="renderedPreview" data-tab="preview" tabindex="-1">Preview</button><button id="sourceTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="sourcePreview" data-tab="source" tabindex="-1">Source</button><button id="logTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="activityLog" data-tab="log" tabindex="-1">Technical log</button></div><span id="documentStats" class="document-stats" aria-live="polite"></span></div>
+        <div class="editor-header"><div class="tabs" role="tablist" aria-label="Document views"><div class="liquid-glass-selected-overlay" aria-hidden="true"></div><button id="markdownTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="markdownEditor" data-tab="markdown" tabindex="0">Markdown</button><button id="previewTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="renderedPreview" data-tab="preview" tabindex="-1">Preview</button><button id="sourceTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="sourcePreview" data-tab="source" tabindex="-1">Source</button><button id="logTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="activityLog" data-tab="log" tabindex="-1">Technical log</button></div><span id="documentStats" class="document-stats" aria-live="polite"></span></div>
         <div class="toolbar"><label class="search" for="searchInput"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg><input id="searchInput" type="search" placeholder="Find in output"><kbd>⌘ F</kbd></label><span class="editor-hint">Changes save automatically</span></div>
         <textarea id="markdownEditor" class="tab-view" role="tabpanel" aria-labelledby="markdownTab" spellcheck="false" aria-label="Extracted Markdown"></textarea>
         <article id="renderedPreview" class="tab-view prose hidden" role="tabpanel" aria-labelledby="previewTab"></article>
-        <div id="sourcePreview" class="tab-view source-view hidden" role="tabpanel" aria-labelledby="sourceTab"><div class="page-controls liquid-glass liquid-glass-regular liquid-glass-capsule" aria-label="Source page controls"><button id="previousPage" class="icon-button" type="button" aria-label="Previous page"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button><label class="page-field">Page <input id="previewPage" type="number" min="1" value="1"></label><button id="nextPage" class="icon-button" type="button" aria-label="Next page"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button><span class="control-divider" aria-hidden="true"></span><button id="zoomOut" class="icon-button" type="button" aria-label="Zoom out"><svg class="icon" aria-hidden="true"><use href="#icon-minus"></use></svg></button><button id="zoomIn" class="icon-button" type="button" aria-label="Zoom in"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg></button></div><div class="canvas-wrap"><canvas id="pdfCanvas"></canvas></div></div>
+        <div id="sourcePreview" class="tab-view source-view hidden" role="tabpanel" aria-labelledby="sourceTab"><div class="page-controls liquid-glass liquid-glass-clear" aria-label="Source page controls"><button id="previousPage" class="icon-button" type="button" aria-label="Previous page"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button><label class="page-field">Page <input id="previewPage" type="number" min="1" value="1"></label><button id="nextPage" class="icon-button" type="button" aria-label="Next page"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button><span class="control-divider" aria-hidden="true"></span><button id="zoomOut" class="icon-button" type="button" aria-label="Zoom out"><svg class="icon" aria-hidden="true"><use href="#icon-minus"></use></svg></button><button id="zoomIn" class="icon-button" type="button" aria-label="Zoom in"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg></button></div><div class="canvas-wrap" aria-label="Rendered source page"><canvas id="pdfCanvas" tabindex="0" aria-label="Source page preview" aria-describedby="sourcePreviewDescription"></canvas><p id="sourcePreviewDescription" class="visually-hidden">The source page preview is visual evidence. Use the Markdown and review descriptions for an accessible text representation.</p></div></div>
         <div id="activityLog" class="tab-view log-view hidden" role="tabpanel" aria-labelledby="logTab"><div class="log-tools"><label>Detail <select id="logLevel"><option value="info">Normal</option><option value="debug">Verbose</option></select></label><span></span><button id="downloadLog" type="button">Download log</button><button id="clearLog" type="button">Clear</button></div><pre id="logOutput" tabindex="0"></pre></div>
       </section>
-      <aside class="exports content-panel" aria-label="Results and exports">
+      <aside id="resultsInspector" class="exports content-panel" aria-label="Results and exports">
         <div class="inspector-section results-heading"><div><p class="eyebrow">Results</p><h2>Quality overview</h2></div><span id="qualityBadge" class="status-badge neutral">Waiting</span></div>
         <div class="quality inspector-section"><dl id="qualityReport" class="metric-grid"><div class="metric-card"><dt>Pages processed</dt><dd>0</dd></div></dl></div>
+        <section class="inspector-section review-queue-panel" id="reviewQueuePanel" aria-label="Review queue" aria-busy="false">
+          <div class="section-title"><span>Review queue</span><small>Equations first</small></div>
+          <dl class="metric-grid review-queue-summary" aria-label="Review queue summary">
+            <div class="metric-card"><dt>Total</dt><dd id="reviewQueueTotal">0</dd></div>
+            <div class="metric-card"><dt>Accepted</dt><dd id="reviewQueueAccepted">0</dd></div>
+            <div class="metric-card"><dt>Review</dt><dd id="reviewQueueReview">0</dd></div>
+            <div class="metric-card"><dt>Preserved</dt><dd id="reviewQueuePreserved">0</dd></div>
+          </dl>
+          <div id="reviewQueueList" class="review-queue-list" role="list" aria-label="Queued reconstruction items"></div><p id="reviewQueueAnnouncement" class="visually-hidden" aria-live="polite" aria-atomic="true"></p>
+          <div id="reviewQueueDetails" class="review-queue-details">
+            <p class="review-empty">Select an equation to inspect its reconstruction, confidence, and source crop.</p>
+          </div>
+        </section>
         <div class="inspector-section export-options"><div class="section-title"><span>Word settings</span><small>Optional</small></div><label class="field-label" for="docxTitle">Document title<input id="docxTitle" placeholder="Defaults to filename"></label><label class="control-row compact"><span><strong>Source page breaks</strong></span><span class="switch"><input id="docxPageBreaks" type="checkbox"><i aria-hidden="true"></i></span></label></div>
         <div class="inspector-section downloads"><div class="section-title"><span>Export locally</span><small>No upload</small></div>
           <button id="downloadMarkdown" type="button" disabled><span class="export-icon" aria-hidden="true">MD</span><span><strong>Markdown</strong><small>Semantic source</small></span><i aria-hidden="true"><svg class="icon"><use href="#icon-download"></use></svg></i></button>
           <button id="downloadDocx" type="button" disabled><span class="export-icon" aria-hidden="true">W</span><span><strong>Word document</strong><small>Headings, tables, lists, equations, and source visuals</small></span><i aria-hidden="true"><svg class="icon"><use href="#icon-download"></use></svg></i></button>
           <button id="downloadText" type="button" disabled><span class="export-icon" aria-hidden="true">TXT</span><span><strong>Plain text</strong><small>Clean text only</small></span><i aria-hidden="true"><svg class="icon"><use href="#icon-download"></use></svg></i></button>
           <button id="downloadReport" type="button" disabled><span class="export-icon" aria-hidden="true">JSON</span><span><strong>Quality report</strong><small>Machine-readable audit</small></span><i aria-hidden="true"><svg class="icon"><use href="#icon-download"></use></svg></i></button>
-          <button id="downloadBundle" class="bundle-button" type="button" disabled><span class="export-icon" aria-hidden="true">ZIP</span><span><strong>Complete bundle</strong><small>All outputs and assets</small></span><i aria-hidden="true"><svg class="icon"><use href="#icon-download"></use></svg></i></button>
+          <button id="downloadBundle" class="bundle-button" type="button" disabled><span class="export-icon" aria-hidden="true">ZIP</span><span><strong>Reconstructable bundle</strong><small>DOCX, source evidence, provenance, and semantic assets</small></span><i aria-hidden="true"><svg class="icon"><use href="#icon-download"></use></svg></i></button>
         </div>
       </aside>
     </section>
+    <nav id="compactActionDock" class="compact-action-dock hidden" aria-label="Workspace actions"><button id="compactSettingsButton" class="quiet" type="button">Settings</button><button id="compactInspectorButton" class="quiet" type="button">Quality &amp; export</button></nav>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/src/brand-bootstrap.js"></script>
