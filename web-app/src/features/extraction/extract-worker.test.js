@@ -6,6 +6,7 @@ import {
   latexMarkdown,
   looksLikeOcrEquation,
   normalizeBackground,
+  ocrProgressMessage,
   ocrTableMarkdown,
   textFallbackBlocks,
 } from "./extract-worker.js";
@@ -171,4 +172,29 @@ it("recovers text nested below MuPDF structural grouping blocks", () => {
 it("uses MuPDF plain text as a final structured-text fallback", () => {
   const blocks = textFallbackBlocks({ asText: () => "One line\nSecond line\n" });
   expect(blocks[0].lines.map((line) => line.text)).toEqual(["One line", "Second line"]);
+});
+
+it("creates valid OCR progress messages for initialization and recognition", () => {
+  expect(
+    ocrProgressMessage(1, { status: "loading tesseract core", progress: 0.25 }),
+  ).toEqual({
+    type: "ocr-progress",
+    page: 1,
+    status: "loading tesseract core",
+    progress: 0.25,
+  });
+  expect(
+    ocrProgressMessage(745, { status: "recognizing text", progress: 1.4 }),
+  ).toEqual({
+    type: "ocr-progress",
+    page: 745,
+    status: "recognizing text",
+    progress: 1,
+  });
+});
+
+it("suppresses OCR progress events that have no valid page context", () => {
+  expect(ocrProgressMessage(undefined, { status: "loading", progress: 0 })).toBeNull();
+  expect(ocrProgressMessage(0, { status: "loading", progress: 0 })).toBeNull();
+  expect(ocrProgressMessage(2001, { status: "loading", progress: 0 })).toBeNull();
 });
