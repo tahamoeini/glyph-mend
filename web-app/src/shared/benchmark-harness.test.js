@@ -44,6 +44,18 @@ it("detects a deliberately wrong arrow direction in diagram fixtures", () => {
   expect(result.metrics.edgeCorrect).toBe(false);
 });
 
+it("keeps the raster-flowchart fixture deterministic", () => {
+  const fixture = defaultDiagramFixtureSet().find((item) => item.id === "diagram/raster-flowchart");
+  const result = evaluateVisualFixture(fixture, {
+    nodes: fixture.expected.nodes,
+    edges: fixture.expected.edges,
+  });
+
+  expect(result.passed).toBe(true);
+  expect(result.metrics.labelCorrect).toBe(true);
+  expect(result.metrics.edgeCorrect).toBe(true);
+});
+
 it("exposes a machine-readable benchmark result payload", () => {
   const result = createBenchmarkResult("benchmark-check");
   expect(result.model).toBe("benchmark-check");

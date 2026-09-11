@@ -154,3 +154,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Open only for the unrelated DOCX validation regression; Step 13 rendering work itself is implemented and narrowly validated.
 
+## GM-UPG-009 — Step 14 raster flowchart reconstruction is adapter-only until an approved local CV dependency is available
+- Detected in step: Step 14 raster flowchart reconstruction with local CV + OCR
+- Date: 2026-09-11
+- Status: BLOCKED
+- Severity: medium
+- Area: browser / recognition / raster diagrams
+- Dependency: approved local CV runtime or package for contour/arrowhead reconstruction
+- Description: The browser workspace has local OCR and a staged visual-worker adapter, but no approved OpenCV/OpenCV.js-style dependency was present to complete deterministic raster contour, shape, and arrowhead reconstruction with verified licensing and bundle impact.
+- Evidence: Inspection of [web-app/package.json](web-app/package.json) found no approved CV runtime dependency; the implemented worker path remains adapter-based and conservative.
+- Files / symbols involved: [web-app/src/features/recognition/visual-worker.js](web-app/src/features/recognition/visual-worker.js), [web-app/src/features/recognition/raster-flowchart.js](web-app/src/features/recognition/raster-flowchart.js), [web-app/src/features/extraction/extract-worker.js](web-app/src/features/extraction/extract-worker.js)
+- What was attempted: Built a staged browser-local raster flowchart adapter around OCR text regions, deterministic candidate scoring, conservative rejection, and VisualIR emission.
+- Why it remains: The repository does not yet include an approved local CV library to power real contour/arrowhead detection, so the step cannot honestly be claimed complete.
+- Recommended next action: Evaluate and approve a local CV dependency, then replace the adapter-only heuristic path with real contour, shape, and direction reconstruction inside the same worker seam.
+- Safe to continue unrelated work: yes
+- Resolution note: Blocked only on the missing approved local CV dependency; the adapter seam and conservative preserve/review behavior are in place.
+

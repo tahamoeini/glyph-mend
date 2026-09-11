@@ -174,6 +174,19 @@ This file records executed upgrade steps in chronological order.
 	- `npm test src/features/export/docx-export.test.js src/features/extraction/extract-worker.test.js src/ui-shell.test.js` passed for extraction/UI, but `src/features/export/docx-export.test.js` still fails on a preexisting nested-OMML expectation unrelated to this step.
 	- The SVG renderer is restricted to a supported flowchart subset, strips unsafe SVG content, and preserves the source VisualIR alongside the rendered output path.
 
+## Step 14 — Add deterministic raster flowchart reconstruction with local CV + OCR
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: main
+- Package manager: `npm` for the browser workspace
+- Status: PARTIAL
+- Summary: Added a conservative browser-local raster flowchart adapter in `web-app/src/features/recognition/raster-flowchart.js`, wired `visual-worker` to return a staged VisualIR result using local OCR-derived text regions and deterministic diagnostics, and kept non-simple raster inputs on the preserve/review path instead of inventing topology. The step remains partial because no approved local CV dependency is present, so the implementation is intentionally adapter-based rather than a full contour/arrowhead recognizer.
+- Validation notes:
+	- `npm test src/features/recognition/visual-worker.test.js src/shared/benchmark-harness.test.js` passed in `web-app/`.
+	- The staged raster worker now returns canonical VisualIR with deterministic Mermaid serialization for the supported simple flowchart path.
+	- Non-simple or ambiguous raster inputs are preserved with diagnostics rather than reconstructed as false positives.
+
 
 ### AI coding agent execution rules
 
