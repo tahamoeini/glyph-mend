@@ -95,6 +95,7 @@ def test_mermaid_serialization_sanitizes_untrusted_labels_ids_edges_and_directio
     assert markdown.startswith("```mermaid\nflowchart LR\n")
     assert "<script" not in markdown
     assert "click N1" not in markdown
+    assert "javascript:" not in markdown
     assert "securityLevel" not in markdown
     assert 'N1["' in markdown
-    assert "N1 -->|edge click N1 javascript:alert(1)| N2" in markdown
+    assert "N1 -->|edge alert(1)| N2" in markdown
