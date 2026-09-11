@@ -2,9 +2,9 @@ name: GlyphMend browser app
 on:
   push:
     branches: [main]
-    paths: ["branding.json", "brand/**", "web-app/**", ".github/workflows/web-app.yml"]
+    paths: ["branding.json", "brand/**", "web-app/**", "pyproject.toml", "docs/upgrade/DEPENDENCY_LICENSES.md", ".github/workflows/web-app.yml"]
   pull_request:
-    paths: ["branding.json", "brand/**", "web-app/**", ".github/workflows/web-app.yml"]
+    paths: ["branding.json", "brand/**", "web-app/**", "pyproject.toml", "docs/upgrade/DEPENDENCY_LICENSES.md", ".github/workflows/web-app.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,6 +26,7 @@ jobs:
           cache: npm
           cache-dependency-path: web-app/package-lock.json
       - run: npm ci
+      - run: npm run license:check
       - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
