@@ -83,7 +83,7 @@ function escapeXml(value) {
 function sanitizeMermaidLabel(value) {
   return String(value ?? "")
     .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/[<>]/g, " ")
+    .replace(/[<>|`;]/g, " ")
     .replace(/&/g, " and ")
     .replace(/"/g, "'")
     .replace(/\\/g, "\\\\")
@@ -125,9 +125,8 @@ function safeIdentifier(value, fallback = "Item") {
 function sanitizePlantUmlLabel(value) {
   return String(value ?? "")
     .replace(/[<>\r\n]/g, " ")
-    .replace(/\|/g, " ")
+    .replace(/[|@!]/g, " ")
     .replace(/:/g, " - ")
-    .replace(/@/g, " ")
     .replace(/\s+/g, " ")
     .trim() || "Item";
 }
@@ -269,7 +268,6 @@ export function routeVisualOutput(visualIR) {
     };
   }
   const nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
-  const shapeHints = new Set(nodes.map((node) => String(node.shape || "").toLowerCase()).filter(Boolean));
   const ordinaryFlowchart =
     parsed.kind === "flowchart" ||
     (parsed.kind === "diagram" && Array.isArray(parsed.edges) && parsed.edges.length > 0 &&
@@ -463,17 +461,29 @@ export function visualIRToMermaid(visualIR) {
     const connectorText = label ? `${connector}${label}` : connector;
     lines.push(`  ${source} ${connectorText} ${target}`);
   }
-  return lines.join("\n");
+  const output = lines.join("\n");
+  validateMermaidFlowchart(output);
+  return output;
 }
 
 function createSvgElement(name) {
   return document.createElementNS(SVG_NS, name);
 }
 
+function isSafeSvgAttributeValue(name, value) {
+  const text = String(value);
+  if (/[\u0000-\u001f\u007f]/.test(text)) return false;
+  if (/\b(?:javascript|vbscript|data|https?|file):/i.test(text) || /^\/\//.test(text.trim())) return false;
+  if (/url\s*\(/i.test(text)) return /^url\(#[A-Za-z][A-Za-z0-9_.:-]*\)$/.test(text.trim());
+  if (name === "id") return /^[A-Za-z][A-Za-z0-9_.:-]*$/.test(text);
+  return text.length <= 16_384;
+}
+
 function setSafeAttributes(node, attributes) {
   for (const [key, value] of Object.entries(attributes)) {
     if (value === undefined || value === null || value === "") continue;
-    if (!SAFE_SVG_ATTRS.has(key) && !key.startsWith("data-")) continue;
+    if (!SAFE_SVG_ATTRS.has(key)) continue;
+    if (!isSafeSvgAttributeValue(key, value)) continue;
     node.setAttribute(key, String(value));
   }
 }
@@ -495,7 +505,13 @@ function appendText(parent, text, x, y, options = {}) {
   return node;
 }
 
-function sanitizeSvgMarkup(svgText) {
+export function sanitizeGeneratedSvgMarkup(svgText) {
+  if (typeof document === "undefined" || typeof DOMParser === "undefined" || typeof XMLSerializer === "undefined") {
+    throw new ReferenceError("SVG sanitization requires a browser DOM environment.");
+  }
+  if (typeof svgText !== "string" || svgText.length > 8 * 1024 * 1024) {
+    throw new RangeError("Generated SVG is empty, non-text, or exceeds the 8 MiB markup limit.");
+  }
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, "image/svg+xml");
   if (doc.querySelector("parsererror")) throw new TypeError("Generated SVG is invalid.");
@@ -516,10 +532,9 @@ function sanitizeSvgMarkup(svgText) {
       if (!SAFE_SVG_TAGS.has(tag)) continue;
       const next = cleanDoc.createElementNS(SVG_NS, tag);
       for (const attribute of child.attributes) {
-        if (!SAFE_SVG_ATTRS.has(attribute.name) && !attribute.name.startsWith("data-")) continue;
+        if (!SAFE_SVG_ATTRS.has(attribute.name)) continue;
         if (/^on/i.test(attribute.name)) continue;
-        if ((attribute.name === "href" || attribute.name.endsWith(":href")) && /^javascript:/i.test(attribute.value))
-          continue;
+        if (!isSafeSvgAttributeValue(attribute.name, attribute.value)) continue;
         next.setAttribute(attribute.name, attribute.value);
       }
       targetParent.appendChild(next);
@@ -528,7 +543,8 @@ function sanitizeSvgMarkup(svgText) {
   }
 
   for (const attribute of sourceRoot.attributes) {
-    if (!SAFE_SVG_ATTRS.has(attribute.name) && !attribute.name.startsWith("data-")) continue;
+    if (!SAFE_SVG_ATTRS.has(attribute.name)) continue;
+    if (!isSafeSvgAttributeValue(attribute.name, attribute.value)) continue;
     cleanRoot.setAttribute(attribute.name, attribute.value);
   }
   copyNode(sourceRoot, cleanRoot);
@@ -699,7 +715,7 @@ export function mermaidFlowchartToSvg(mermaidText, { title = "GlyphMend visual r
   }
   svg.appendChild(nodeLayer);
 
-  return sanitizeSvgMarkup(new XMLSerializer().serializeToString(svg));
+  return sanitizeGeneratedSvgMarkup(new XMLSerializer().serializeToString(svg));
 }
 
 export function visualIRToSvg(visualIR, options) {

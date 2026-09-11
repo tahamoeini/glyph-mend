@@ -1,3 +1,5 @@
+import "./preview-security.js";
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")

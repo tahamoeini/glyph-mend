@@ -1,0 +1,93 @@
+import DOMPurify from "dompurify";
+
+export const PREVIEW_SANITIZER_CONFIG = Object.freeze({
+  ALLOWED_TAGS: [
+    "p",
+    "br",
+    "strong",
+    "b",
+    "em",
+    "i",
+    "s",
+    "del",
+    "blockquote",
+    "code",
+    "pre",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "li",
+    "table",
+    "thead",
+    "tbody",
+    "tfoot",
+    "tr",
+    "th",
+    "td",
+    "hr",
+    "figure",
+    "figcaption",
+    "span",
+    "div",
+    "math",
+    "mtext",
+  ],
+  ALLOWED_ATTR: [
+    "class",
+    "role",
+    "aria-label",
+    "aria-hidden",
+    "data-asset",
+    "display",
+    "colspan",
+    "rowspan",
+    "align",
+  ],
+  ALLOW_ARIA_ATTR: true,
+  ALLOW_DATA_ATTR: false,
+  FORBID_TAGS: [
+    "script",
+    "style",
+    "iframe",
+    "object",
+    "embed",
+    "form",
+    "input",
+    "button",
+    "textarea",
+    "select",
+    "option",
+    "a",
+    "img",
+    "svg",
+    "foreignObject",
+    "audio",
+    "video",
+    "source",
+  ],
+  FORBID_ATTR: [
+    "style",
+    "href",
+    "src",
+    "srcset",
+    "xlink:href",
+    "formaction",
+    "action",
+    "target",
+    "download",
+  ],
+});
+
+// The application imports this module through math-accessibility before any
+// reconstructed Markdown is rendered. setConfig makes every DOMPurify call in
+// that preview/review path use the same fail-closed policy.
+DOMPurify.setConfig(PREVIEW_SANITIZER_CONFIG);
+
+export function sanitizePreviewHtml(value) {
+  return DOMPurify.sanitize(String(value ?? ""));
+}
