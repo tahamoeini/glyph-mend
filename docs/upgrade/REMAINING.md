@@ -90,3 +90,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Resolved as a safe, conservative groundwork step for robust equation detection and crop preservation.
 
+## GM-UPG-005 — No approved local math model has been selected or licensed in-repo
+- Detected in step: Step 09 local mathematical OCR provider and model-evaluation seam
+- Date: 2026-09-11
+- Status: OPEN
+- Severity: medium
+- Area: browser / recognition / provider integration
+- Dependency: approved local math OCR runtime or model bundle
+- Description: The repository does not currently include an approved local mathematical OCR runtime or model bundle, and no model choice was validated from repository docs alone. This step therefore keeps the provider interface local-only and deterministic while documenting the future integration point.
+- Evidence: Repository inspection of [web-app/src/features/recognition](web-app/src/features/recognition) and the worker capability seam found no approved in-repo model pack or runtime commitment. The active default is the mock provider in [web-app/src/features/recognition/math-provider.js](web-app/src/features/recognition/math-provider.js).
+- Files / symbols involved: [web-app/src/features/recognition/math-worker.js](web-app/src/features/recognition/math-worker.js), [web-app/src/features/recognition/math-provider.js](web-app/src/features/recognition/math-provider.js), [web-app/src/shared/benchmark-harness.js](web-app/src/shared/benchmark-harness.js)
+- What was attempted: Added a provider-agnostic adapter, mock/test provider, benchmark evaluation harness, and worker plumbing without introducing a download or cloud path.
+- Why it remains: No approved local model/runtime was present in the repo to integrate behind the interface, so model selection and licensing remain an explicit OPEN item rather than a silent dependency.
+- Recommended next action: Evaluate any approved local math OCR runtime or model pack against the benchmark harness before enabling it behind the provider interface, with licensing reviewed before production use.
+- Safe to continue unrelated work: yes
+- Resolution note: Open, intentionally deferred until an approved model/runtime is available and licensed for local use.
+

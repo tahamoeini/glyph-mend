@@ -121,6 +121,19 @@ This file records executed upgrade steps in chronological order.
 	- Weak or prose-like candidates default to `preserved` rather than silently accepted as equations.
 	- Browser-local processing remains offline and does not add a new dependency.
 
+## Step 09 — Add a pluggable local mathematical OCR provider and model-evaluation seam
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Added a provider-agnostic math-recognition seam behind the existing worker capability adapter. The repo now supports a deterministic mock provider for CI plus a local provider wrapper that carries provider metadata, candidate confidence, timings, resource stats, and warnings without forcing a model bundle at runtime. No cloud or model download path was introduced. The benchmark harness is ready for math provider evaluation through the existing local fixture suite.
+- Validation notes:
+	- `npm test src/features/recognition/math-worker.test.js` passed in `web-app/`.
+	- Provider output includes LaTeX candidates, confidence values, provider metadata, warnings, and resource/timing fields.
+	- The default behavior remains mock/local-only and safe for CI, while the architecture remains open for an approved model adapter in a future step.
+
 
 ### AI coding agent execution rules
 
