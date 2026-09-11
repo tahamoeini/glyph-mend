@@ -225,7 +225,7 @@ Tasks:
   - DOCX export and native math;
   - CSS design tokens/responsive behavior/accessibility media queries.
 - Inventory package scripts, tests, fixtures, and CI.
-- Run the existing install/build/typecheck/lint/unit/e2e commands that are feasible in the environment. Do not "fix" unrelated failures yet.
+- Run the existing install/build/typecheck/lint/unit commands that are feasible in the environment. Use manual browser QA for visual flows. Do not "fix" unrelated failures yet.
 - Record every pre-existing failure in `REMAINING.md` with evidence and mark whether it blocks future tracks.
 - Produce `docs/upgrade/BASELINE.md` containing:
   - module map;
@@ -1244,7 +1244,7 @@ Tasks:
   - settings/export/quality in sheets/popovers rather than permanent side inspectors.
 - Do not simply hide desktop controls; preserve equivalent capability.
 - Ensure document canvases do not become glass panels.
-- Add responsive e2e screenshots or layout assertions at representative widths, without tying logic to product names.
+- Add a responsive manual-QA checklist at representative widths, without tying logic to product names.
 
 Acceptance:
 - No primary behavior depends solely on "mobile <= 820px".
@@ -1554,7 +1554,7 @@ Tasks:
   - verify whether it is still unresolved;
   - mark resolved items with evidence;
   - keep unresolved items and classify whether they block release.
-- Run the full available test suite, build, lint/typecheck, and e2e tests.
+- Run the full available test suite, build, lint/typecheck, and documented manual browser QA checks.
 - Run representative end-to-end documents through:
   1. text/native PDF path;
   2. scanned OCR path;

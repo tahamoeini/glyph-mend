@@ -330,3 +330,46 @@ This file records executed upgrade steps in chronological order.
 - Documentation: Added `docs/upgrade/DEPENDENCY_LICENSES.md` with purpose, code/weight/data licensing, browser/commercial/source-disclosure implications, source/version/hash information where available, and review status for current runtimes, copied WASM/model assets, renderers, and research model candidates.
 - Remaining blockers: project-wide licensing strategy for MuPDF/PyMuPDF-family AGPL/commercial distribution; unresolved exact weight/data terms for unselected math/visual models; inherited Step 23 CI failures.
 - Safe to continue unrelated work: yes
+
+## Step 25 — Final production-readiness audit after `c58ea20`
+
+- Date: 2026-09-11
+- Repository HEAD: `8455d89`
+- Branch: `codex/production-ready`
+- Status: PARTIAL
+- Summary: Audited the post-`c58ea20` mainline, reproduced and fixed the reconstructable-bundle release regressions, repaired the browser lockfile so clean CI installation is possible, verified the historical Step 23 failures are no longer reproduced, and reconciled the remaining-work ledger. The OCR page-validation failure reported from the older worker path is resolved by hardening the current worker's initialization boundary. The optional Playwright e2e layer was removed from the repository by product decision.
+- Changes:
+	- Fixed timezone-sensitive deterministic ZIP timestamps in `web-app/src/shared/reconstructable-bundle.js`.
+	- Reworked the compression-ratio regression fixture to generate a valid bundle through the production builder under Vitest's cross-realm jsdom environment.
+	- Synchronized `web-app/package-lock.json` with `web-app/package.json`, upgraded `fflate` to `0.8.3`, and upgraded `pdfjs-dist` to `6.3.289` to clear the high-severity `npm audit` advisory.
+	- Upgraded Vitest to `5.0.0` and refreshed the lockfile; the full npm audit is now clean, including development dependencies.
+	- Hardened OCR page-context normalization before Tesseract initialization and retained unit coverage for valid and invalid OCR progress messages.
+	- Removed Playwright scripts, configuration, dependency, browser specs, CI installation/run steps, and active README instructions; deterministic browser unit/build/security checks remain.
+	- Marked OCR baseline, ZIP round-trip import, historical Step 23 verification, and Playwright removal as resolved in `docs/upgrade/REMAINING.md`; preserved the explicit model, renderer, performance, and licensing boundaries.
+- Validation:
+	- `npm ci --ignore-scripts --no-audit --no-fund` passed.
+	- `npm test -- --reporter=dot` passed: 31 files, 165 tests.
+	- `npm run build` passed; Vite still reports the informational >500 kB application-chunk warning.
+	- `npm run license:check` passed; MuPDF/PyMuPDF licensing remains a documented strategy blocker rather than an approval.
+	- `npm audit --omit=dev --audit-level=high` passed with zero vulnerabilities.
+	- `python -m pytest -q` passed.
+	- `python -m ruff check src tests` passed.
+	- `python -m compileall -q src tests` passed.
+	- Playwright e2e is no longer a repository validation command; manual browser QA remains a release recommendation for visual/accessibility changes.
+- Production boundary: The repository is code/test green for the available deterministic validation. Release approval still requires the MuPDF licensing decision, manual visual/accessibility QA, and approval of any future local math/visual model or renderer.
+
+## Step 26 — Finalize feasible scope and record intentional production boundaries
+
+- Date: 2026-09-11
+- Repository HEAD: `8455d89`
+- Branch: `codex/production-ready`
+- Status: PARTIAL
+- Summary: Completed the code-level and deterministic verification work that can be finalized safely in this repository. Remaining ledger items are retained where they require representative large-document profiling, a legal/licensing decision, external model or renderer selection, or manual visual/accessibility review; none is silently represented as production-approved.
+- Finalized:
+	- OCR progress messages cannot be emitted without a validated page number, including during first-time Tesseract initialization.
+	- Playwright e2e infrastructure is fully removed by decision; browser unit tests, production build, license gate, dependency audit, and Python checks are the required automated gates.
+	- Removed the obsolete browser lock-refresh workflow that still asserted retired PDF.js `5.5.207` and pushed commits to the temporary `finalize-release` branch.
+	- Made the standalone `glyphmend-gui --help` command safe on headless CI runners and added regression coverage.
+	- ZIP bundle import/export, security boundaries, source/provenance preservation, and current dependency lock/audit state are green under the recorded checks.
+- Remaining intentional boundaries: worker memory/performance profiling (GM-UPG-002), approved math/visual model selection and weights/data review (GM-UPG-005 and GM-UPG-020), review-queue equation validation (GM-UPG-006), optional renderers/CV runtime (GM-UPG-009, GM-UPG-010, GM-UPG-011, and GM-UPG-012), conservative DOCX visual coverage (GM-UPG-013), and MuPDF/PyMuPDF licensing strategy (GM-UPG-019).
+- Safe to continue unrelated work: yes

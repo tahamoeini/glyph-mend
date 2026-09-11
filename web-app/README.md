@@ -113,13 +113,11 @@ MuPDF.js is AGPL-3.0-or-later or commercially licensed by Artifex. Confirm that 
 ```bash
 npm test
 npm run build
-npx playwright install chromium
-npm run test:e2e
+npm run license:check
+npm audit --omit=dev --audit-level=high
 ```
 
-CI performs the browser checks and uploads the static build. Python code outside `web-app/` remains available through the canonical `glyphmend` package and the retained `pdf_sanitizer` compatibility namespace.
-
-The end-to-end test starts a local Vite server and launches Chromium. On a new Linux machine, run `npx playwright install --with-deps chromium` once before `npm run test:e2e`; CI already performs that setup.
+CI performs the browser unit/build/security checks and uploads the static build. Python code outside `web-app/` remains available through the canonical `glyphmend` package and the retained `pdf_sanitizer` compatibility namespace.
 
 If you switch the same checkout between Windows and WSL, keep using the npm scripts instead of calling Vite or Vitest directly so the native dependency preflight can restore the correct Rollup/esbuild packages.
 

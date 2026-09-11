@@ -86,7 +86,7 @@ GlyphMend explicitly defines itself as a local-first, structure-aware reconstruc
 
 That philosophy should **not** change when ML-based visual reconstruction is introduced. In fact, the new capabilities should be made subordinate to it.
 
-The browser implementation currently depends on `mupdf`, `pdfjs-dist`, `tesseract.js`, `@tesseract.js-data/eng`, `docx`, `marked`, `dompurify`, IndexedDB tooling, compression tooling, Vite, PWA tooling, Vitest, and Playwright. This is already an appropriate foundation for a local document-intelligence application. fileciteturn4file0L2-L2
+The browser implementation currently depends on `mupdf`, `pdfjs-dist`, `tesseract.js`, `@tesseract.js-data/eng`, `docx`, `marked`, `dompurify`, IndexedDB tooling, compression tooling, Vite, PWA tooling, and Vitest. This is already an appropriate foundation for a local document-intelligence application. fileciteturn4file0L2-L2
 
 The browser documentation confirms that structured extraction runs through MuPDF WebAssembly in a worker, retains text blocks, fonts, images, and page geometry, and bundles Tesseract WebAssembly as a local fallback for scanned text. It also explicitly acknowledges that Tesseract is not a dedicated mathematical OCR engine and currently retains equation images rather than inventing LaTeX when recognition is unreliable. fileciteturn20file0L2-L2
 

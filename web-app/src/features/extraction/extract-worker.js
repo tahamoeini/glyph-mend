@@ -841,7 +841,21 @@ export function ocrProgressMessage(pageNumber, event = {}) {
   };
 }
 
-async function ensureOcrWorker(options, paths) {
+function assertOcrPageNumber(pageNumber) {
+  const normalized = Number(pageNumber);
+  if (
+    !Number.isInteger(normalized) ||
+    normalized < 1 ||
+    normalized > ACTIVE_FORMAT_LIMITS.maxPageNumber
+  )
+    throw new TypeError(
+      `OCR page must be an integer from 1 to ${ACTIVE_FORMAT_LIMITS.maxPageNumber}.`,
+    );
+  return normalized;
+}
+
+async function ensureOcrWorker(options, paths, pageNumber) {
+  ocrProgressPage = assertOcrPageNumber(pageNumber);
   if (!ocrWorker) {
     ocrWorker = await createOcrWorker(options.ocrLanguage || "eng", 1, {
       workerPath: paths.workerPath,
@@ -857,24 +871,15 @@ async function ensureOcrWorker(options, paths) {
 }
 
 async function recognizeRaster(image, options, paths, pageNumber) {
-  if (
-    !Number.isInteger(pageNumber) ||
-    pageNumber < 1 ||
-    pageNumber > ACTIVE_FORMAT_LIMITS.maxPageNumber
-  )
-    throw new TypeError(
-      `OCR page must be an integer from 1 to ${ACTIVE_FORMAT_LIMITS.maxPageNumber}.`,
-    );
-
-  ocrProgressPage = pageNumber;
+  const normalizedPageNumber = assertOcrPageNumber(pageNumber);
   try {
-    const worker = await ensureOcrWorker(options, paths);
+    const worker = await ensureOcrWorker(options, paths, normalizedPageNumber);
     const result = await worker.recognize(image.data, {}, { text: true, blocks: true });
     result.data._rasterWidth = image.width;
     result.data._rasterHeight = image.height;
     return result.data;
   } finally {
-    if (ocrProgressPage === pageNumber) ocrProgressPage = undefined;
+    if (ocrProgressPage === normalizedPageNumber) ocrProgressPage = undefined;
   }
 }
 

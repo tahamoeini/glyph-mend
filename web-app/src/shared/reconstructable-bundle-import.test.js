@@ -63,10 +63,10 @@ it("rejects traversal in ZIP metadata before decompression", () => {
   expect(() => preflightReconstructableZip(archive)).toThrow(/unsafe bundle path/i);
 });
 
-it("rejects suspicious compression ratios before decompression", () => {
-  const archive = zipSync({
-    "manifest.json": strToU8("A".repeat(20_000)),
-  }, { level: 9 });
+it("rejects suspicious compression ratios before decompression", async () => {
+  const { bytes: archive } = await buildReconstructableBundle({
+    markdown: "A".repeat(20_000),
+  });
   expect(() => preflightReconstructableZip(archive, { maxCompressionRatio: 2 })).toThrow(/compression-ratio/i);
 });
 

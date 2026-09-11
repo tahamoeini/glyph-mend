@@ -80,7 +80,6 @@ tests/
   integration/              Pipeline and end-to-end workflow tests
   interfaces/               CLI, GUI-helper, and reporting tests
 web-app/src/**/**.test.js   Browser unit tests beside their modules
-web-app/tests/              Browser end-to-end tests
 ```
 
 Branding tests verify canonical defaults, JSON/environment overrides, runtime browser loading, safe DOM application, and compatibility imports.
@@ -90,5 +89,5 @@ Branding tests verify canonical defaults, JSON/environment overrides, runtime br
 | Workflow | Responsibility |
 | --- | --- |
 | `test.yml` | Python lint, matrix tests, package build, canonical/legacy command smoke tests |
-| `web-app.yml` | Browser brand sync, unit tests, production build, and Playwright tests |
+| `web-app.yml` | Browser brand sync, unit tests, production build, and dependency/security gates |
 | `release.yml` | Version/tag validation, GlyphMend distribution build, wheel validation, GitHub release |

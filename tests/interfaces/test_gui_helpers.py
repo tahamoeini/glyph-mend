@@ -1,6 +1,6 @@
 import pytest
 
-from pdf_sanitizer.gui import _format_event, _parse_positive_int
+from pdf_sanitizer.gui import _format_event, _parse_positive_int, main
 from pdf_sanitizer.progress import ProgressEvent
 
 
@@ -25,3 +25,8 @@ def test_gui_positive_integer_validation():
         _parse_positive_int("0", "Checkpoint pages")
     with pytest.raises(ValueError):
         _parse_positive_int("abc", "Checkpoint pages")
+
+
+def test_gui_help_is_safe_in_headless_ci(capsys):
+    assert main(["--help"]) == 0
+    assert "Launch the native desktop interface." in capsys.readouterr().out

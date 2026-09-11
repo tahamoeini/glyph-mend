@@ -56,8 +56,16 @@ def _parse_positive_int(value: str, name: str) -> int:
     return result
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     brand = get_brand()
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if any(argument in {"-h", "--help"} for argument in arguments):
+        print(f"usage: {brand.cli_name}-gui [--help]")
+        print("\nLaunch the native desktop interface.")
+        return 0
+    if arguments:
+        print(f"{brand.cli_name}-gui: unrecognized arguments: {' '.join(arguments)}", file=sys.stderr)
+        return 2
     try:
         import tkinter as tk
         from tkinter import filedialog, messagebox, ttk
