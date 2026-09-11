@@ -33,6 +33,10 @@ import { download, stem } from "./shared/download.js";
 import { renderAccessibleMathMarkdown } from "./shared/math-accessibility.js";
 import { visualIRToAccessibleDescription } from "./shared/visual-accessibility.js";
 import { buildReconstructableBundle } from "./shared/reconstructable-bundle.js";
+import {
+  validateExtractionRequest,
+  validateExtractionWorkerMessage,
+} from "./shared/security-boundaries.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
@@ -490,7 +494,14 @@ function runBatch(batch, wanted) {
     );
     state.abortBatch = (reason) =>
       finish(Object.assign(new Error(reason), { aborted: true }));
-    worker.onmessage = ({ data }) => {
+    worker.onmessage = ({ data: rawData }) => {
+      let data;
+      try {
+        data = validateExtractionWorkerMessage(rawData);
+      } catch (error) {
+        finish(new Error(`Rejected extraction worker message: ${error.message}`));
+        return;
+      }
       if (data.type === "worker-started") {
         log("worker-start", "Extraction worker started", {}, "debug");
         return;
@@ -577,21 +588,28 @@ function runBatch(batch, wanted) {
         ),
       );
     const bytes = state.pdfBytes.slice(0);
-    worker.postMessage(
-      {
-        type: "extract",
-        buffer: bytes,
-        pages: batch,
-        options: state.options,
-        password: $("pdfPassword").value,
-        ocrPaths: {
-          workerPath: new URL("./tesseract/worker.min.js", location.href).toString(),
-          corePath: new URL("./tesseract-core", location.href).toString(),
-          langPath: new URL("./tessdata", location.href).toString(),
+    let request;
+    try {
+      request = validateExtractionRequest(
+        {
+          type: "extract",
+          buffer: bytes,
+          pages: batch,
+          options: state.options,
+          password: $("pdfPassword").value,
+          ocrPaths: {
+            workerPath: new URL("./tesseract/worker.min.js", location.href).toString(),
+            corePath: new URL("./tesseract-core", location.href).toString(),
+            langPath: new URL("./tessdata", location.href).toString(),
+          },
         },
-      },
-      [bytes],
-    );
+        { baseUrl: location.href },
+      );
+    } catch (error) {
+      finish(new Error(`Rejected extraction request: ${error.message}`));
+      return;
+    }
+    worker.postMessage(request, [bytes]);
   });
 }
 async function extract() {
