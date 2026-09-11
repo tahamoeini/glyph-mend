@@ -138,3 +138,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Resolved by landing the VisualIR recovery core and adapter boundary refactor for Step 12.
 
+## GM-UPG-008 — Step 13 browser SVG/export validation remains partially blocked by an existing DOCX regression
+- Detected in step: Step 13 VisualIR -> Mermaid + safe SVG rendering
+- Date: 2026-09-11
+- Status: OPEN
+- Severity: low
+- Area: browser / export / validation
+- Dependency: `web-app/src/features/export/docx-export.test.js`
+- Description: The Step 13 browser slice validates the new VisualIR Mermaid serializer and safe SVG renderer, but the broader browser test command still reports an unrelated DOCX nested-OMML expectation failure.
+- Evidence: `npm test src/features/export/docx-export.test.js src/features/extraction/extract-worker.test.js src/ui-shell.test.js` failed only in `src/features/export/docx-export.test.js` with a missing `<m:rad>` expectation, while `src/shared/semantic-ir.test.js` passed.
+- Files / symbols involved: [web-app/src/features/export/docx-export.test.js](web-app/src/features/export/docx-export.test.js), [web-app/src/shared/visual-rendering.js](web-app/src/shared/visual-rendering.js), [web-app/src/shared/semantic-ir.test.js](web-app/src/shared/semantic-ir.test.js)
+- What was attempted: Implemented deterministic VisualIR-to-Mermaid serialization, Mermaid syntax validation, and safe SVG rendering with hostile-content sanitization, then ran the narrow and broader browser test slices.
+- Why it remains: The remaining failure is in the preexisting DOCX OMML test expectation and is not a blocker for the Step 13 rendering work, but it prevents claiming a fully green broader browser suite.
+- Recommended next action: Leave the DOCX regression to its own fix step, or rerun the narrow visual-rendering tests only if broader browser green is not required for this prompt.
+- Safe to continue unrelated work: yes
+- Resolution note: Open only for the unrelated DOCX validation regression; Step 13 rendering work itself is implemented and narrowly validated.
+

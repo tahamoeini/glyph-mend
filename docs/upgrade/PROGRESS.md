@@ -161,6 +161,19 @@ This file records executed upgrade steps in chronological order.
 	- VisualIR recovery now emits structured nodes, edges, warnings, provenance, and confidence fields instead of making Mermaid the recovery primitive.
 	- The Python extraction and rendering paths now adapt from VisualIR to Mermaid only at the boundary.
 
+## Step 13 — Add VisualIR -> Mermaid + safe SVG rendering
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: main
+- Package manager: `npm` for the browser workspace
+- Status: PARTIAL
+- Summary: Added a browser-local VisualIR serializer that deterministically converts the supported flowchart subset into Mermaid, validates the Mermaid syntax before acceptance, and renders the supported subset to sanitized SVG without introducing a Mermaid runtime dependency. The serializer keeps VisualIR as the canonical contract and treats Mermaid/SVG as hostile outputs rather than inputs.
+- Validation notes:
+	- `npm test src/shared/semantic-ir.test.js` passed in `web-app/`.
+	- `npm test src/features/export/docx-export.test.js src/features/extraction/extract-worker.test.js src/ui-shell.test.js` passed for extraction/UI, but `src/features/export/docx-export.test.js` still fails on a preexisting nested-OMML expectation unrelated to this step.
+	- The SVG renderer is restricted to a supported flowchart subset, strips unsafe SVG content, and preserves the source VisualIR alongside the rendered output path.
+
 
 ### AI coding agent execution rules
 

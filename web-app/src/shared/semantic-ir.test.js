@@ -22,6 +22,7 @@ import {
   serializeReconstructedAsset,
   serializeVisualIR,
 } from "./semantic-ir.js";
+import { mermaidFlowchartToSvg, validateMermaidFlowchart, visualIRToMermaid } from "./visual-rendering.js";
 
 it("round-trips reconstructed assets with deterministic serialization", () => {
   const asset = {
@@ -238,6 +239,63 @@ it("round-trips VisualIR without depending on Mermaid or SVG emitters", () => {
   const parsed = deserializeVisualIR(serialized);
   expect(parsed.nodes[0].geometry.bbox).toEqual([0, 0, 10, 10]);
   expect(parsed.note).toBe("keep source evidence");
+});
+
+it("serializes VisualIR into deterministic Mermaid flowcharts", () => {
+  const visual = {
+    schemaVersion: VISUAL_IR_SCHEMA_VERSION,
+    id: "visual-deterministic",
+    kind: "flowchart",
+    nodes: [
+      { id: "b", label: "Beta", shape: "box", geometry: { bbox: [100, 0, 140, 40] } },
+      { id: "a", label: "Alpha <script>", shape: "rounded-box", geometry: { bbox: [0, 0, 40, 40] } },
+    ],
+    edges: [
+      { source: "a", target: "b", directed: true, label: "next & then" },
+    ],
+    provenance: { producer: "extract-worker", version: "10" },
+    confidence: { overall: 0.9 },
+    disposition: "accepted",
+  };
+
+  const mermaidA = visualIRToMermaid(visual);
+  const mermaidB = visualIRToMermaid({ ...visual, nodes: [...visual.nodes].reverse() });
+  expect(mermaidA).toBe(mermaidB);
+  expect(mermaidA).toContain("flowchart LR");
+  expect(mermaidA).toContain("Alpha script");
+  expect(mermaidA).toContain("next and then");
+});
+
+it("validates supported Mermaid flowchart syntax before SVG rendering", () => {
+  const graph = validateMermaidFlowchart(
+    "flowchart LR\n  n1[\"Start\"]\n  n2[\"End\"]\n  n1 --> n2",
+  );
+
+  expect(graph.direction).toBe("LR");
+  expect(graph.nodes).toHaveLength(2);
+  expect(graph.edges).toHaveLength(1);
+});
+
+it("renders safe SVG for supported Mermaid flowcharts without executable content", () => {
+  const svg = mermaidFlowchartToSvg(`flowchart LR
+  n1["Alpha"]
+  n2["Beta"]
+  n1 -->|next| n2`, {
+    title: "Safe flow",
+    description: "Safe deterministic rendering",
+  });
+
+  expect(svg).toContain("<svg");
+  expect(svg).toContain("glyphmend-arrow");
+  expect(svg).toContain("Alpha");
+  expect(svg).not.toContain("<script");
+  expect(svg).not.toContain("foreignObject");
+});
+
+it("rejects invalid Mermaid before it can displace source evidence", () => {
+  expect(() => validateMermaidFlowchart("flowchart LR\n  n1 --> javascript:alert(1)")).toThrow(
+    /Unsupported Mermaid flowchart line/i,
+  );
 });
 
 it("rejects invalid VisualIR edges", () => {
