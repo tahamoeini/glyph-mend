@@ -212,7 +212,7 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Description: The repository now has conservative ChartIR normalization and a strict ChartIR-to-Vega-Lite export path, but there is still no approved browser-local renderer/runtime to visualize the exported spec inside the app.
 - Evidence: [web-app/src/shared/chart-rendering.js](web-app/src/shared/chart-rendering.js) emits Vega-Lite JSON plus CSV/JSON sidecars, while [web-app/package.json](web-app/package.json) still has no Vega-Lite renderer/runtime dependency.
 - Files / symbols involved: [web-app/src/shared/chart-rendering.js](web-app/src/shared/chart-rendering.js), [web-app/src/shared/semantic-ir.js](web-app/src/shared/semantic-ir.js), [web-app/src/shared/benchmark-harness.js](web-app/src/shared/benchmark-harness.js)
-- What was attempted: Extended ChartIR with conservative chart metadata and evidence constraints, then added a strict export helper and tests for accepted/rejected chart cases.
+- What was attempted: Extended ChartIR with conservative metadata and evidence constraints, then added a strict export helper and tests for accepted/rejected chart cases.
 - Why it remains: Rendering a Vega-Lite spec still requires a reviewed browser-local runtime or renderer, which has not been selected yet.
 - Recommended next action: Review an approved browser-local Vega-Lite renderer/runtime for licensing and bundle impact, then integrate it behind the existing export seam if approved.
 - Safe to continue unrelated work: yes
