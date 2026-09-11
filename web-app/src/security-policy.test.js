@@ -1,8 +1,8 @@
-import fs from "node:fs";
+import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 
-const indexHtml = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const appSource = fs.readFileSync(new URL("./app.js", import.meta.url), "utf8");
+const indexHtml = readFileSync("index.html", "utf8");
+const appSource = readFileSync("src/app.js", "utf8");
 
 function cspDirectives() {
   const match = indexHtml.match(/http-equiv=["']Content-Security-Policy["'][^>]*content=["']([^"']*(?:'[^']*'[^"']*)*)["']/i);
