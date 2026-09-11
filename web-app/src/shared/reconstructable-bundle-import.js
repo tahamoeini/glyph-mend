@@ -37,7 +37,10 @@ function safeJsonParse(text, label) {
 function findEocd(data, view) {
   const minimum = Math.max(0, data.byteLength - 22 - MAX_ZIP_COMMENT_BYTES);
   for (let offset = data.byteLength - 22; offset >= minimum; offset -= 1) {
-    if (view.getUint32(offset, true) === EOCD_SIGNATURE) return offset;
+    if (view.getUint32(offset, true) !== EOCD_SIGNATURE) continue;
+    if (offset + 22 > data.byteLength) continue;
+    const commentLength = view.getUint16(offset + 20, true);
+    if (offset + 22 + commentLength === data.byteLength) return offset;
   }
   throw new TypeError("ZIP end-of-central-directory record is missing.");
 }
@@ -70,7 +73,7 @@ export function preflightReconstructableZip(
   if (entryCount > limits.maxEntries) {
     throw new RangeError(`ZIP bundle exceeds the ${limits.maxEntries}-entry limit.`);
   }
-  if (eocd + 22 + commentLength > data.byteLength) throw new TypeError("ZIP comment is truncated.");
+  if (eocd + 22 + commentLength !== data.byteLength) throw new TypeError("ZIP comment is truncated or malformed.");
   if (centralOffset + centralSize > eocd || centralOffset + centralSize > data.byteLength) {
     throw new TypeError("ZIP central directory is outside the archive bounds.");
   }
@@ -207,7 +210,10 @@ function restoredAsset(entry, entries) {
 
 function restoredReviewItem(entry, asset, entries) {
   if (entry.kind !== "equation") return null;
-  const texPath = (entry.reconstruction?.paths || []).find((path) => /\.tex$/i.test(path));
+  const paths = entry.reconstruction?.paths || [];
+  const texPath = paths.find((path) => /\.tex$/i.test(path));
+  const equationPath = paths.find((path) => /\.equation\.json$/i.test(path));
+  if (!texPath && !equationPath && !asset.candidate?.latex) return null;
   const latex = texPath ? textEntry(entries, texPath) || "" : String(asset.candidate?.latex || "");
   const disposition = entry.disposition || "preserved";
   return {
