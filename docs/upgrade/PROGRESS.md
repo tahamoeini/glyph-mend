@@ -88,11 +88,24 @@ This file records executed upgrade steps in chronological order.
 - Repository HEAD: `0b4e0c5`
 - Branch: `main`
 - Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
-- Status: PARTIAL
-- Summary: Added a browser-local LaTeX-to-MathIR adapter with explicit unsupported-command handling and an evidence-preserving fallback path. The initial parser seam preserves simple equations, definite integrals, and unsupported syntax visibility while avoiding the previous recursive memory blow-up.
+- Status: PASS
+- Summary: Added a browser-local LaTeX-to-MathIR adapter with explicit unsupported-command handling and an evidence-preserving fallback path. The parser seam preserves simple equations, nested fractions, definite integrals, and unsupported syntax visibility while avoiding the previous recursive memory blow-up.
 - Validation notes:
-	- `npm test src/shared/mathir-parser.test.js` is currently being corrected after the first implementation exposed a missing export in the semantic AST entry point.
-	- The parser is intentionally local/offline and remains independent of Word export, with unsupported commands reported as explicit structured reviewable evidence rather than silently dropped.
+	- `npm test src/shared/mathir-parser.test.js` passed in `web-app/`.
+	- The parser remains intentionally local/offline and independent of Word export, with unsupported commands reported as explicit structured reviewable evidence rather than silently dropped.
+
+## Step 07 — Implement MathIR to native Word OMML with structural tests
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PASS
+- Summary: Added a browser-local MathIR-to-Word OMML conversion path in `web-app/src/features/export/docx-export.js`, mapped supported MathIR nodes to native `docx` math primitives (`MathFraction`, `MathRadical`, `MathSum`, `MathIntegral`, `MathFunction`, and script wrappers), and kept unsupported constructs in a fallback plain math run instead of flattening them into misleading text. Structural XML assertions confirm the generated DOCX contains native OMML nodes for fractions, roots, scripts, and n-ary operators.
+- Validation notes:
+	- `npm test src/shared/mathir-parser.test.js src/features/export/docx-export.test.js` passed in `web-app/`.
+	- Generated DOCX XML includes `<m:f>`, `<m:rad>`, `<m:nary>`, and script elements in the zipped `word/document.xml`.
+	- The export remains browser-only and local/offline; no backend or cloud inference was introduced.
 
 
 

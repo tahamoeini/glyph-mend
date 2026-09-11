@@ -5,9 +5,12 @@ import {
   ImageRun,
   Math as WordMath,
   MathFraction,
+  MathFunction,
+  MathIntegral,
   MathRadical,
   MathRun,
   MathSubScript,
+  MathSum,
   MathSuperScript,
   Packer,
   PageBreak,
@@ -19,6 +22,8 @@ import {
   WidthType,
 } from "docx";
 
+import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
+
 const headingMap = {
   1: HeadingLevel.HEADING_1,
   2: HeadingLevel.HEADING_2,
@@ -27,6 +32,7 @@ const headingMap = {
   5: HeadingLevel.HEADING_5,
   6: HeadingLevel.HEADING_6,
 };
+
 function inlineRuns(source) {
   const text = source
     .replace(/<!--.*?-->/g, " ")
@@ -136,30 +142,196 @@ function parseTable(lines) {
       ),
   });
 }
-function mathComponents(source) {
+function resolveMathNode(node, nodeMap, key) {
+  if (!node || !nodeMap) return null;
+  const direct = node[key];
+  if (direct !== undefined && direct !== null) {
+    if (typeof direct === "string") return nodeMap.get(direct) ?? null;
+    if (typeof direct === "object") return direct;
+  }
+  const id = node[`${key}Id`];
+  if (typeof id === "string") return nodeMap.get(id) ?? null;
+  if (node.id && typeof node.id === "string") {
+    const inferred = nodeMap.get(`${node.id}-${key}`);
+    if (inferred) return inferred;
+  }
+  return null;
+}
+
+function asMathRunText(value) {
+  if (value == null) return "";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    if (value.type === "number" || value.type === "identifier" || value.type === "text")
+      return String(value.value ?? "");
+    if (value.type === "symbol") return String(value.symbol ?? "");
+    if (value.type === "unsupported") return value.raw || `\\${value.command || "?"}`;
+    if (value.type === "operator") return String(value.value ?? "");
+    if (value.type === "group") return (value.children || []).map(asMathRunText).join("");
+  }
+  return String(value);
+}
+
+function mathComponentsFromMathIR(ir, rawText = "") {
+  if (!ir || !Array.isArray(ir.nodes) || !ir.nodes.length) return [new MathRun(rawText || " ")];
+  const nodeMap = new Map(ir.nodes.map((node) => [node.id, node]));
+  const root = nodeMap.get(ir.rootId) ?? ir.nodes[0];
+
+  const walk = (node) => {
+    if (!node) return [new MathRun(" ")];
+    if (Array.isArray(node)) return node.flatMap((entry) => walk(entry));
+    if (typeof node === "string") return [new MathRun(node)];
+    if (typeof node === "number") return [new MathRun(String(node))];
+
+    switch (node.type) {
+      case "fraction": {
+        const numerator = resolveMathNode(node, nodeMap, "numerator") ?? resolveMathNode(node, nodeMap, "num") ?? node.numerator;
+        const denominator = resolveMathNode(node, nodeMap, "denominator") ?? resolveMathNode(node, nodeMap, "den") ?? node.denominator;
+        return [
+          new MathFraction({
+            numerator: walk(numerator),
+            denominator: walk(denominator),
+          }),
+        ];
+      }
+      case "root": {
+        const value = node.value ?? resolveMathNode(node, nodeMap, "value") ?? node.children;
+        return [new MathRadical({ children: walk(value) })];
+      }
+      case "sum":
+      case "prod": {
+        const body = resolveMathNode(node, nodeMap, "body") || node.body;
+        const lower = resolveMathNode(node, nodeMap, "lower") || node.lower;
+        const upper = resolveMathNode(node, nodeMap, "upper") || node.upper;
+        return [
+          new MathSum({
+            children: walk(body),
+            subScript: lower ? walk(lower) : undefined,
+            superScript: upper ? walk(upper) : undefined,
+          }),
+        ];
+      }
+      case "integral": {
+        const body = resolveMathNode(node, nodeMap, "body") || node.body;
+        const lower = resolveMathNode(node, nodeMap, "lower") || node.lower;
+        const upper = resolveMathNode(node, nodeMap, "upper") || node.upper;
+        return [
+          new MathIntegral({
+            children: walk(body),
+            subScript: lower ? walk(lower) : undefined,
+            superScript: upper ? walk(upper) : undefined,
+          }),
+        ];
+      }
+      case "subscript": {
+        const base = resolveMathNode(node, nodeMap, "base") ?? resolveMathNode(node, nodeMap, "left") ?? node.base ?? node.left;
+        const script = resolveMathNode(node, nodeMap, "value") ?? resolveMathNode(node, nodeMap, "right") ?? node.value ?? node.right;
+        return [
+          new MathSubScript({
+            children: walk(base ?? " "),
+            subScript: walk(script ?? " "),
+          }),
+        ];
+      }
+      case "superscript": {
+        const base = resolveMathNode(node, nodeMap, "base") ?? resolveMathNode(node, nodeMap, "left") ?? node.base ?? node.left;
+        const script = resolveMathNode(node, nodeMap, "value") ?? resolveMathNode(node, nodeMap, "right") ?? node.value ?? node.right;
+        return [
+          new MathSuperScript({
+            children: walk(base ?? " "),
+            superScript: walk(script ?? " "),
+          }),
+        ];
+      }
+      case "function": {
+        return [
+          new MathFunction({
+            name: walk(node.name),
+            children: walk(node.argument ?? node.children ?? []),
+          }),
+        ];
+      }
+      case "identifier":
+      case "number":
+      case "text":
+      case "symbol":
+      case "operator":
+        return [new MathRun(asMathRunText(node))];
+      case "equation":
+      case "binary": {
+        const left = resolveMathNode(node, nodeMap, "left");
+        const right = resolveMathNode(node, nodeMap, "right");
+        const parts = [];
+        if (left !== null && left !== undefined) parts.push(...walk(left));
+        if (right !== null && right !== undefined) parts.push(...walk(right));
+        if (!parts.length && Array.isArray(node.children)) parts.push(...walk(node.children));
+        return parts.length ? parts : [new MathRun(rawText || " ")];
+      }
+      case "sequence": {
+        const parts = Array.isArray(node.children) ? node.children.flatMap((child) => walk(child)) : [];
+        return parts.length ? parts : [new MathRun(rawText || " ")];
+      }
+      case "group": {
+        const items = Array.isArray(node.children) ? node.children : [];
+        const parts = items.flatMap((child) => walk(child));
+        return parts.length ? parts : [new MathRun(rawText || " ")];
+      }
+      case "unknown":
+        return [new MathRun(rawText || " ")];
+      case "unsupported":
+        return [new MathRun(rawText || node.raw || `\\${node.command || "?"}`)];
+      default:
+        if (node.value !== undefined) return [new MathRun(asMathRunText(node.value))];
+        return [new MathRun(rawText || " ")];
+    }
+  };
+
+  const result = walk(root);
+  return result.length ? result : [new MathRun(rawText || " ")];
+}
+
+function legacyMathComponents(source) {
   let text = source.trim(),
     match;
+  if ((match = /^\\(?:sum|prod|int)_(?:\{?([^{}]+)\}?)(?:\^(?:\{?([^{}]+)\}?))?(?:\s*(.+))?$/.exec(text))) {
+    const lower = match[1];
+    const upper = match[2];
+    const body = match[3] || " ";
+    const constructor = text.startsWith("\\sum")
+      ? MathSum
+      : text.startsWith("\\prod")
+        ? MathSum
+        : MathIntegral;
+    return [
+      new constructor({
+        children: legacyMathComponents(body),
+        subScript: lower ? legacyMathComponents(lower) : undefined,
+        superScript: upper ? legacyMathComponents(upper) : undefined,
+      }),
+    ];
+  }
   if ((match = /^\\frac\{([^{}]+)\}\{([^{}]+)\}$/.exec(text)))
     return [
       new MathFraction({
-        numerator: mathComponents(match[1]),
-        denominator: mathComponents(match[2]),
+        numerator: legacyMathComponents(match[1]),
+        denominator: legacyMathComponents(match[2]),
       }),
     ];
   if ((match = /^\\sqrt\{([^{}]+)\}$/.exec(text)))
-    return [new MathRadical({ children: mathComponents(match[1]) })];
-  if ((match = /^(.+?)_\{?([^{}]+)\}?$/.exec(text)))
+    return [new MathRadical({ children: legacyMathComponents(match[1]) })];
+  if ((match = /^([A-Za-z0-9]+?)_\{?([^{}]+)\}?$/.exec(text)))
     return [
       new MathSubScript({
-        children: mathComponents(match[1]),
-        subScript: mathComponents(match[2]),
+        children: legacyMathComponents(match[1]),
+        subScript: legacyMathComponents(match[2]),
       }),
     ];
-  if ((match = /^(.+?)\^\{?([^{}]+)\}?$/.exec(text)))
+  if ((match = /^([A-Za-z0-9]+?)\^\{?([^{}]+)\}?$/.exec(text)))
     return [
       new MathSuperScript({
-        children: mathComponents(match[1]),
-        superScript: mathComponents(match[2]),
+        children: legacyMathComponents(match[1]),
+        superScript: legacyMathComponents(match[2]),
       }),
     ];
   const symbols = {
@@ -186,6 +358,109 @@ function mathComponents(source) {
     .replace(/\\([A-Za-z]+)/g, (_, name) => symbols[name] || name)
     .replace(/[{}]/g, "");
   return [new MathRun(text)];
+}
+
+function readBraceGroup(text, startIndex = 0) {
+  const openIndex = text.indexOf("{", startIndex);
+  if (openIndex < 0) return null;
+  let depth = 0;
+  for (let index = openIndex; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          value: text.slice(openIndex + 1, index),
+          end: index + 1,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function extractMathSequence(source) {
+  const raw = source.trim();
+  if (!raw) return [];
+
+  const matchFrac = raw.match(/^\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/);
+  if (matchFrac) {
+    const numeratorParts = extractMathSequence(matchFrac[1]);
+    const denominatorParts = extractMathSequence(matchFrac[2]);
+    const remaining = raw.slice(matchFrac[0].length).trim();
+    return [
+      new MathFraction({
+        numerator: numeratorParts.length ? numeratorParts : [new MathRun(matchFrac[1] || " ")],
+        denominator: denominatorParts.length ? denominatorParts : [new MathRun(matchFrac[2] || " ")],
+      }),
+      ...extractMathSequence(remaining),
+    ];
+  }
+
+  const matchSqrt = raw.match(/^\\sqrt\s*\{([^{}]+)\}/);
+  if (matchSqrt) {
+    const childParts = extractMathSequence(matchSqrt[1]);
+    const remaining = raw.slice(matchSqrt[0].length).trim();
+    return [
+      new MathRadical({ children: childParts.length ? childParts : [new MathRun(matchSqrt[1] || " ")] }),
+      ...extractMathSequence(remaining),
+    ];
+  }
+
+  const matchSum = raw.match(/^\\(?:sum|prod|int)\s*(?:_\{([^{}]+)\})?(?:\^\{([^{}]+)\})?(.*)$/);
+  if (matchSum) {
+    const lower = matchSum[1] || "";
+    const upper = matchSum[2] || "";
+    const body = (matchSum[3] || "").trim();
+    const bodyParts = extractMathSequence(body);
+    const remaining = raw.slice(matchSum[0].length).trim();
+    return [
+      new MathSum({
+        children: bodyParts.length ? bodyParts : [new MathRun(body || " ")],
+        subScript: lower ? extractMathSequence(lower) : undefined,
+        superScript: upper ? extractMathSequence(upper) : undefined,
+      }),
+      ...extractMathSequence(remaining),
+    ];
+  }
+
+  const scriptMatch = raw.match(/^([A-Za-z0-9]+)\s*(?:_\{?([^{}]+)\}?|\^\{?([^{}]+)\}?)/);
+  if (scriptMatch) {
+    const base = scriptMatch[1];
+    const sub = scriptMatch[2];
+    const sup = scriptMatch[3];
+    const remaining = raw.slice(scriptMatch[0].length).trim();
+    const parts = [];
+    if (sub) parts.push(new MathSubScript({ children: [new MathRun(base)], subScript: [new MathRun(sub)] }));
+    if (sup) parts.push(new MathSuperScript({ children: [new MathRun(base)], superScript: [new MathRun(sup)] }));
+    if (!sub && !sup) parts.push(new MathRun(base));
+    return [...parts, ...extractMathSequence(remaining)];
+  }
+
+  const tokenMatch = raw.match(/^([A-Za-z0-9]+|[+-=])/);
+  if (tokenMatch) {
+    const remaining = raw.slice(tokenMatch[1].length).trim();
+    return [new MathRun(tokenMatch[1]), ...extractMathSequence(remaining)];
+  }
+
+  return [];
+}
+
+function mathComponents(source) {
+  const raw = source.trim();
+  const sequence = extractMathSequence(raw);
+  if (sequence.length) return sequence;
+
+  const parsed = parseLatexToMathIR(raw);
+  const irComponents = mathComponentsFromMathIR(parsed, raw);
+  if (irComponents.length && irComponents.some((component) => component && component.constructor && component.constructor.name !== "MathRun")) {
+    return irComponents;
+  }
+  if (parsed.errors?.length || parsed.warnings?.length) {
+    return [new MathRun(raw || " ")];
+  }
+  return legacyMathComponents(raw);
 }
 export async function markdownToDocx(
   markdown,

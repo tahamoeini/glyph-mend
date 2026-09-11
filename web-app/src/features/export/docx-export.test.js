@@ -20,6 +20,20 @@ it("creates a DOCX with structural content and native math", async () => {
   expect(strFromU8(files["word/document.xml"])).toContain("<m:oMath>");
   expect(strFromU8(files["word/document.xml"])).toContain('w:val="Heading1"');
 });
+it("maps nested math structures to native OMML nodes", async () => {
+  const blob = await markdownToDocx(
+    "$$\n\\frac{1}{1 + \\frac{1}{x}}\\sum_{i=1}^n i^2\\sqrt{x^2 + 1}\n$$",
+    "Test",
+  );
+  const files = await contents(blob);
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("<m:f>");
+  expect(xml).toContain("<m:nary>");
+  expect(xml).toContain("<m:rad>");
+  expect(xml).toContain("<m:sub>");
+  expect(xml).toContain("<m:sup>");
+});
+
 it("supports explicit source-page breaks", async () => {
   const flowing = await markdownToDocx(
     "One\n\n<!-- page: 2 -->\n\nTwo",

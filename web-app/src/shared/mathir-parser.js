@@ -267,11 +267,19 @@ function parseAtom(tokens, indexRef) {
 
 function buildBinaryExpression(items, operatorMap) {
   if (!items.length) return null;
+  const operatorIndexes = items
+    .map((item, index) => (item && item.type === "operator" ? index : -1))
+    .filter((index) => index >= 0);
+
+  if (!operatorIndexes.length) {
+    return items.length > 1 ? { type: "sequence", children: items } : items[0];
+  }
+
   let tree = items[0];
   for (let index = 1; index < items.length; index += 2) {
     const operator = items[index];
     const right = items[index + 1];
-    if (!right) break;
+    if (!operator || operator.type !== "operator" || !right) break;
     tree = { type: operatorMap[operator.value] || "binary", left: tree, right };
   }
   return tree;
@@ -299,7 +307,11 @@ function parseExpression(tokens, indexRef, stop = null) {
 
   if (!items.length) return { type: "group", children: [] };
 
-  // Prefix operators are not modeled as separate nodes; this is intentionally minimal and deterministic.
+  const operatorCount = items.filter((item) => item && item.type === "operator").length;
+  if (!operatorCount) {
+    return items.length > 1 ? { type: "sequence", children: items } : items[0];
+  }
+
   const seenEquals = items.findIndex((item) => item && item.type === "operator" && item.value === "equals");
   if (seenEquals >= 0) {
     const left = buildBinaryExpression(items.slice(0, seenEquals), { plus: "sum", minus: "difference", times: "product", divide: "quotient" });
@@ -341,6 +353,9 @@ function flattenAst(value, idPrefix = "root") {
     if (item.value && isPlainObject(item.value)) visit(item.value, `${currentId}-value`);
     if (Array.isArray(item.children)) {
       item.children.forEach((child, index) => visit(child, `${currentId}-child-${index}`));
+    }
+    if (item.type === "sequence" && Array.isArray(item.children)) {
+      item.children.forEach((child, index) => visit(child, `${currentId}-${index}`));
     }
   };
 
