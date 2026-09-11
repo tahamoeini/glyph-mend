@@ -281,3 +281,17 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Recommended next action: Run the documented manual matrix in docs/upgrade/ACCESSIBILITY.md against the supported browser/screen-reader matrix before a production release.
 - Safe to continue unrelated work: yes
 - Resolution note: Core keyboard operation, preference adaptation, and non-visual review comparison are implemented and regression-tested; only cross-browser/screen-reader release verification remains manual.
+
+## GM-UPG-017 — Reconstructable ZIP bundle import/round-trip restoration
+
+- Detected in step: Step 22 Build the reconstructable GlyphMend export bundle
+- Date: 2026-09-11
+- Status: DEFERRED
+- Severity: medium
+- Area: browser / export / persistence
+- Dependency: a separately specified ZIP import policy and migration path for manifest versioning
+- Description: Step 22 exports a versioned, checksum-validated ZIP that preserves canonical source, evidence, semantic sidecars, reconstructions, quality data, and provenance. The current import path restores JSON workspace checkpoints only; ZIP import and full round-trip restoration are not present.
+- Evidence: web-app/src/shared/reconstructable-bundle.js, web-app/src/shared/reconstructable-bundle.test.js, docs/upgrade/RECONSTRUCTABLE_BUNDLE.md, and the existing workspace JSON import in web-app/src/app.js.
+- What was attempted: Preserved the existing JSON import contract while explicitly marking ZIP import unsupported in manifest.import. No export-only behavior is presented as round-trip restoration.
+- Recommended next action: Design and implement a browser-only ZIP importer that validates schema/version, paths, checksums, source evidence, and semantic sidecars before restoring workspace state; add migration tests for future manifest versions.
+- Safe to continue unrelated work: yes

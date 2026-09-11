@@ -1,7 +1,7 @@
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import DOMPurify from "dompurify";
-import { strToU8, zipSync } from "fflate";
+
 import { marked } from "marked";
 import { registerSW } from "virtual:pwa-register";
 import {
@@ -32,6 +32,7 @@ import { DEFAULT_BRAND } from "./shared/brand.js";
 import { download, stem } from "./shared/download.js";
 import { renderAccessibleMathMarkdown } from "./shared/math-accessibility.js";
 import { visualIRToAccessibleDescription } from "./shared/visual-accessibility.js";
+import { buildReconstructableBundle } from "./shared/reconstructable-bundle.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
@@ -1076,31 +1077,6 @@ function logText() {
     )
     .join("\n");
 }
-function visualSemanticManifest() {
-  const visuals = [...assetMap().values()]
-    .map((asset) => {
-      const semantic = {
-        id: asset.id,
-        kind: asset.kind,
-        bbox: asset.bbox,
-        caption: asset.caption || "",
-      };
-      for (const key of ["visualIR", "chartIR", "source", "mermaid", "plantuml", "vegaLite"])
-        if (asset[key] !== undefined) semantic[key] = asset[key];
-      return semantic;
-    })
-    .filter((asset) => asset.visualIR || asset.chartIR || asset.source || asset.mermaid || asset.plantuml || asset.vegaLite);
-  return {
-    schemaVersion: 1,
-    canonicalSource: "Markdown",
-    exportTiers: {
-      semanticSource: "This bundle preserves Markdown plus available semantic IR/source sidecars.",
-      svg: "DOCX embeds supplied or locally rendered SVG with a required raster compatibility fallback.",
-      native: "DOCX uses native DrawingML only for the documented safe VisualIR subset.",
-    },
-    visuals,
-  };
-}
 function save(kind) {
   const base = stem(state.fileName || "document.pdf");
   if (kind === "md")
@@ -1138,26 +1114,35 @@ function save(kind) {
     );
   if (kind === "log")
     download(new Blob([logText()], { type: "text/plain" }), `${base}.log`);
-  if (kind === "bundle") {
-    const files = {
-      [`${base}.md`]: strToU8(state.markdown),
-      [`${base}.txt`]: strToU8(plainText(state.markdown)),
-      [`${base}.report.json`]: strToU8(JSON.stringify(report(), null, 2)),
-      [`${base}.log`]: strToU8(logText()),
-    };
-    for (const asset of assetMap().values()) {
-      const isSvg = asset.format === "svg" || asset.mimeType === "image/svg+xml";
-      const data = asset.svg || asset.data;
-      files["assets/" + asset.id + "." + (isSvg ? "svg" : "png")] =
-        typeof data === "string" ? strToU8(data) : data;
-    }
-    files[base + ".visual-manifest.json"] = strToU8(
-      JSON.stringify(visualSemanticManifest(), null, 2),
+  if (kind === "bundle") void saveBundle(base);
+}
+async function saveBundle(base) {
+  try {
+    $("downloadBundle").disabled = true;
+    $("downloadBundle").querySelector("small").textContent = "Building reconstructable bundle…";
+    const { markdownToDocx } = await import("./features/export/docx-export.js");
+    const docx = await markdownToDocx(
+      state.markdown,
+      $("docxTitle").value || stem(state.fileName),
+      { pageBreaks: $("docxPageBreaks").checked, assets: assetMap() },
     );
-    download(
-      new Blob([zipSync(files, { level: 6 })], { type: "application/zip" }),
-      `${base}.browser-export.zip`,
-    );
+    const { blob } = await buildReconstructableBundle({
+      baseName: base,
+      markdown: state.markdown,
+      docxBytes: await docx.arrayBuffer(),
+      pdfBytes: state.pdfBytes,
+      assets: assetMap(),
+      reviewItems: state.reviewQueue,
+      qualityReport: report(),
+    });
+    download(blob, base + ".reconstructable.zip");
+    toast("Reconstructable bundle created.");
+  } catch (error) {
+    log("bundle-error", error.message, {}, "error");
+    toast("Bundle export failed: " + error.message, true);
+  } finally {
+    $("downloadBundle").disabled = false;
+    $("downloadBundle").querySelector("small").textContent = "DOCX, source evidence, provenance, and semantic assets";
   }
 }
 async function saveDocx() {

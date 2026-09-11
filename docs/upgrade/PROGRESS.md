@@ -294,3 +294,21 @@ This file records executed upgrade steps in chronological order.
   - Production build passed; built dist/index.html and bundles were inspected for the new live regions and runtime hooks.
   - No dependency, backend, upload, telemetry, or cloud-processing change was introduced.
 - Documentation: Added docs/upgrade/ACCESSIBILITY.md with implemented checks, manual browser/screen-reader matrix, and the explicit limitation that GlyphMend provides semantic MathML/text fallbacks without bundling a speech renderer or external scanner.
+
+## Step 22 — Build the reconstructable GlyphMend export bundle
+
+- Date: 2026-09-11
+- Repository HEAD: `1c4ca59`
+- Branch: `upgrade-plan`
+- Package manager: npm for the browser workspace
+- Status: PASS
+- Summary: Replaced the flat complete export with a versioned, deterministic reconstructable ZIP containing canonical Markdown, optional DOCX/PDF evidence, original/rendered/reconstructed assets, accepted diagram/chart/equation source sidecars, quality-report.json, and a checksum-bearing manifest.json. Stable semantic asset IDs map source page/bbox/source asset, reconstruction paths, confidence, disposition, producer versions, and per-file checksums. Existing plain Markdown and DOCX exports remain unchanged.
+- Validation notes:
+  - Structural bundle tests passed: deterministic byte-for-byte output, expected ZIP layout, source-to-reconstruction manifest mapping, checksum validation, and tamper rejection.
+  - Full browser unit suite passed: 24 files, 142 tests.
+  - Browser application regression suite passed: 10 tests.
+  - Production build passed after integration; existing large-chunk warnings remain informational.
+  - No dependency, backend, upload, telemetry, or cloud-processing change was introduced.
+- Documentation: Added docs/upgrade/RECONSTRUCTABLE_BUNDLE.md describing the schema, evidence boundary, deterministic naming, privacy constraints, and Word/GlyphMend editability distinction.
+- Remaining boundary: ZIP bundle import and full round-trip restoration are not implemented or implied; the existing JSON workspace checkpoint import remains backward-compatible and the ZIP import work is tracked separately in REMAINING.md.
+- Safe to continue unrelated work: yes
