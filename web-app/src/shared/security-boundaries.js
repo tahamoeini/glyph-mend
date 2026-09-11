@@ -90,7 +90,7 @@ export function assertSafeStructuredValue(
   value,
   label = "value",
   limits = ACTIVE_FORMAT_LIMITS,
-  state = { nodes: 0 },
+  state = { nodes: 0, binaryBytes: 0 },
   depth = 0,
 ) {
   if (depth > limits.maxStructuredDepth) {
@@ -110,7 +110,15 @@ export function assertSafeStructuredValue(
   if (typeof value === "string") {
     return boundedString(value, label, limits.maxMessageStringChars);
   }
-  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return value;
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+    const size = byteLength(value);
+    if (size > limits.maxAssetBytes) throw new RangeError(`${label} exceeds the per-buffer byte limit.`);
+    state.binaryBytes = (state.binaryBytes || 0) + size;
+    if (state.binaryBytes > limits.maxPageAssetBytes) {
+      throw new RangeError(`${label} exceeds the aggregate structured binary-byte limit.`);
+    }
+    return value;
+  }
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index += 1) {
       assertSafeStructuredValue(value[index], `${label}[${index}]`, limits, state, depth + 1);
