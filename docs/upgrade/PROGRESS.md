@@ -15,6 +15,23 @@ This file records executed upgrade steps in chronological order.
 - Status: PASS
 - Summary: Established the upgrade ledger under `docs/upgrade/`, recorded the local baseline environment, and normalized the process scaffolding without changing application behavior.
 
+## Step 01 — Baseline audit, regression snapshot, and architecture map
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: `main`
+- Package manager: `npm` for the browser workspace; `pip`/`python -m pip` for the Python package
+- Status: PARTIAL
+- Summary: Mapped the current browser, export, styling, and CI architecture; validated the Python unit suite, full Python suite, lint, browser unit tests, and browser build; captured the baseline bundle snapshot; and recorded the OCR e2e regression in the unresolved ledger.
+- Validation notes:
+	- `python -m pytest tests/unit/test_docx_export.py` passed in the project virtual environment.
+	- `python -m pytest` passed in the project virtual environment.
+	- `python -m ruff check src tests` passed in the project virtual environment.
+	- `npm test` passed in `web-app/` after installing workspace dependencies.
+	- `npm run build` passed in `web-app/` after installing workspace dependencies.
+	- `npm run test:e2e` failed in `web-app/tests/ocr-baseline.spec.js` with the extraction worker reporting `Extraction worker failed`.
+
+
 ### AI coding agent execution rules
 
 - Work from the repository root and check `git status` before editing.

@@ -1,0 +1,10 @@
+{
+  "name": "GlyphMend",
+  "shortName": "GlyphMend",
+  "slug": "glyph-mend",
+  "cliName": "glyphmend",
+  "slogan": "Faithful document reconstruction from PDF to structured Markdown.",
+  "description": "Local-first, structure-aware PDF reconstruction with OCR, resumable extraction, quality checks, and Markdown-first export.",
+  "logoPath": "./brand/glyphmend-mark.svg",
+  "logoAlt": "GlyphMend logo"
+}
