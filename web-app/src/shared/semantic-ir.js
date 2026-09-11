@@ -1,7 +1,10 @@
+import { assertSafeStructuredValue } from "./security-boundaries.js";
+
 const RECONSTRUCTED_ASSET_SCHEMA_VERSION = 1;
 const MATH_IR_SCHEMA_VERSION = 1;
 const VISUAL_IR_SCHEMA_VERSION = 1;
 const CHART_IR_SCHEMA_VERSION = 1;
+const MAX_IR_JSON_CHARS = 16 * 1024 * 1024;
 
 const DEFAULT_POLICY_THRESHOLDS = Object.freeze({
   accept: 0.82,
@@ -88,7 +91,9 @@ const DISPOSITIONS = new Set(["accepted", "review", "preserved"]);
  */
 
 function isPlainObject(value) {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function deepNormalize(value) {
@@ -105,9 +110,15 @@ function canonicalJson(value) {
 }
 
 function parseJson(value, name) {
-  if (typeof value === "string") return JSON.parse(value);
-  if (isPlainObject(value)) return value;
-  throw new TypeError(`${name} must be a JSON object or JSON text.`);
+  let parsed = value;
+  if (typeof value === "string") {
+    if (value.length > MAX_IR_JSON_CHARS)
+      throw new RangeError(`${name} JSON exceeds the ${MAX_IR_JSON_CHARS}-character limit.`);
+    parsed = JSON.parse(value);
+  }
+  if (!isPlainObject(parsed)) throw new TypeError(`${name} must be a JSON object or JSON text.`);
+  assertSafeStructuredValue(parsed, name);
+  return parsed;
 }
 
 function requiredObject(value, label) {
