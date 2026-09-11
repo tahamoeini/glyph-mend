@@ -1,9 +1,12 @@
 import { parseLatexToMathIR } from "./mathir-parser.js";
+import { assertSafeStructuredValue } from "./security-boundaries.js";
 
 const REVIEW_STATUSES = new Set(["queued", "accepted", "review", "preserved"]);
 
 function isPlainObject(value) {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function numeric(value, fallback = 0) {
@@ -17,6 +20,15 @@ function normalizeText(value = "") {
     .replace(/\$/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function safeIdentifier(value, fallback = "review-item") {
+  const normalized = String(value ?? "")
+    .normalize("NFKC")
+    .replace(/[^A-Za-z0-9._:-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 256);
+  return normalized || fallback;
 }
 
 function stableObject(value) {
@@ -73,6 +85,7 @@ function parseEquationLatex(latex = "") {
 }
 
 export function normalizeReviewItem(value = {}) {
+  assertSafeStructuredValue(value, "Review item");
   const item = isPlainObject(value) ? value : {};
   const sourceAsset = isPlainObject(item.sourceAsset) ? { ...item.sourceAsset } : {};
   const candidate = isPlainObject(item.candidate) ? { ...item.candidate } : {};
@@ -82,19 +95,21 @@ export function normalizeReviewItem(value = {}) {
   const validation = isPlainObject(item.validation) ? { ...item.validation } : {};
   const manifest = isPlainObject(item.manifest) ? { ...item.manifest } : {};
   const provenance = isPlainObject(item.provenance) ? { ...item.provenance } : {};
+  const rawId = item.id || sourceAsset.id || candidate.id || `review-${sourceAsset.page || 1}-${Math.abs((candidate.latex || item.latex || "").length)}`;
 
   return {
-    id: String(item.id || sourceAsset.id || candidate.id || `review-${sourceAsset.page || 1}-${Math.abs((candidate.latex || item.latex || "").length)}`),
+    id: safeIdentifier(rawId),
     kind: item.kind || candidate.kind || sourceAsset.kind || "equation",
     page: numeric(item.page, numeric(sourceAsset.page, 1)),
     status: disposition,
     disposition,
     sourceAsset: {
-      id: sourceAsset.id || item.sourceAssetId || item.id || "source-unknown",
+      id: safeIdentifier(sourceAsset.id || item.sourceAssetId || rawId, "source-unknown"),
       page: numeric(sourceAsset.page, numeric(item.page, 1)),
       bbox: Array.isArray(sourceAsset.bbox) ? sourceAsset.bbox : [0, 0, 0, 0],
       kind: sourceAsset.kind || "page-crop",
       ...sourceAsset,
+      id: safeIdentifier(sourceAsset.id || item.sourceAssetId || rawId, "source-unknown"),
     },
     candidate: {
       latex: normalizeText(candidate.latex || item.latex || ""),
@@ -147,6 +162,7 @@ export function serializeReviewItem(value = {}) {
 }
 
 export function buildReviewQueue(pages = {}) {
+  assertSafeStructuredValue(pages, "Review queue pages");
   return Object.values(pages)
     .flatMap((page) => Array.isArray(page?.reviewItems) ? page.reviewItems.map((item) => normalizeReviewItem({ ...item, page: page.page })) : [])
     .sort((left, right) => left.page - right.page || left.id.localeCompare(right.id));
