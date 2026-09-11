@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
 from .sanitize import sanitize_label
 
 BBox = tuple[float, float, float, float]
+MERMAID_DIRECTIONS = {"LR", "RL", "TD", "BT"}
+MAX_MERMAID_NODES = 500
+MAX_MERMAID_EDGES = 2000
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,12 +110,14 @@ def _shape_for_rect(rect: BBox) -> str:
 
 
 def _escape_mermaid_label(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', "'").replace("\n", " ")
+    text = re.sub(r"[\x00-\x1f\x7f]", " ", str(value))
+    text = re.sub(r"[<>|`;]", " ", text)
+    text = text.replace("&", " and ").replace('"', "'").replace("\\", "\\\\")
+    return re.sub(r"\s+", " ", text).strip() or "node"
 
 
-def _mermaid_node(node: dict[str, Any]) -> str:
+def _mermaid_node(node: dict[str, Any], node_id: str) -> str:
     label = _escape_mermaid_label(str(node.get("label") or node.get("id") or "node"))
-    node_id = str(node.get("id") or "node")
     shape = _normalize_shape(str(node.get("shape") or "box"))
     if shape == "rounded-box":
         return f'    {node_id}("{label}")'
@@ -123,13 +129,26 @@ def _mermaid_node(node: dict[str, Any]) -> str:
 
 
 def _mermaid_from_visual_ir(visual_ir: dict[str, Any]) -> str:
-    direction = str((visual_ir.get("geometry") or {}).get("direction") or "LR")
+    direction = str((visual_ir.get("geometry") or {}).get("direction") or "LR").upper()
+    if direction not in MERMAID_DIRECTIONS:
+        direction = "LR"
+    nodes = list(visual_ir.get("nodes") or [])
+    edges = list(visual_ir.get("edges") or [])
+    if len(nodes) > MAX_MERMAID_NODES:
+        raise ValueError(f"Mermaid reconstruction exceeds the {MAX_MERMAID_NODES}-node limit")
+    if len(edges) > MAX_MERMAID_EDGES:
+        raise ValueError(f"Mermaid reconstruction exceeds the {MAX_MERMAID_EDGES}-edge limit")
+
+    id_map: dict[str, str] = {}
     lines = ["```mermaid", f"flowchart {direction}"]
-    for node in visual_ir.get("nodes") or []:
-        lines.append(_mermaid_node(node))
-    for edge in visual_ir.get("edges") or []:
-        source = str(edge.get("from") or edge.get("source") or "")
-        target = str(edge.get("to") or edge.get("target") or "")
+    for index, node in enumerate(nodes, start=1):
+        original_id = str(node.get("id") or f"node-{index}")
+        safe_id = f"N{index}"
+        id_map[original_id] = safe_id
+        lines.append(_mermaid_node(node, safe_id))
+    for edge in edges:
+        source = id_map.get(str(edge.get("from") or edge.get("source") or ""))
+        target = id_map.get(str(edge.get("to") or edge.get("target") or ""))
         if not source or not target:
             continue
         if edge.get("directed", False):
