@@ -42,3 +42,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Unresolved.
 
+## GM-UPG-002 — Worker capability memory/performance unknowns
+- Detected in step: Step 04 capability/worker architecture
+- Date: 2026-09-11
+- Status: OPEN
+- Severity: medium
+- Area: browser / workers / performance
+- Dependency: math-worker and visual-worker capability shells
+- Description: The new worker-capability abstraction has not yet been stress-tested with large documents, cancellation storms, or concurrent worker initialization.
+- Evidence: Step 04 introduced a shared protocol and shells, but no runtime profiling or memory ceiling measurements were collected.
+- Files / symbols involved: [web-app/src/shared/recognizer-capability.js](web-app/src/shared/recognizer-capability.js), [web-app/src/features/recognition/math-worker.js](web-app/src/features/recognition/math-worker.js), [web-app/src/features/recognition/visual-worker.js](web-app/src/features/recognition/visual-worker.js)
+- What was attempted: Added worker shells, cancellation, and failure envelopes with unit tests.
+- Why it remains: The performance envelope for heavy local recognition is still unknown.
+- Recommended next action: Measure worker memory usage and responsiveness with representative local documents before routing real math/visual recognition through these shells.
+- Safe to continue unrelated work: yes
+- Resolution note: Unresolved.
+
