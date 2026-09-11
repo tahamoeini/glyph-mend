@@ -9,7 +9,7 @@ const checkMode = process.argv.includes("--check");
 
 const browserPolicy = Object.freeze({
   "@tesseract.js-data/eng": {
-    expectedLicenses: ["Apache-2.0"],
+    expectedLicenses: ["MIT"],
     review: "APPROVED_WITH_NOTE",
     purpose: "Bundled English OCR traineddata",
   },
@@ -67,7 +67,7 @@ const browserPolicy = Object.freeze({
 
 const copiedRuntimeAssetPolicy = Object.freeze({
   "tesseract.js-core": {
-    expectedLicenses: ["Apache-2.0", "MIT"],
+    expectedLicenses: ["Apache-2.0"],
     review: "APPROVED_WITH_NOTE",
     purpose: "Transitive Tesseract WASM core copied into the offline bundle",
   },
