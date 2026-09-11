@@ -141,7 +141,7 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 ## GM-UPG-008 — Step 13 browser SVG/export validation remains partially blocked by an existing DOCX regression
 - Detected in step: Step 13 VisualIR -> Mermaid + safe SVG rendering
 - Date: 2026-09-11
-- Status: OPEN
+- Status: RESOLVED
 - Severity: low
 - Area: browser / export / validation
 - Dependency: `web-app/src/features/export/docx-export.test.js`
@@ -149,10 +149,10 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Evidence: `npm test src/features/export/docx-export.test.js src/features/extraction/extract-worker.test.js src/ui-shell.test.js` failed only in `src/features/export/docx-export.test.js` with a missing `<m:rad>` expectation, while `src/shared/semantic-ir.test.js` passed.
 - Files / symbols involved: [web-app/src/features/export/docx-export.test.js](web-app/src/features/export/docx-export.test.js), [web-app/src/shared/visual-rendering.js](web-app/src/shared/visual-rendering.js), [web-app/src/shared/semantic-ir.test.js](web-app/src/shared/semantic-ir.test.js)
 - What was attempted: Implemented deterministic VisualIR-to-Mermaid serialization, Mermaid syntax validation, and safe SVG rendering with hostile-content sanitization, then ran the narrow and broader browser test slices.
-- Why it remains: The remaining failure is in the preexisting DOCX OMML test expectation and is not a blocker for the Step 13 rendering work, but it prevents claiming a fully green broader browser suite.
-- Recommended next action: Leave the DOCX regression to its own fix step, or rerun the narrow visual-rendering tests only if broader browser green is not required for this prompt.
+- Why it remains: Resolved in Step 18 by preserving MathIR sequence child references and lower/upper script references before DOCX OMML serialization.
+- Recommended next action: Keep the structural DOCX regression test in the focused export suite.
 - Safe to continue unrelated work: yes
-- Resolution note: Open only for the unrelated DOCX validation regression; Step 13 rendering work itself is implemented and narrowly validated.
+- Resolution note: Resolved in Step 18; the nested OMML regression now passes alongside the new visual DOCX tests.
 
 ## GM-UPG-009 — Step 14 raster flowchart reconstruction is adapter-only until an approved local CV dependency is available
 - Detected in step: Step 14 raster flowchart reconstruction with local CV + OCR
@@ -218,3 +218,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Deferred only for renderer/runtime integration; the conservative export path is implemented and validated.
 
+
+## GM-UPG-013 — Step 18 visual DOCX native-editability boundary remains intentionally conservative
+
+- Detected in step: Step 18 Upgrade DOCX visual export: SVG first, native DrawingML subset second
+- Date: 2026-09-11
+- Status: PARTIAL
+- Severity: medium
+- Area: browser / export / DOCX / visual fidelity
+- Dependency: complete VisualIR geometry for native mapping and approved local PlantUML/Vega-Lite renderers for notation-specific SVG generation
+- Description: The browser exporter now has explicit semantic-source, SVG, and native DrawingML tiers. SVG assets are embedded as SVG media with a raster compatibility fallback; accepted Mermaid flowcharts can be rendered locally to SVG; and a strict native mapper supports only the documented VisualIR subset.
+- Evidence: web-app/src/features/export/visual-docx.js and web-app/src/features/export/visual-docx.test.js; full browser unit suite and production build passed. The generated DOCX XML was inspected for wpg:wgp, preset geometries, connectors, arrowheads, SVG media, and fallback behavior.
+- What was attempted: Added the native mapper, grouped DrawingML serializer, SVG asset path, Mermaid fence path, semantic bundle manifest, structural tests, and documentation distinguishing Word object editability from GlyphMend semantic editability. Also repaired the pre-existing nested OMML regression without weakening its assertions.
+- Why it remains: No approved browser-local PlantUML or Vega-Lite renderer/runtime has been selected, and the current extraction path does not attach complete VisualIR geometry to every preserved source crop. Those cases remain source/SVG fallbacks rather than being approximated.
+- Recommended next action: Review and license an offline PlantUML/Vega-Lite renderer if notation-specific SVG generation is required, then wire complete VisualIR assets into the browser extraction/review pipeline behind the existing evidence gates.
+- Safe to continue unrelated work: yes
+- Resolution note: The safe export tiers and fallback boundary are implemented and verified; only renderer/runtime selection and broader semantic-asset wiring remain deferred.

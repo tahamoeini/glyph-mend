@@ -275,6 +275,11 @@ function buildBinaryExpression(items, operatorMap) {
     return items.length > 1 ? { type: "sequence", children: items } : items[0];
   }
 
+  const alternatesOperators = items.every((item, index) =>
+    index % 2 === 0 ? item?.type !== "operator" : item?.type === "operator",
+  );
+  if (!alternatesOperators) return { type: "sequence", children: items };
+
   let tree = items[0];
   for (let index = 1; index < items.length; index += 2) {
     const operator = items[index];
@@ -350,12 +355,12 @@ function flattenAst(value, idPrefix = "root") {
     if (item.numerator) visit(item.numerator, `${currentId}-num`);
     if (item.denominator) visit(item.denominator, `${currentId}-den`);
     if (item.body) visit(item.body, `${currentId}-body`);
+    if (item.lower) visit(item.lower, currentId + "-lower");
+    if (item.upper) visit(item.upper, currentId + "-upper");
     if (item.value && isPlainObject(item.value)) visit(item.value, `${currentId}-value`);
     if (Array.isArray(item.children)) {
+      record.childrenIds = item.children.map((_, index) => currentId + "-child-" + index);
       item.children.forEach((child, index) => visit(child, `${currentId}-child-${index}`));
-    }
-    if (item.type === "sequence" && Array.isArray(item.children)) {
-      item.children.forEach((child, index) => visit(child, `${currentId}-${index}`));
     }
   };
 

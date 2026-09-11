@@ -23,6 +23,7 @@ import {
 } from "docx";
 
 import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
+import { fencedVisualParagraph, visualParagraph } from "./visual-docx.js";
 
 const headingMap = {
   1: HeadingLevel.HEADING_1,
@@ -82,42 +83,6 @@ function sourceVisual(line) {
     fields[item[1]] = item[2] ?? item[3];
   return fields;
 }
-function visualParagraph(fields, assets) {
-  const asset = assets?.get?.(fields.id) || assets?.[fields.id];
-  if (!asset?.data)
-    return new Paragraph({
-      alignment: AlignmentType.CENTER,
-      children: [
-        new TextRun({
-          text: `Source ${fields.kind || "visual"} preserved on PDF page ${fields.page}.`,
-          italics: true,
-          color: "666666",
-        }),
-      ],
-    });
-  const maxWidth = 500,
-    maxHeight = 620,
-    ratio = Math.min(maxWidth / asset.width, maxHeight / asset.height, 1);
-  return new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 100, after: 140 },
-    children: [
-      new ImageRun({
-        type: "png",
-        data: asset.data,
-        transformation: {
-          width: Math.max(1, Math.round(asset.width * ratio)),
-          height: Math.max(1, Math.round(asset.height * ratio)),
-        },
-        altText: {
-          title: `Source ${fields.kind || "visual"}`,
-          description: `Preserved from PDF page ${fields.page}`,
-          name: fields.id,
-        },
-      }),
-    ],
-  });
-}
 function parseTable(lines) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
@@ -171,6 +136,12 @@ function asMathRunText(value) {
     if (value.type === "group") return (value.children || []).map(asMathRunText).join("");
   }
   return String(value);
+}
+
+function resolveMathChildren(node, nodeMap) {
+  if (Array.isArray(node?.childrenIds) && nodeMap)
+    return node.childrenIds.map((id) => nodeMap.get(id)).filter(Boolean);
+  return Array.isArray(node?.children) ? node.children : [];
 }
 
 function mathComponentsFromMathIR(ir, rawText = "") {
@@ -269,11 +240,11 @@ function mathComponentsFromMathIR(ir, rawText = "") {
         return parts.length ? parts : [new MathRun(rawText || " ")];
       }
       case "sequence": {
-        const parts = Array.isArray(node.children) ? node.children.flatMap((child) => walk(child)) : [];
+        const parts = resolveMathChildren(node, nodeMap).flatMap((child) => walk(child));
         return parts.length ? parts : [new MathRun(rawText || " ")];
       }
       case "group": {
-        const items = Array.isArray(node.children) ? node.children : [];
+        const items = resolveMathChildren(node, nodeMap);
         const parts = items.flatMap((child) => walk(child));
         return parts.length ? parts : [new MathRun(rawText || " ")];
       }
@@ -500,6 +471,14 @@ export async function markdownToDocx(
       math.push(trim);
       continue;
     }
+    const fence = /^```([A-Za-z0-9_-]+)\s*$/.exec(trim);
+    if (fence) {
+      const sourceLines = [];
+      while (i + 1 < lines.length && lines[i + 1].trim() !== "```") sourceLines.push(lines[++i]);
+      if (lines[i + 1]?.trim() === "```") i += 1;
+      blocks.push(await fencedVisualParagraph(fence[1], sourceLines.join("\n"), options));
+      continue;
+    }
     if (
       /^\|.*\|$/.test(trim) &&
       /^\|?\s*:?-{3,}/.test((lines[i + 1] || "").trim())
@@ -538,7 +517,7 @@ export async function markdownToDocx(
     }
     const visual = sourceVisual(trim);
     if (visual) {
-      blocks.push(visualParagraph(visual, assets));
+      blocks.push(await visualParagraph(visual, assets, options));
       continue;
     }
     if (/^\[VISUAL_PLACEHOLDER/.test(trim)) {

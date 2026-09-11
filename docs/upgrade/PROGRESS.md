@@ -234,3 +234,19 @@ This file records executed upgrade steps in chronological order.
 - Preserve unrelated user changes and never reset the worktree.
 - Record missing, blocked, or deferred work in `docs/upgrade/REMAINING.md`.
 - Keep browser processing local/offline and do not add unreviewed dependencies.
+
+## Step 18 — Upgrade DOCX visual export: SVG first, native DrawingML subset second
+
+- Date: 2026-09-11
+- Repository HEAD: a25f19d
+- Branch: upgrade-plan
+- Package manager: npm for the browser workspace
+- Status: PARTIAL
+- Summary: Added explicit semantic-source, SVG, and native-DrawingML visual export tiers. The browser DOCX exporter now embeds supplied SVG as vector media with a Word-compatible raster fallback, renders supported Mermaid flowcharts locally to SVG when possible, preserves PlantUML/Vega-Lite source when no approved renderer is present, and maps only accepted high-confidence VisualIR rectangles, rounded rectangles, ellipses, diamonds, text boxes, straight/elbow connectors, and arrows to grouped native DrawingML. Unsupported or ambiguous inputs fall back to SVG or preserved source. The complete browser bundle now includes a semantic visual manifest.
+- Validation notes:
+	- npm test -- src/features/export/docx-export.test.js src/features/export/visual-docx.test.js src/shared/mathir-parser.test.js passed: 15 tests.
+	- Broader browser unit slice passed: 6 files, 42 tests.
+	- Full browser unit suite passed: 20 files, 133 tests.
+	- npm run build passed; the browser bundle remains local/offline and no dependency was added.
+	- Structural DOCX tests inspected word/document.xml and packaged media for OMML, grouped native DrawingML, SVG media, arrowheads, and unsupported-shape fallback.
+- Limitations: PlantUML and Vega-Lite renderer/runtime selection remains deferred under the existing license and bundle-review rule. The native mapper is intentionally strict and requires semantic VisualIR with complete geometry; current source-crop extraction remains a faithful fallback when that contract is unavailable.

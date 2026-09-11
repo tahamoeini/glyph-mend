@@ -1044,6 +1044,31 @@ function logText() {
     )
     .join("\n");
 }
+function visualSemanticManifest() {
+  const visuals = [...assetMap().values()]
+    .map((asset) => {
+      const semantic = {
+        id: asset.id,
+        kind: asset.kind,
+        bbox: asset.bbox,
+        caption: asset.caption || "",
+      };
+      for (const key of ["visualIR", "chartIR", "source", "mermaid", "plantuml", "vegaLite"])
+        if (asset[key] !== undefined) semantic[key] = asset[key];
+      return semantic;
+    })
+    .filter((asset) => asset.visualIR || asset.chartIR || asset.source || asset.mermaid || asset.plantuml || asset.vegaLite);
+  return {
+    schemaVersion: 1,
+    canonicalSource: "Markdown",
+    exportTiers: {
+      semanticSource: "This bundle preserves Markdown plus available semantic IR/source sidecars.",
+      svg: "DOCX embeds supplied or locally rendered SVG with a required raster compatibility fallback.",
+      native: "DOCX uses native DrawingML only for the documented safe VisualIR subset.",
+    },
+    visuals,
+  };
+}
 function save(kind) {
   const base = stem(state.fileName || "document.pdf");
   if (kind === "md")
@@ -1088,8 +1113,15 @@ function save(kind) {
       [`${base}.report.json`]: strToU8(JSON.stringify(report(), null, 2)),
       [`${base}.log`]: strToU8(logText()),
     };
-    for (const asset of assetMap().values())
-      files[`assets/${asset.id}.png`] = asset.data;
+    for (const asset of assetMap().values()) {
+      const isSvg = asset.format === "svg" || asset.mimeType === "image/svg+xml";
+      const data = asset.svg || asset.data;
+      files["assets/" + asset.id + "." + (isSvg ? "svg" : "png")] =
+        typeof data === "string" ? strToU8(data) : data;
+    }
+    files[base + ".visual-manifest.json"] = strToU8(
+      JSON.stringify(visualSemanticManifest(), null, 2),
+    );
     download(
       new Blob([zipSync(files, { level: 6 })], { type: "application/zip" }),
       `${base}.browser-export.zip`,
