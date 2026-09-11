@@ -31,6 +31,34 @@ This file records executed upgrade steps in chronological order.
 	- `npm run build` passed in `web-app/` after installing workspace dependencies.
 	- `npm run test:e2e` failed in `web-app/tests/ocr-baseline.spec.js` with the extraction worker reporting `Extraction worker failed`.
 
+## Step 23 — Security hardening for executable/active reconstructed formats
+
+- Date: 2026-09-11
+- Repository base: `c58ea20add8a485981ccbb575b1835ddcda55bc0`
+- Branch: `step-23-security-hardening-v2`
+- Pull request: `#17`
+- Package manager: `npm` for the browser workspace; no dependency changes were introduced
+- Status: PARTIAL
+- Summary: Hardened the active untrusted-content boundaries that exist on the current baseline: strict Markdown/HTML sanitization, a static-only reconstructed SVG sanitizer, prototype-pollution-resistant workspace imports, worker request/response validation, same-origin OCR code/model URL allowlisting, resource ceilings, and a restrictive CSP. PDF.js remains configured with `isEvalSupported: false`, and the UI does not render PDF annotation/action layers, so PDF JavaScript/attachments/links remain non-executable through the current browser UI. Mermaid, PlantUML, typed reconstruction IR/manifests, model-pack loading, and reconstructable bundle import are not present on `main`, so renderer-specific Step 23 acceptance cannot be completed yet.
+- Security regression coverage:
+	- malicious Markdown/HTML does not retain active links, remote images, scripts, SVG, or event handlers in preview;
+	- active reconstructed SVG payloads using scripts, event handlers, `foreignObject`, URL attributes, external references, or `url(...)` are rejected;
+	- workspace JSON rejects prototype-pollution keys and unsafe asset identifiers;
+	- worker messages are type/range/size checked and worker pages are constrained to the requested batch;
+	- arbitrary cross-origin OCR worker/core/language/model paths are rejected;
+	- unsafe asset identifiers that could become ZIP traversal paths are rejected;
+	- CSP regression tests prevent accidental script/network/object/frame/form broadening.
+- Validation notes:
+	- `npm test` passed: 10 test files, 86/86 tests, including 16 Step 23 security unit tests.
+	- `npm run build` passed under Vite 7.3.6; the production build generated `dist/index.html`, worker bundles, PWA assets, and copied local OCR/MuPDF resources.
+	- `npm run test:e2e` ran 13 Playwright tests: 12 passed, including the new served-CSP/malicious-Markdown security test and structured WASM extraction; only the pre-existing OCR baseline failed with `Extraction failed` and remains tracked as `GM-UPG-001`.
+	- Python CI lint passed, and the Linux/Windows Python 3.10/3.12 test matrix plus installed-command smoke tests passed for this branch.
+	- Browser `npm ci` reported 4 existing dependency vulnerabilities (3 moderate, 1 high); package manifests were intentionally left unchanged and the audit is tracked in `GM-UPG-005`.
+- Process notes:
+	- The user's local `git status` could not be inspected in this execution environment; edits were isolated from `main` on a GitHub feature branch and the limitation is tracked as `GM-UPG-003`.
+	- The first temporary Step 23 branch/PR was deleted/closed externally during CI. Its commits were preserved and continued on `step-23-security-hardening-v2` / PR `#17` without force-updating `main`.
+	- Pre-render raster/decompression ceilings still need enforcement inside the MuPDF/OCR allocation paths before all expensive allocations; tracked as `GM-UPG-004`.
+
 
 ### AI coding agent execution rules
 
