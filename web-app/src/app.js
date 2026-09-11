@@ -186,7 +186,7 @@ function syncThemePreference() {
 
 function syncTabIndicator(container = document.querySelector(".tabs")) {
   if (!container) return;
-  const indicator = container.querySelector(".liquid-selection-indicator");
+  const indicator = container.querySelector(".liquid-glass-selected-overlay");
   const activeTab = container.querySelector(".tab.active");
   if (!indicator || !activeTab) return;
   if (!activeTab.offsetWidth) {

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GlyphMend design system fixture</title>
+  <link rel="stylesheet" href="/src/styles/style.css">
+</head>
+<body>
+  <main class="design-system-fixture" aria-labelledby="fixture-title">
+    <header class="topbar liquid-glass liquid-glass-regular">
+      <div class="brand-lockup"><span class="brand-mark" aria-hidden="true">GM</span><strong class="brand">GlyphMend</strong></div>
+      <div class="top-document-context"><strong>Design system</strong><span>Internal visual fixture</span></div>
+      <button id="themeButton" class="topbar-button" type="button">Toggle appearance</button>
+    </header>
+    <section class="welcome content-panel">
+      <p class="eyebrow">HIG-aligned Liquid Glass interpretation</p>
+      <h1 id="fixture-title">Quiet content, deliberate chrome.</h1>
+      <p class="lede">Opaque document surfaces use semantic content tokens. Glass is reserved for navigation, compact controls, and selected states.</p>
+      <div class="fixture-surfaces" aria-label="Semantic surface samples">
+        <article class="content-panel fixture-card"><h2>content/background</h2><p>Primary document work stays opaque and readable.</p></article>
+        <article class="fixture-card fixture-elevated"><h2>content/elevated</h2><p>Small supporting groups and controls.</p></article>
+        <article class="fixture-card fixture-inset"><h2>content/inset</h2><p>Recessed fields and technical context.</p></article>
+      </div>
+      <div class="fixture-chrome" aria-label="Glass chrome samples">
+        <div class="liquid-glass liquid-glass-regular fixture-glass">glass/regular</div>
+        <div class="liquid-glass liquid-glass-clear fixture-glass">glass/clear</div>
+        <div class="fixture-selected"><span class="liquid-glass-selected-overlay"></span>glass/selected-overlay</div>
+      </div>
+    </section>
+  </main>
+  <script>
+    document.getElementById("themeButton").addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+  </script>
+</body>
+</html>

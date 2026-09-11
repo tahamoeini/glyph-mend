@@ -73,8 +73,8 @@ async function evaluateThemeTokens(page) {
       textTertiary: parse(style.getPropertyValue("--text-tertiary")),
       accentText: parse(style.getPropertyValue("--accent-text")),
       textOnAccent: parse(style.getPropertyValue("--text-on-accent")),
-      materialContent: parse(style.getPropertyValue("--material-content")),
-      materialInset: parse(style.getPropertyValue("--material-content-inset")),
+      materialContent: parse(style.getPropertyValue("--surface-content-background")),
+      materialInset: parse(style.getPropertyValue("--surface-content-inset")),
       accentFill: parse(style.getPropertyValue("--accent-fill")),
       theme: root.dataset.theme,
       appearance: root.dataset.appearance,
@@ -104,7 +104,7 @@ test("loads the complete local application shell", async ({ page }) => {
     "aria-label",
     /mode/,
   );
-  await expect(page.locator(".liquid-selection-indicator")).toHaveCount(1);
+  await expect(page.locator(".liquid-glass-selected-overlay")).toHaveCount(1);
 });
 
 test("keeps settings, document views, and exports accessible", async ({
@@ -154,10 +154,10 @@ test("keeps content opaque and liquid glass limited to functional layers", async
     buffer: Buffer.from("# Review\n\nFunctional chrome should float above content."),
   });
 
-  await expect(page.locator(".topbar.liquid-glass-toolbar")).toBeVisible();
-  await expect(page.locator("#settingsSidebar.liquid-glass-sidebar")).toBeVisible();
+  await expect(page.locator(".topbar.liquid-glass-regular")).toBeVisible();
+  await expect(page.locator("#settingsSidebar.liquid-glass-regular")).toBeVisible();
   await page.locator("#sourceTab").click();
-  await expect(page.locator(".page-controls.liquid-glass-capsule")).toBeVisible();
+  await expect(page.locator(".page-controls.liquid-glass-clear")).toBeVisible();
   await expect(page.locator("#welcome.liquid-glass")).toHaveCount(0);
   await expect(page.locator(".editor.liquid-glass")).toHaveCount(0);
   await expect(page.locator(".exports.liquid-glass")).toHaveCount(0);

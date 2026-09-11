@@ -234,3 +234,18 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Recommended next action: Review and license an offline PlantUML/Vega-Lite renderer if notation-specific SVG generation is required, then wire complete VisualIR assets into the browser extraction/review pipeline behind the existing evidence gates.
 - Safe to continue unrelated work: yes
 - Resolution note: The safe export tiers and fallback boundary are implemented and verified; only renderer/runtime selection and broader semantic-asset wiring remain deferred.
+## GM-UPG-014 — Web Liquid Glass stays an intentional CSS interpretation
+- Detected in step: Step 19 HIG-aligned Liquid Glass design system
+- Date: 2026-09-11
+- Status: RESOLVED
+- Severity: low
+- Area: browser / design system / accessibility
+- Dependency: semantic CSS token layer and browser fixture
+- Description: The prior UI carried component-specific material names that could encourage glass stacking and divergent light/dark rules.
+- Evidence: `web-app/src/styles/style.css`, `web-app/design-system.html`, `web-app/src/styles/design-system.test.js`, and `web-app/tests/design-system.spec.js` now define and validate three opaque content surfaces and three chrome-only glass roles.
+- Files / symbols involved: `--surface-content-background`, `--surface-content-elevated`, `--surface-content-inset`, `--glass-regular-fill`, `--glass-clear-fill`, `--glass-selected-overlay-fill`
+- What was attempted: Replaced toolbar/sidebar/capsule variants with semantic regular/clear glass; centralized glass fill, edge, highlight, shadow, blur, typography, radii, accent, and motion tokens; added an internal fixture and light/dark browser check.
+- Why it remains: No native Apple optical-physics claim is made; the documented CSS interpretation is the intended product boundary.
+- Recommended next action: Preserve semantic-token usage when future screens are redesigned, and keep document content on opaque content surfaces.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved by the semantic surface consolidation and regression coverage in Step 19.

@@ -132,3 +132,6 @@ The browser exporter uses three levels:
 - DOCX uses native editable Word shapes only for the strict VisualIR subset documented in the upgrade architecture. Unsupported or ambiguous diagrams remain faithful SVG/source evidence.
 
 Word editability means Word can select and change the emitted shape, text box, connector, or arrow. It is not semantic editability: the Word file is downstream output and does not replace GlyphMend’s Markdown, VisualIR, ChartIR, provenance, confidence, or review state.
+## Interface materials
+
+GlyphMend uses a **HIG-aligned Liquid Glass interpretation**, not native Liquid Glass. The internal [design-system fixture](./design-system.html) demonstrates opaque document surfaces (`content/background`, `content/elevated`, and `content/inset`) plus limited chrome-only glass (`glass/regular`, `glass/clear`, and `glass/selected-overlay`). The same semantic tokens drive light and dark modes; no Apple proprietary fonts are bundled.

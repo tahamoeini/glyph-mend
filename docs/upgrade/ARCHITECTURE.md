@@ -29,3 +29,8 @@ Step 18 defines three deliberately different meanings of editability:
 In Word, editable means a user can select and adjust the emitted Word shape, text, line, or arrow. It does not mean that Word can recover the original PDF semantics, notation, topology, or GlyphMend provenance. In GlyphMend, semantic editability means the canonical Markdown and retained semantic source remain inspectable and reversible; a Word-native shape is only an output projection. SVG and source fallbacks are therefore fidelity-preserving outcomes, not failed native conversion.
 
 All three tiers remain browser-side and local/offline. PlantUML and Vega-Lite source serialization remains available, while renderer/runtime selection for those notations is still deferred until an approved local dependency is reviewed.
+## Web design system: HIG-aligned Liquid Glass interpretation
+
+The web interface is a **HIG-aligned Liquid Glass interpretation**, not native Liquid Glass. CSS uses a small semantic surface vocabulary: `content/background`, `content/elevated`, `content/inset`, `glass/regular`, `glass/clear`, and `glass/selected-overlay`. Content surfaces remain opaque; glass is limited to navigation, compact controls, and selection affordances. The effect is intentionally an accessible web approximation and does not claim to reproduce Apple optical physics.
+
+Light and dark appearances redefine the same semantic tokens. Typography uses platform system fallbacks (`-apple-system`, BlinkMacSystemFont, Segoe UI, and sans-serif); GlyphMend does not bundle proprietary Apple fonts.

@@ -250,3 +250,17 @@ This file records executed upgrade steps in chronological order.
 	- npm run build passed; the browser bundle remains local/offline and no dependency was added.
 	- Structural DOCX tests inspected word/document.xml and packaged media for OMML, grouped native DrawingML, SVG media, arrowheads, and unsupported-shape fallback.
 - Limitations: PlantUML and Vega-Lite renderer/runtime selection remains deferred under the existing license and bundle-review rule. The native mapper is intentionally strict and requires semantic VisualIR with complete geometry; current source-crop extraction remains a faithful fallback when that contract is unavailable.
+## Step 19 — Simplify the web design system into an HIG-aligned Liquid Glass interpretation
+
+- Date: 2026-09-11
+- Repository HEAD: `a25f19d`
+- Branch: `upgrade-plan`
+- Package manager: `npm` for the browser workspace
+- Status: PASS
+- Summary: Consolidated the web surface system from five content materials and four component-specific glass variants into three opaque semantic content surfaces and three chrome-only glass roles: regular, clear, and selected overlay. Navigation and compact controls retain glass; document content remains opaque and calm. Light and dark themes now override the same semantic tokens, and a browser-testable internal fixture documents the intended composition.
+- Validation notes:
+  - Focused Vitest design-system and UI-shell suite passed: 2 files, 8 tests.
+  - Browser fixture test passed in light and dark modes and captured both rendered appearances.
+  - Full browser unit suite and production build were run after the focused checks.
+  - No dependency or backend change was introduced; browser processing remains local/offline.
+- Documentation: The architecture and browser README now explicitly describe the output as a "HIG-aligned Liquid Glass interpretation", not native Liquid Glass.
