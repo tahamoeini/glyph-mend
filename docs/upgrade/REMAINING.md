@@ -249,3 +249,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Recommended next action: Preserve semantic-token usage when future screens are redesigned, and keep document content on opaque content surfaces.
 - Safe to continue unrelated work: yes
 - Resolution note: Resolved by the semantic surface consolidation and regression coverage in Step 19.
+
+## GM-UPG-015 — Available-width workspace layout modes
+- Detected in step: Step 20 workspace responsiveness
+- Date: 2026-09-11
+- Status: RESOLVED
+- Severity: low
+- Area: browser / workspace layout / accessibility
+- Dependency: CSS Grid container queries and existing local workspace state
+- Description: The prior workspace used a primary fixed `max-width: 820px` transition that conflated device category with available application width.
+- Evidence: `web-app/src/styles/style.css`, `web-app/src/app.js`, and `web-app/tests/app.spec.js` now define and verify compact, medium, wide, and extra-wide modes plus resize-state preservation.
+- Files / symbols involved: `syncWorkspaceLayoutState`, `data-layout-mode`, `compactActionDock`, `resultsInspector`
+- What was attempted: Replaced the fixed JavaScript breakpoint with measured main-content width, introduced container-based grid modes, added safe-area/dynamic viewport behavior, and exposed settings and quality/export through compact sheets.
+- Why it remains: The previous hard breakpoint has been removed from primary workspace behavior.
+- Recommended next action: Keep future workspace features within the semantic mode contract and test state preservation when adding panes.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved by the available-width layout system and browser regression coverage.

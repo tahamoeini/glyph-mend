@@ -34,3 +34,7 @@ All three tiers remain browser-side and local/offline. PlantUML and Vega-Lite so
 The web interface is a **HIG-aligned Liquid Glass interpretation**, not native Liquid Glass. CSS uses a small semantic surface vocabulary: `content/background`, `content/elevated`, `content/inset`, `glass/regular`, `glass/clear`, and `glass/selected-overlay`. Content surfaces remain opaque; glass is limited to navigation, compact controls, and selection affordances. The effect is intentionally an accessible web approximation and does not claim to reproduce Apple optical physics.
 
 Light and dark appearances redefine the same semantic tokens. Typography uses platform system fallbacks (`-apple-system`, BlinkMacSystemFont, Segoe UI, and sans-serif); GlyphMend does not bundle proprietary Apple fonts.
+
+## Available-width workspace layouts
+
+The workspace chooses `compact`, `medium`, `wide`, or `extra-wide` from the usable main-content width rather than a device label. Compact keeps one document pane and moves settings plus quality/export into equivalent bottom sheets; medium adds the inspector; wide adds settings alongside the editor and keeps the inspector below; extra-wide shows settings, editor, and inspector together. Resizing changes presentation only: Markdown, active document view, review data, and local workspace state stay in place.

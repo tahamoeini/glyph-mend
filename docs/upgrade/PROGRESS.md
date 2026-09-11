@@ -264,3 +264,17 @@ This file records executed upgrade steps in chronological order.
   - Full browser unit suite and production build were run after the focused checks.
   - No dependency or backend change was introduced; browser processing remains local/offline.
 - Documentation: The architecture and browser README now explicitly describe the output as a "HIG-aligned Liquid Glass interpretation", not native Liquid Glass.
+
+## Step 20 — Rebuild workspace responsiveness around available space
+
+- Date: 2026-09-11
+- Repository HEAD: `a25f19d`
+- Branch: `upgrade-plan`
+- Package manager: `npm` for the browser workspace
+- Status: PASS
+- Summary: Replaced the fixed 820px mobile-sidebar decision with available-width layout modes (`compact`, `medium`, `wide`, and `extra-wide`). The workspace now uses container-based CSS Grid transitions, dynamic viewport sizing, safe-area insets, and compact settings/quality-export sheets with equivalent top and bottom controls. Document canvases remain opaque content surfaces.
+- Validation notes:
+  - Focused UI-shell tests passed.
+  - Browser application suite passed, including compact/medium/wide/extra-wide assertions and an editor-state resize regression.
+  - Full browser unit suite and production build were run after the focused checks.
+  - No dependency, backend, upload, or telemetry behavior was added.

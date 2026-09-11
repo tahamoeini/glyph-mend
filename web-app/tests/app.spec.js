@@ -238,42 +238,52 @@ test("adapts to reduced motion, reduced transparency, high contrast, and coarse 
   expect(Number.parseFloat(styles.controlMinWidth)).toBeGreaterThanOrEqual(44);
 });
 
-test("keeps the editor primary across key responsive widths", async ({ page }) => {
-  const widths = [320, 375, 430, 768, 820, 1024, 1180, 1440, 1728];
+test("adapts workspace panes by available width without losing editor state", async ({ page }) => {
+  const modes = [
+    { width: 375, mode: "compact", panes: 1 },
+    { width: 900, mode: "medium", panes: 2 },
+    { width: 1200, mode: "wide", panes: 2 },
+    { width: 1600, mode: "extra-wide", panes: 3 },
+  ];
 
-  for (const width of widths) {
-    await page.setViewportSize({
-      width,
-      height: width < 768 ? 900 : 1024,
-    });
+  for (const { width, mode, panes } of modes) {
+    await page.setViewportSize({ width, height: 960 });
     await page.goto("/");
     await page.locator("#markdownInput").setInputFiles({
-      name: `responsive-${width}.md`,
+      name: `layout-${mode}.md`,
       mimeType: "text/markdown",
-      buffer: Buffer.from(`# Width ${width}\n\nResponsive workspace validation.`),
+      buffer: Buffer.from(`# ${mode}\n\nResponsive workspace validation.`),
     });
-
-    await expect(page.locator("#workspace")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("data-layout-mode", mode);
     await expect(page.locator(".editor")).toBeVisible();
-    await expect(page.locator("#markdownEditor")).toBeVisible();
-    await expect(page.locator(".tabs")).toBeVisible();
-    await expect(page.locator(".toolbar")).toBeVisible();
-    await expect(page.locator(".downloads")).toBeVisible();
-
-    if (width <= 820) {
-      await expect(page.locator("#sidebarToggle")).toHaveAttribute(
-        "aria-expanded",
-        "false",
-      );
+    if (mode === "compact") {
+      await expect(page.locator("#compactActionDock")).toBeVisible();
+      await expect(page.locator("body")).not.toHaveClass(/inspector-open/);
+      await expect(page.locator("#resultsInspector")).toHaveCSS("pointer-events", "none");
     } else {
-      await expect(page.locator("#sidebarToggle")).toHaveAttribute(
-        "aria-expanded",
-        "true",
-      );
+      await expect(page.locator("#resultsInspector")).toBeVisible();
     }
+    const columns = await page.locator("#workspace").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
+    expect(columns).toBeGreaterThanOrEqual(panes);
   }
-});
 
+  await page.setViewportSize({ width: 1200, height: 960 });
+  await page.goto("/");
+  await page.locator("#markdownInput").setInputFiles({
+    name: "resize-state.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from("# Resize state\n\nOriginal content."),
+  });
+  await page.locator("#markdownEditor").fill("# Resize state\n\nEdited before resize.");
+  await page.locator("#previewTab").click();
+  await page.setViewportSize({ width: 600, height: 960 });
+  await expect(page.locator("html")).toHaveAttribute("data-layout-mode", "compact");
+  await expect(page.locator("#previewTab")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#markdownEditor")).toHaveValue("# Resize state\n\nEdited before resize.");
+  await page.locator("#compactInspectorButton").click();
+  await expect(page.locator("body")).toHaveClass(/inspector-open/);
+  await expect(page.locator("#downloadMarkdown")).toBeEnabled();
+});
 test("keeps theme token contrast above WCAG thresholds in light and dark modes", async ({
   page,
 }) => {
@@ -296,7 +306,7 @@ test("keeps theme token contrast above WCAG thresholds in light and dark modes",
 test("opens and closes the settings drawer on a small screen", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 700, height: 800 });
+  await page.setViewportSize({ width: 640, height: 800 });
   await page.goto("/");
   await page.locator("#markdownInput").setInputFiles({
     name: "mobile.md",
@@ -314,7 +324,7 @@ test("opens and closes the settings drawer on a small screen", async ({
     "aria-expanded",
     "true",
   );
-  await page.locator("#sidebarBackdrop").click({ position: { x: 690, y: 400 } });
+  await page.locator("#sidebarBackdrop").click();
   await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
 });
 

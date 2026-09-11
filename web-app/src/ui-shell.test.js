@@ -168,6 +168,7 @@ describe("application UI contract", () => {
     [
       "themeButton",
       "sidebarToggle",
+  "inspectorToggle",
       "extractButton",
       "previousPage",
       "nextPage",

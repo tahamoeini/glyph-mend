@@ -108,7 +108,6 @@ const media = {
   highContrast: queryMedia("(prefers-contrast: more)"),
   forcedColors: queryMedia("(forced-colors: active)"),
   coarsePointer: queryMedia("(pointer: coarse)"),
-  mobileSidebar: queryMedia("(max-width: 820px)"),
 };
 
 function currentBrand() {
@@ -365,7 +364,9 @@ function activateWorkspace() {
   $("topFileMeta").textContent = state.pageCount
     ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
     : "Review and export imported Markdown";
-  closeMobileSidebar();
+  closeSettingsSheet();
+  closeInspectorSheet();
+  $("compactActionDock").classList.remove("hidden");
   syncReviewQueue();
   updateOutput();
   renderLog();
@@ -1195,15 +1196,29 @@ function setSidebarExpanded(isExpanded) {
   $("sidebarToggle").setAttribute("aria-expanded", String(isExpanded));
 }
 
-function closeMobileSidebar() {
+function setInspectorExpanded(isExpanded) {
+  $("inspectorToggle").setAttribute("aria-expanded", String(isExpanded));
+}
+
+function isCompactLayout() {
+  return document.documentElement.dataset.layoutMode === "compact";
+}
+
+function closeSettingsSheet() {
   document.body.classList.remove("sidebar-open");
-  if (media.mobileSidebar.matches) setSidebarExpanded(false);
+  if (isCompactLayout()) setSidebarExpanded(false);
+}
+
+function closeInspectorSheet() {
+  document.body.classList.remove("inspector-open");
+  if (isCompactLayout()) setInspectorExpanded(false);
 }
 
 function toggleSidebar() {
-  if (media.mobileSidebar.matches) {
+  if (isCompactLayout()) {
     const isOpen = document.body.classList.toggle("sidebar-open");
     setSidebarExpanded(isOpen);
+    closeInspectorSheet();
     return;
   }
   const isCollapsed = document.body.classList.toggle("sidebar-collapsed");
@@ -1213,29 +1228,36 @@ function toggleSidebar() {
   } catch {}
 }
 
+function toggleInspector() {
+  if (!isCompactLayout()) {
+    $("resultsInspector").scrollIntoView({ block: "nearest", inline: "nearest" });
+    return;
+  }
+  const isOpen = document.body.classList.toggle("inspector-open");
+  setInspectorExpanded(isOpen);
+  closeSettingsSheet();
+}
+
 function restoreSidebarPreference() {
   let isCollapsed = false;
   try {
-    const stored =
-      localStorage.getItem(sidebarStorageKey) ||
-      localStorage.getItem(legacySidebarStorageKey);
+    const stored = localStorage.getItem(sidebarStorageKey) || localStorage.getItem(legacySidebarStorageKey);
     isCollapsed = stored === "collapsed";
-    if (stored && !localStorage.getItem(sidebarStorageKey))
-      localStorage.setItem(sidebarStorageKey, stored);
+    if (stored && !localStorage.getItem(sidebarStorageKey)) localStorage.setItem(sidebarStorageKey, stored);
   } catch {}
   document.body.classList.toggle("sidebar-collapsed", isCollapsed);
-  syncSidebarResponsiveState();
+  syncWorkspaceLayoutState();
 }
 
-function syncSidebarResponsiveState() {
-  setSidebarExpanded(
-    media.mobileSidebar.matches
-      ? document.body.classList.contains("sidebar-open")
-      : !document.body.classList.contains("sidebar-collapsed"),
-  );
-  if (!media.mobileSidebar.matches) document.body.classList.remove("sidebar-open");
+function syncWorkspaceLayoutState() {
+  const availableWidth = document.querySelector("main")?.clientWidth || window.innerWidth;
+  const mode = availableWidth < 700 ? "compact" : availableWidth < 1040 ? "medium" : availableWidth < 1440 ? "wide" : "extra-wide";
+  document.documentElement.dataset.layoutMode = mode;
+  const compact = mode === "compact";
+  if (!compact) document.body.classList.remove("sidebar-open", "inspector-open");
+  setSidebarExpanded(compact ? document.body.classList.contains("sidebar-open") : !document.body.classList.contains("sidebar-collapsed"));
+  setInspectorExpanded(compact && document.body.classList.contains("inspector-open"));
 }
-
 function bind() {
   syncAdaptivePreferences();
   syncThemePreference();
@@ -1384,9 +1406,12 @@ function bind() {
       localStorage.setItem(appearanceStorageKey, theme);
     } catch {}
     document.documentElement.dataset.appearance = "manual";
-  };
-  $("sidebarToggle").onclick = toggleSidebar;
-  $("sidebarBackdrop").onclick = closeMobileSidebar;
+  };  $("sidebarToggle").onclick = toggleSidebar;
+  $("inspectorToggle").onclick = toggleInspector;
+  $("compactSettingsButton").onclick = toggleSidebar;
+  $("compactInspectorButton").onclick = toggleInspector;
+  $("sidebarBackdrop").onclick = closeSettingsSheet;
+  $("inspectorBackdrop").onclick = closeInspectorSheet;
   onMediaChange(media.colorScheme, () => {
     syncAdaptivePreferences();
     if (!readStoredTheme()) {
@@ -1400,10 +1425,8 @@ function bind() {
     media.highContrast,
     media.forcedColors,
     media.coarsePointer,
-  ].forEach((queryList) => onMediaChange(queryList, syncAdaptivePreferences));
-  onMediaChange(media.mobileSidebar, syncSidebarResponsiveState);
-  window.addEventListener("resize", () => {
-    syncSidebarResponsiveState();
+  ].forEach((queryList) => onMediaChange(queryList, syncAdaptivePreferences));  window.addEventListener("resize", () => {
+    syncWorkspaceLayoutState();
     syncTabIndicator();
   });
   window.addEventListener("keydown", (event) => {
@@ -1411,7 +1434,10 @@ function bind() {
       event.preventDefault();
       $("searchInput").focus();
     }
-    if (event.key === "Escape") closeMobileSidebar();
+    if (event.key === "Escape") {
+      closeSettingsSheet();
+      closeInspectorSheet();
+    }
   });
   let installPrompt;
   window.addEventListener("beforeinstallprompt", (e) => {
