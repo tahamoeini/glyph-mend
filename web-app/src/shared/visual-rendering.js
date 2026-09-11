@@ -3,6 +3,7 @@ import { parseVisualIR } from "./semantic-ir.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MERMAID_DIRECTIONS = new Set(["LR", "RL", "TD", "BT"]);
 const VISIBLE_NODE_SHAPES = new Set(["box", "rounded-box", "ellipse", "diamond"]);
+const UML_NOTATIONS = new Set(["uml-class", "uml-sequence", "uml-state", "uml-package"]);
 
 const SAFE_SVG_TAGS = new Set([
   "svg",
@@ -93,6 +94,199 @@ function sanitizeMermaidLabel(value) {
 function normalizeDirection(value, fallback = "LR") {
   const text = String(value || fallback).toUpperCase();
   return MERMAID_DIRECTIONS.has(text) ? text : fallback;
+}
+
+function normalizeNotation(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function visualNotation(visualIR) {
+  return normalizeNotation(
+    visualIR?.styles?.diagram?.notation ||
+      visualIR?.styles?.diagram?.format ||
+      visualIR?.provenance?.notation ||
+      visualIR?.provenance?.diagramNotation ||
+      visualIR?.notation ||
+      "",
+  );
+}
+
+function supportedUmlNotation(visualIR) {
+  return UML_NOTATIONS.has(visualNotation(visualIR));
+}
+
+function safeIdentifier(value, fallback = "Item") {
+  return String(value || fallback)
+    .replace(/[^A-Za-z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "") || fallback;
+}
+
+function sanitizePlantUmlLabel(value) {
+  return String(value ?? "")
+    .replace(/[<>\r\n]/g, " ")
+    .replace(/\|/g, " ")
+    .replace(/:/g, " - ")
+    .replace(/@/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Item";
+}
+
+function detectUmlKind(visualIR) {
+  const notation = visualNotation(visualIR);
+  if (notation === "uml-class") return "class";
+  if (notation === "uml-sequence") return "sequence";
+  if (notation === "uml-state") return "state";
+  if (notation === "uml-package") return "package";
+  return null;
+}
+
+function validatePlantUmlSubset(visualIR) {
+  const notation = visualNotation(visualIR);
+  const kind = detectUmlKind(visualIR);
+  if (!kind || !UML_NOTATIONS.has(notation)) {
+    return { ok: false, reason: "VisualIR has no explicit UML notation hint." };
+  }
+
+  const nodes = Array.isArray(visualIR?.nodes) ? visualIR.nodes : [];
+  const edges = Array.isArray(visualIR?.edges) ? visualIR.edges : [];
+  if (!nodes.length) return { ok: false, reason: "PlantUML subset requires at least one node." };
+  if (kind === "class") {
+    const invalidNode = nodes.find((node) => !node?.label || typeof node.label !== "string");
+    if (invalidNode) return { ok: false, reason: "Class diagrams require explicit class labels." };
+    const invalidEdge = edges.find((edge) => !edge?.source || !edge?.target);
+    if (invalidEdge) return { ok: false, reason: "Class diagrams require explicit relationships." };
+    return { ok: true, kind };
+  }
+  if (kind === "sequence") {
+    const invalidNode = nodes.find((node) => !node?.label || typeof node.label !== "string");
+    if (invalidNode) return { ok: false, reason: "Sequence diagrams require explicit participant labels." };
+    return { ok: true, kind };
+  }
+  if (kind === "state") {
+    return { ok: true, kind };
+  }
+  if (kind === "package") {
+    return { ok: true, kind };
+  }
+  return { ok: false, reason: "Unsupported UML notation." };
+}
+
+function plantUmlClassDiagram(visualIR) {
+  const nodes = [...(Array.isArray(visualIR?.nodes) ? visualIR.nodes : [])].sort(compareNodeKeys);
+  const edges = [...(Array.isArray(visualIR?.edges) ? visualIR.edges : [])].sort(compareEdgeKeys);
+  const lines = ["@startuml", "skinparam shadowing false", "hide empty members"];
+  for (const node of nodes) {
+    const name = safeIdentifier(node.id, "Class");
+    const label = sanitizePlantUmlLabel(node.label || node.id);
+    lines.push(`class \"${label}\" as ${name}`);
+  }
+  for (const edge of edges) {
+    const source = safeIdentifier(edge.source || edge.from, "Class");
+    const target = safeIdentifier(edge.target || edge.to, "Class");
+    const label = edge.label ? ` : ${sanitizePlantUmlLabel(edge.label)}` : "";
+    lines.push(`${source} --> ${target}${label}`);
+  }
+  lines.push("@enduml");
+  return lines.join("\n");
+}
+
+function plantUmlSequenceDiagram(visualIR) {
+  const nodes = [...(Array.isArray(visualIR?.nodes) ? visualIR.nodes : [])].sort(compareNodeKeys);
+  const edges = [...(Array.isArray(visualIR?.edges) ? visualIR.edges : [])].sort(compareEdgeKeys);
+  const lines = ["@startuml"];
+  for (const node of nodes) {
+    lines.push(`participant \"${sanitizePlantUmlLabel(node.label || node.id)}\" as ${safeIdentifier(node.id, "Actor")}`);
+  }
+  for (const edge of edges) {
+    const source = safeIdentifier(edge.source || edge.from, "Actor");
+    const target = safeIdentifier(edge.target || edge.to, "Actor");
+    const label = sanitizePlantUmlLabel(edge.label || "message");
+    const arrow = edge.directed === false ? "--" : "->";
+    lines.push(`${source} ${arrow} ${target} : ${label}`);
+  }
+  lines.push("@enduml");
+  return lines.join("\n");
+}
+
+function plantUmlStateDiagram(visualIR) {
+  const nodes = [...(Array.isArray(visualIR?.nodes) ? visualIR.nodes : [])].sort(compareNodeKeys);
+  const edges = [...(Array.isArray(visualIR?.edges) ? visualIR.edges : [])].sort(compareEdgeKeys);
+  const lines = ["@startuml", "[*] --> " + safeIdentifier(nodes[0]?.id || "Start", "State")];
+  for (const node of nodes) {
+    const name = safeIdentifier(node.id, "State");
+    const label = sanitizePlantUmlLabel(node.label || node.id);
+    lines.push(`state \"${label}\" as ${name}`);
+  }
+  for (const edge of edges) {
+    const source = safeIdentifier(edge.source || edge.from, "State");
+    const target = safeIdentifier(edge.target || edge.to, "State");
+    const label = edge.label ? ` : ${sanitizePlantUmlLabel(edge.label)}` : "";
+    lines.push(`${source} --> ${target}${label}`);
+  }
+  lines.push("@enduml");
+  return lines.join("\n");
+}
+
+function plantUmlPackageDiagram(visualIR) {
+  const nodes = [...(Array.isArray(visualIR?.nodes) ? visualIR.nodes : [])].sort(compareNodeKeys);
+  const edges = [...(Array.isArray(visualIR?.edges) ? visualIR.edges : [])].sort(compareEdgeKeys);
+  const lines = ["@startuml"];
+  for (const node of nodes) {
+    const name = safeIdentifier(node.id, "Package");
+    const label = sanitizePlantUmlLabel(node.label || node.id);
+    lines.push(`package \"${label}\" as ${name}`);
+  }
+  for (const edge of edges) {
+    const source = safeIdentifier(edge.source || edge.from, "Package");
+    const target = safeIdentifier(edge.target || edge.to, "Package");
+    const label = edge.label ? ` : ${sanitizePlantUmlLabel(edge.label)}` : "";
+    lines.push(`${source} ..> ${target}${label}`);
+  }
+  lines.push("@enduml");
+  return lines.join("\n");
+}
+
+export function visualIRToPlantUML(visualIR) {
+  const parsed = parseVisualIR(visualIR);
+  const validation = validatePlantUmlSubset(parsed);
+  if (!validation.ok) throw new TypeError(validation.reason);
+  if (validation.kind === "class") return plantUmlClassDiagram(parsed);
+  if (validation.kind === "sequence") return plantUmlSequenceDiagram(parsed);
+  if (validation.kind === "state") return plantUmlStateDiagram(parsed);
+  if (validation.kind === "package") return plantUmlPackageDiagram(parsed);
+  throw new TypeError("Unsupported PlantUML subset.");
+}
+
+export function routeVisualOutput(visualIR) {
+  const parsed = parseVisualIR(visualIR);
+  const plantUml = validatePlantUmlSubset(parsed);
+  if (plantUml.ok) {
+    return {
+      format: "plantuml",
+      reason: `explicit ${visualNotation(parsed)} notation`,
+      output: visualIRToPlantUML(parsed),
+    };
+  }
+  const nodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
+  const shapeHints = new Set(nodes.map((node) => String(node.shape || "").toLowerCase()).filter(Boolean));
+  const ordinaryFlowchart =
+    parsed.kind === "flowchart" ||
+    (parsed.kind === "diagram" && Array.isArray(parsed.edges) && parsed.edges.length > 0 &&
+      nodes.length > 0 &&
+      nodes.every((node) => VISIBLE_NODE_SHAPES.has(String(node.shape || "").toLowerCase())));
+  if (ordinaryFlowchart) {
+    return {
+      format: "mermaid",
+      reason: "ordinary flow/process graph",
+      output: visualIRToMermaid(parsed),
+    };
+  }
+  return {
+    format: "source",
+    reason: "unknown or freeform visual",
+    output: parsed,
+  };
 }
 
 function bboxForNode(node) {

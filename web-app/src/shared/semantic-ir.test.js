@@ -22,7 +22,13 @@ import {
   serializeReconstructedAsset,
   serializeVisualIR,
 } from "./semantic-ir.js";
-import { mermaidFlowchartToSvg, validateMermaidFlowchart, visualIRToMermaid } from "./visual-rendering.js";
+import {
+  mermaidFlowchartToSvg,
+  routeVisualOutput,
+  validateMermaidFlowchart,
+  visualIRToMermaid,
+  visualIRToPlantUML,
+} from "./visual-rendering.js";
 
 it("round-trips reconstructed assets with deterministic serialization", () => {
   const asset = {
@@ -353,4 +359,101 @@ it("rejects invalid ChartIR data sections", () => {
       disposition: "accepted",
     }),
   ).toThrow(/ChartIR\.data/);
+});
+
+it("routes ordinary flowcharts to Mermaid and preserves unknown visuals as source", () => {
+  const flowchart = {
+    schemaVersion: VISUAL_IR_SCHEMA_VERSION,
+    id: "flowchart-1",
+    kind: "flowchart",
+    nodes: [
+      { id: "a", label: "Start", shape: "box", geometry: { bbox: [0, 0, 10, 10] } },
+      { id: "b", label: "End", shape: "box", geometry: { bbox: [20, 0, 30, 10] } },
+    ],
+    edges: [{ source: "a", target: "b", directed: true, label: "next" }],
+    provenance: { producer: "extract-worker", version: "10" },
+    confidence: { overall: 0.9 },
+    disposition: "accepted",
+  };
+  const freeform = {
+    schemaVersion: VISUAL_IR_SCHEMA_VERSION,
+    id: "freeform-1",
+    kind: "diagram",
+    nodes: [
+      { id: "x", label: "Sketch", geometry: { bbox: [0, 0, 10, 10] } },
+      { id: "y", label: "Blob", geometry: { bbox: [20, 0, 30, 10] } },
+    ],
+    edges: [],
+    provenance: { producer: "extract-worker", version: "10" },
+    confidence: { overall: 0.4 },
+    disposition: "preserved",
+  };
+
+  const flowRoute = routeVisualOutput(flowchart);
+  const freeformRoute = routeVisualOutput(freeform);
+
+  expect(flowRoute.format).toBe("mermaid");
+  expect(flowRoute.reason).toContain("ordinary flow/process graph");
+  expect(flowRoute.output).toContain("flowchart LR");
+  expect(freeformRoute.format).toBe("source");
+  expect(freeformRoute.reason).toContain("unknown or freeform visual");
+  expect(freeformRoute.output.kind).toBe("diagram");
+});
+
+it("routes explicit UML-labeled VisualIR to PlantUML only for the supported subset", () => {
+  const classDiagram = {
+    schemaVersion: VISUAL_IR_SCHEMA_VERSION,
+    id: "uml-class-1",
+    kind: "diagram",
+    notation: "uml-class",
+    nodes: [
+      { id: "order", label: "Order", geometry: { bbox: [0, 0, 10, 10] } },
+      { id: "line", label: "LineItem", geometry: { bbox: [20, 0, 30, 10] } },
+    ],
+    edges: [{ source: "order", target: "line", directed: true, label: "contains" }],
+    provenance: { producer: "extract-worker", version: "10", notation: "uml-class" },
+    confidence: { overall: 0.86 },
+    disposition: "accepted",
+  };
+  const sequenceDiagram = {
+    schemaVersion: VISUAL_IR_SCHEMA_VERSION,
+    id: "uml-sequence-1",
+    kind: "diagram",
+    styles: { diagram: { notation: "uml-sequence" } },
+    nodes: [
+      { id: "client", label: "Client", geometry: { bbox: [0, 0, 10, 10] } },
+      { id: "api", label: "API", geometry: { bbox: [20, 0, 30, 10] } },
+    ],
+    edges: [{ source: "client", target: "api", directed: true, label: "request" }],
+    provenance: { producer: "extract-worker", version: "10" },
+    confidence: { overall: 0.88 },
+    disposition: "accepted",
+  };
+
+  const classPlantUml = visualIRToPlantUML(classDiagram);
+  const sequencePlantUml = visualIRToPlantUML(sequenceDiagram);
+
+  expect(classPlantUml).toContain("@startuml");
+  expect(classPlantUml).toContain("class");
+  expect(classPlantUml).toContain("contains");
+  expect(sequencePlantUml).toContain("participant");
+  expect(sequencePlantUml).toContain("request");
+});
+
+it("rejects PlantUML output for visuals without explicit UML semantics", () => {
+  expect(() =>
+    visualIRToPlantUML({
+      schemaVersion: VISUAL_IR_SCHEMA_VERSION,
+      id: "not-uml",
+      kind: "diagram",
+      nodes: [
+        { id: "a", label: "Start", geometry: { bbox: [0, 0, 10, 10] } },
+        { id: "b", label: "End", geometry: { bbox: [20, 0, 30, 10] } },
+      ],
+      edges: [{ source: "a", target: "b", directed: true }],
+      provenance: { producer: "extract-worker", version: "10" },
+      confidence: { overall: 0.8 },
+      disposition: "accepted",
+    }),
+  ).toThrow(/explicit UML notation hint/i);
 });

@@ -200,6 +200,19 @@ This file records executed upgrade steps in chronological order.
 	- The worker metadata now reports provider, providerKind, modelHash, featureFlag, and mlEnabled state.
 	- ML predictions are validated against deterministic evidence and are downgraded to review when they contradict the deterministic topology.
 
+## Step 16 — Add selective PlantUML support for diagrams Mermaid cannot faithfully express
+
+- Date: 2026-09-11
+- Repository HEAD: `0b4e0c5`
+- Branch: main
+- Package manager: `npm` for the browser workspace
+- Status: PARTIAL
+- Summary: Added deterministic routing for VisualIR output so ordinary flow/process graphs prefer Mermaid, explicitly UML-labeled VisualIR can serialize to PlantUML for a narrow supported subset, and unknown/freeform visuals remain source-preserved. PlantUML rendering integration is deferred because no approved browser-local PlantUML renderer dependency has been added or licensed yet.
+- Validation notes:
+	- `npm test src/shared/semantic-ir.test.js` passed in `web-app/`.
+	- Routing is explicit and explainable: `mermaid`, `plantuml`, or `source`.
+	- Freeform visuals are not mislabeled as UML, and PlantUML serialization rejects VisualIR without explicit UML notation hints.
+
 
 ### AI coding agent execution rules
 

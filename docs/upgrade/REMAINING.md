@@ -186,3 +186,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Safe to continue unrelated work: yes
 - Resolution note: Blocked only on missing model/runtime approval; the provider seam and ML gating are implemented and test-covered.
 
+## GM-UPG-011 — PlantUML rendering integration is deferred until a browser-local renderer passes review
+- Detected in step: Step 16 selective PlantUML support for diagrams Mermaid cannot faithfully express
+- Date: 2026-09-11
+- Status: DEFERRED
+- Severity: medium
+- Area: browser / export / rendering
+- Dependency: approved browser-local PlantUML renderer/runtime with license and bundle review
+- Description: The repository now supports deterministic VisualIR-to-PlantUML serialization for an explicit UML subset, but no browser-local PlantUML renderer dependency has been approved for integration.
+- Evidence: [web-app/src/shared/visual-rendering.js](web-app/src/shared/visual-rendering.js) now routes Mermaid, PlantUML, or source preservation deterministically, while [web-app/package.json](web-app/package.json) still contains no PlantUML renderer/runtime dependency.
+- Files / symbols involved: [web-app/src/shared/visual-rendering.js](web-app/src/shared/visual-rendering.js), [web-app/src/shared/semantic-ir.test.js](web-app/src/shared/semantic-ir.test.js)
+- What was attempted: Added explicit UML-only PlantUML serialization, a deterministic routing helper, syntax-validation tests, and a preservation fallback for freeform visuals.
+- Why it remains: A renderer would introduce a new dependency that still needs license/security/bundle approval, so integration is intentionally deferred.
+- Recommended next action: Review a browser-local PlantUML renderer/runtime for licensing and bundle impact, then integrate behind the existing routing seam if approved.
+- Safe to continue unrelated work: yes
+- Resolution note: Deferred only for renderer integration; deterministic serialization and routing are already implemented and covered by tests.
+
