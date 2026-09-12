@@ -31,6 +31,11 @@ def test_normalizes_escaped_layout_artifacts():
     assert sanitize_markdown(value) == "A-B C & D 'quoted'"
 
 
+def test_removes_spurious_punctuation_backslashes_but_keeps_latex_commands():
+    value = r"Revenue\, management\. Price \- demand\! Formula: \frac{1}{2}"
+    assert sanitize_markdown(value) == r"Revenue, management. Price - demand! Formula: \frac{1}{2}"
+
+
 def test_flattens_visual_br_tags_in_raw_markdown():
     value = "Revenue<br>Management<br>\n| A<br>B | C |"
     assert sanitize_markdown(value) == "Revenue Management\n| A B | C |"

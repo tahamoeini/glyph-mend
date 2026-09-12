@@ -1,4 +1,5 @@
 from pdf_sanitizer.semantics import (
+    normalize_inline_math,
     normalize_display_math_lines,
     normalize_task_lists,
     text_to_latex,
@@ -8,6 +9,16 @@ from pdf_sanitizer.semantics import (
 def test_unicode_math_to_latex():
     assert text_to_latex("E = mc² + α ≤ β") == r"E = mc^{2} + \alpha \leq \beta"
     assert text_to_latex("x₁ = ½") == r"x_{1} = \frac{1}{2}"
+
+
+def test_inline_math_is_reconstructed_without_absorbing_following_prose():
+    assert normalize_inline_math("The model uses x = y + 2 in practice.") == (
+        "The model uses $x = y + 2$ in practice."
+    )
+    assert normalize_inline_math("p(D1 > y1) is estimated.") == "$p(D1 > y1)$ is estimated."
+    assert normalize_inline_math("The total amount = the posted amount plus adjustments.") == (
+        "The total amount = the posted amount plus adjustments."
+    )
 
 
 def test_strong_standalone_math_becomes_display_math():

@@ -219,6 +219,12 @@ function parseAtom(tokens, indexRef) {
       return { type: command, lower: lower?.value ?? null, upper: upper?.value ?? null, body };
     }
 
+    if (["times", "cdot", "pm", "leq", "geq", "neq", "approx", "to"].includes(command)) {
+      return { type: "operator", value: command };
+    }
+
+    if (command === "infty") return { type: "symbol", symbol: command };
+
     if (command in { alpha: 1, beta: 1, gamma: 1, theta: 1, lambda: 1, mu: 1, pi: 1, sigma: 1, phi: 1, omega: 1, Gamma: 1, Delta: 1, Theta: 1, Lambda: 1, Sigma: 1, Phi: 1, Omega: 1 }) {
       return { type: "symbol", symbol: command };
     }

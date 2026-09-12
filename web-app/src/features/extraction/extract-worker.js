@@ -1,6 +1,9 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
+import { escapeMd, inlineMathMarkdown, latexMarkdown } from "./math-markdown.js";
+export { escapeMd, inlineMathMarkdown, latexMarkdown } from "./math-markdown.js";
+import { validateEquationCandidate } from "../recognition/math-validation.js";
 import {
   ACTIVE_FORMAT_LIMITS,
   validateExtractionRequest,
@@ -10,36 +13,10 @@ const FORMULA_CUE =
   /(?:equation|formula|expression|defined by|given by|satisfies|we have|becomes|therefore|hence|where)\s*:?[\s]*$/i;
 const MAX_RASTER_PIXELS = 40_000_000;
 const MAX_RASTER_BYTES = 32 * 1024 * 1024;
+const MATH_SYMBOLS = /[=<>≤≥≠≈+−×÷∑∏∫√∞]/g;
 let ocrWorker;
 let mupdf;
 let ocrProgressPage;
-
-const LATEX_SYMBOLS = new Map([
-  ["≤", "\\leq"],
-  ["≥", "\\geq"],
-  ["≠", "\\neq"],
-  ["≈", "\\approx"],
-  ["∞", "\\infty"],
-  ["∑", "\\sum"],
-  ["∏", "\\prod"],
-  ["∫", "\\int"],
-  ["√", "\\sqrt"],
-  ["×", "\\times"],
-  ["÷", "\\div"],
-  ["μ", "\\mu"],
-  ["σ", "\\sigma"],
-  ["λ", "\\lambda"],
-  ["α", "\\alpha"],
-  ["β", "\\beta"],
-  ["γ", "\\gamma"],
-  ["δ", "\\delta"],
-  ["θ", "\\theta"],
-  ["π", "\\pi"],
-  ["ρ", "\\rho"],
-  ["τ", "\\tau"],
-  ["φ", "\\phi"],
-]);
-const MATH_SYMBOLS = /[=<>≤≥≠≈+−×÷∑∏∫√∞]/g;
 
 function rect(value) {
   if (Array.isArray(value) && value.length >= 4)
@@ -59,10 +36,6 @@ function median(values) {
 
 function normalizeTextLine(value = "") {
   return normalizeText(value).replace(/\s+/g, " ").trim();
-}
-
-function escapeMd(value) {
-  return value.replace(/([\\`*{}\[\]<>#+\-.!_|$])/g, "\\$1");
 }
 
 function joinWrapped(lines) {
@@ -107,7 +80,7 @@ function tableFor(block, bodySize) {
 function markdownTable(rows) {
   const columns = Math.max(...rows.map((row) => row.length));
   const normalized = rows.map((row) => [
-    ...row.map(escapeMd),
+    ...row.map((cell) => escapeMd(cell).replace(/\|/g, "\\|")),
     ...Array(Math.max(0, columns - row.length)).fill(""),
   ]);
   const header = normalized[0];
@@ -232,13 +205,6 @@ function mathScore(text) {
     .length;
   score += (text.match(/[()[\]{}]/g) || []).length * 0.35;
   return score;
-}
-
-export function latexMarkdown(value) {
-  let text = normalizeTextLine(value);
-  for (const [symbol, latex] of LATEX_SYMBOLS) text = text.split(symbol).join(latex);
-  text = text.replace(/½/g, "\\frac{1}{2}");
-  return text;
 }
 
 function isEquation(text, block, pageBounds, bodySize) {
@@ -541,6 +507,68 @@ export function buildEquationCandidate(pageNumber, candidate, rendered, sourceTy
     disposition,
     cropAsset: sourceAsset,
   };
+}
+
+function equationReviewItem(candidate, validation) {
+  return {
+    id: candidate.sourceAsset?.id || candidate.id,
+    page: candidate.page,
+    kind: "equation",
+    sourceAsset: candidate.sourceAsset,
+    candidate: {
+      id: candidate.id,
+      kind: "equation",
+      latex: validation.output?.latex || candidate.text || "",
+      normalized: validation.output?.normalized || candidate.text || "",
+      provider: candidate.sourceType || "raster",
+      version: "browser-local",
+      confidence: candidate.confidence,
+      modelHash: candidate.sourceAsset?.provenance?.modelHash || null,
+    },
+    validation: validation.validation,
+    manifest: validation.manifest,
+    disposition: validation.disposition,
+    status: validation.disposition,
+  };
+}
+
+async function extractEquationFromVisual(rendered, bbox, options, paths, pageNumber) {
+  if (!options.extractEquations || !options.useOcr) return null;
+  try {
+    const data = await recognizeRaster(rendered, options, paths, pageNumber);
+    const lines = ocrLines(data);
+    const equationLines = lines.filter((line) => looksLikeOcrEquation(line.text));
+    let latex = equationLines.length
+      ? latexMarkdown(equationLines.map((line) => line.text).join(" "))
+      : "";
+    if (!latex) {
+      const inline = lines
+        .map((line) => inlineMathMarkdown(line.text))
+        .find((value, index) => value !== lines[index].text && /^\$[^$]+\$$/.test(value.trim()));
+      if (inline) latex = inline.trim().slice(1, -1);
+    }
+    if (!latex) return null;
+    const candidate = buildEquationCandidate(
+      pageNumber,
+      { kind: "equation", bbox, y: bbox[1], text: latex },
+      rendered,
+      "ocr-image",
+      latex,
+    );
+    const validation = validateEquationCandidate(
+      { latex, confidence: candidate.confidence, provider: "ocr-image", version: "browser-local" },
+      candidate.sourceAsset,
+      latex,
+    );
+    return {
+      candidate,
+      validation,
+      markdown: validation.accepted ? `$$\n${validation.output.latex}\n$$` : null,
+      reviewItem: equationReviewItem(candidate, validation),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function paddedBbox(bbox, pageBounds, padding = 0) {
@@ -949,15 +977,6 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         : ocrVisualCandidates(ocrData, lines, pageBounds);
     ocrCandidates = detected.candidates;
     ocrApplied = true;
-    entries.push(
-      ...ocrMarkdownEntries(ocrData, escapeMd, {
-        pageBounds,
-        rawHeight: ocrData._rasterHeight,
-        excludeRanges: detected.excludeRanges,
-        equationRanges: options.extractEquations ? detected.equationRanges : [],
-      }),
-    );
-
     const rawHeight = Math.max(
       1,
       Number(ocrData._rasterHeight) ||
@@ -965,7 +984,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     );
     const [left, top, right, bottom] = pageBounds;
     const pageWidth = right - left;
-    const equationGroups = detected.equationRanges || [];
+    const equationGroups = options.extractEquations ? detected.equationRanges || [] : [];
     for (const group of equationGroups) {
       const pageEquationText = group.latex || group.text || "";
       const pageBBox = [
@@ -979,60 +998,27 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         pageNumber,
         { kind: "equation", bbox: pageBBox, y: pageBBox[1], text: pageEquationText },
         crop,
-        pageEquationText.includes("\\") ? "native" : "raster",
+        "ocr-text",
         pageEquationText,
       );
+      const validation = validateEquationCandidate(
+        { latex: pageEquationText, confidence: candidate.confidence, provider: "ocr-text", version: "browser-local" },
+        candidate.sourceAsset,
+        pageEquationText,
+      );
+      group.emit = validation.accepted;
+      if (!validation.accepted) candidate.fallback = true;
       ocrCandidates.push(candidate);
-      reviewItems.push({
-        id: candidate.sourceAsset?.id || candidate.id || `p${pageNumber}-equation-${reviewItems.length + 1}`,
-        page: pageNumber,
-        kind: "equation",
-        sourceAsset: candidate.sourceAsset,
-        candidate: {
-          id: candidate.id,
-          kind: "equation",
-          latex: pageEquationText,
-          normalized: pageEquationText,
-          provider: candidate.sourceType || "raster",
-          version: "browser-local",
-          confidence: candidate.confidence,
-          modelHash: candidate.sourceAsset?.provenance?.modelHash || null,
-        },
-        validation: {
-          parseSuccess: false,
-          renderSuccess: false,
-          semanticEquivalent: false,
-          confidencePass: candidate.disposition === "accepted",
-          mandatoryPassed: false,
-          sourcePreserved: true,
-          notes: [candidate.evidence?.reason || "equation candidate detected"],
-        },
-        manifest: {
-          kind: "equation",
-          sourceAsset: candidate.sourceAsset,
-          reconstruction: {
-            format: "semantic-ir",
-            source: {
-              kind: candidate.disposition,
-              recognizer: {
-                name: candidate.sourceType || "unknown",
-                version: "browser-local",
-                preprocessVersion: "1",
-              },
-            },
-          },
-          provenance: {
-            producer: "extract-worker",
-            validationEvidence: {
-              level: candidate.disposition === "accepted" ? "high" : candidate.disposition === "review" ? "medium" : "low",
-              notes: [candidate.evidence?.reason || "equation candidate detected"],
-            },
-          },
-        },
-        disposition: candidate.disposition,
-        status: candidate.disposition,
-      });
+      reviewItems.push(equationReviewItem(candidate, validation));
     }
+    entries.push(
+      ...ocrMarkdownEntries(ocrData, escapeMd, {
+        pageBounds,
+        rawHeight: ocrData._rasterHeight,
+        excludeRanges: detected.excludeRanges,
+        equationRanges: options.extractEquations ? equationGroups : [],
+      }),
+    );
     for (const item of lines) {
       if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
       if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
@@ -1064,7 +1050,10 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       isEquation(text, block, pageBounds, bodySize)
     )
       markdown = `$$\n${latexMarkdown(text)}\n$$`;
-    else if (heading) markdown = `${"#".repeat(heading)} ${escapeMd(text)}`;
+    else if (heading)
+      markdown = `${"#".repeat(heading)} ${escapeMd(
+        options.extractEquations ? inlineMathMarkdown(text) : text,
+      )}`;
     else if (
       block.size < bodySize * 0.82 &&
       block.bbox[1] > pageBounds[1] + pageHeight * 0.55
@@ -1072,7 +1061,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       markdown = /^(\d{1,3})\s+(.+)/.test(text)
         ? text.replace(/^(\d{1,3})\s+(.+)/, "> [^$1]: $2")
         : `> ${escapeMd(text)}`;
-    else markdown = escapeMd(text);
+    else
+      markdown = escapeMd(options.extractEquations ? inlineMathMarkdown(text) : text);
     entries.push({ y: block.bbox[1], markdown });
   }
 
@@ -1097,6 +1087,22 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         );
         const rendered = cropPage(page, bbox, 2.25);
         const caption = captionFor(blocks, bbox, bodySize);
+        const visualEquation =
+          !caption &&
+          !/^table\b|^figure\b|^fig\.\b/i.test(caption) &&
+          (await extractEquationFromVisual(
+            rendered,
+            bbox,
+            options,
+            ocrPaths,
+            pageNumber,
+          ));
+        if (visualEquation?.markdown) {
+          entries.push({ y: bbox[1], markdown: visualEquation.markdown });
+          reviewItems.push(visualEquation.reviewItem);
+          value.image.destroy?.();
+          continue;
+        }
         const recoveredTable = await tableMarkdownForVisual(
           rendered,
           caption,
@@ -1175,7 +1181,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       }
 
     for (const candidate of ocrCandidates) {
-      if (candidate.kind === "equation") continue;
+      if (candidate.kind === "equation" && !candidate.fallback) continue;
       if (
         assets.some(
           (asset) =>
