@@ -1,4 +1,5 @@
 import { normalizeText } from "./cleanup.js";
+import { inlineMathMarkdown } from "./math-markdown.js";
 
 function lineText(line) {
   return normalizeText(line?.text || "").replace(/\n+/g, " ").trim();
@@ -201,9 +202,14 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
+    const text = joinLines(paragraph);
+    const withMath = inlineMathMarkdown(text);
     entries.push({
       y: mapY(paragraph[0].y0),
-      markdown: escapeOcr(joinLines(paragraph), escapeMarkdown),
+      markdown:
+        withMath === text
+          ? escapeOcr(text, escapeMarkdown)
+          : escapeMarkdown(withMath),
     });
     paragraph = [];
   };
@@ -214,7 +220,7 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
     );
     if (equation) {
       flushParagraph();
-      if (!equation.emitted) {
+      if (equation.emit !== false && !equation.emitted) {
         equation.emitted = true;
         entries.push({
           y: mapY(equation.y0),
