@@ -12,6 +12,9 @@ const SUPPORTED_COMMANDS = new Set([
   "log",
   "ln",
   "exp",
+  "max",
+  "min",
+  "arg",
   "mathrm",
   "mathbf",
   "mathit",
@@ -588,7 +591,13 @@ function buildBinaryExpression(items, operatorMap) {
     const operator = items[index];
     const right = items[index + 1];
     if (!operator || operator.type !== "operator" || !right) break;
-    tree = { type: operatorMap[operator.value] || "binary", left: tree, right };
+    const mappedType = operatorMap[operator.value];
+    tree = {
+      type: mappedType || "binary",
+      left: tree,
+      right,
+      ...(mappedType ? {} : { value: operator.value }),
+    };
   }
   return tree;
 }
