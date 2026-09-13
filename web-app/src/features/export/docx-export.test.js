@@ -34,6 +34,51 @@ it("maps nested math structures to native OMML nodes", async () => {
   expect(xml).toContain("<m:sup>");
 });
 
+it("exports products with the product operator instead of a summation glyph", async () => {
+  const files = await contents(
+    await markdownToDocx("$$\n\\prod_{i=1}^n i\n$$", "Test"),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toMatch(/m:val="(?:∏|&#x220F;|&#8719;)"/u);
+});
+
+it("preserves both scripts when a base has a subscript and superscript", async () => {
+  const files = await contents(
+    await markdownToDocx("$$\nx_i^2\n$$", "Test"),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("<m:sSubSup>");
+  expect(xml).toContain("<m:sub>");
+  expect(xml).toContain("<m:sup>");
+});
+
+it("retains relations, arithmetic operators, and root degrees", async () => {
+  const files = await contents(
+    await markdownToDocx("$$\n\\frac{x+1}{y}=\\sqrt[3]{z}\n$$", "Test"),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("<m:t>+</m:t>");
+  expect(xml).toContain("<m:t>=</m:t>");
+  expect(xml).toContain("<m:deg>");
+});
+
+it("retains non-equality relation operators in native DOCX math", async () => {
+  const files = await contents(
+    await markdownToDocx("$$\nx \\leq y\n$$", "Test"),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toMatch(/<m:t>(?:≤|&#x2264;|&#8804;)<\/m:t>/u);
+});
+
+it("keeps an integral differential in the native equation body", async () => {
+  const files = await contents(
+    await markdownToDocx("$$\n\\int_0^1 x^2 \\mathrm{d}x\n$$", "Test"),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("<m:t>d</m:t>");
+  expect(xml).toContain("<m:t>x</m:t>");
+});
+
 it("supports explicit source-page breaks", async () => {
   const flowing = await markdownToDocx(
     "One\n\n<!-- page: 2 -->\n\nTwo",

@@ -1,3 +1,9 @@
+import {
+  coalesceStructuredBlocks,
+  mergeAdjacentStructuredLines,
+  structuredLineText,
+} from "./structured-lines.js";
+
 const sourcePageByStructuredText = new WeakMap();
 
 function rect(value) {
@@ -245,13 +251,7 @@ export function jsonImageRects(structured) {
 }
 
 function lineText(line) {
-  if (typeof line?.text === "string")
-    return line.text.replace(/\s+/g, " ").trim();
-  return (line?.chars || [])
-    .map((args) => String(args?.[0] || ""))
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
+  return structuredLineText(line);
 }
 
 function charRect(args) {
@@ -281,7 +281,9 @@ function nativeLineSize(line) {
 function jsonLineSize(line) {
   const bbox = rect(line?.bbox);
   return (
-    Number(line?.font?.size) || (bbox ? Math.max(6, bbox[3] - bbox[1]) : 10)
+    Number(line?.font?.size) ||
+    Number(line?.font) ||
+    (bbox ? Math.max(6, bbox[3] - bbox[1]) : 10)
   );
 }
 
@@ -511,7 +513,21 @@ function paragraphBoundary(
 }
 
 function segmentNativeBlock(block, bodySize) {
-  const lines = (block.lines || []).filter((line) => lineText(line));
+  const coalesced = (block.lines || []).filter((line) => lineText(line));
+  const lines = mergeAdjacentStructuredLines(
+    coalesced,
+    (left, right) => {
+      const leftText = lineText(left);
+      const rightText = lineText(right);
+      return (
+        headingText(leftText, nativeLineSize(left), bodySize) &&
+        headingText(rightText, nativeLineSize(right), bodySize) &&
+        !/[.!?;:]$/.test(leftText) &&
+        `${leftText} ${rightText}`.length <= 140
+      );
+    },
+    "space",
+  );
   if (lines.length <= 1) return lines.length ? [{ ...block, lines }] : [];
 
   const toc = isTocPage(lines);
@@ -624,17 +640,20 @@ function segmentNativeBlock(block, bodySize) {
 }
 
 function segmentNativeBlocks(blocks) {
-  const sizes = blocks.flatMap((block) =>
+  const stableBlocks = coalesceStructuredBlocks(blocks);
+  const sizes = stableBlocks.flatMap((block) =>
     (block.lines || [])
       .map(nativeLineSize)
       .filter((size) => size > 4 && size < 40),
   );
   const bodySize = median(sizes);
-  return blocks.flatMap((block) => segmentNativeBlock(block, bodySize));
+  return stableBlocks.flatMap((block) => segmentNativeBlock(block, bodySize));
 }
 
 function segmentedJsonTextBlocks(data) {
-  const textBlocks = collectNodes(data?.blocks, "text", []);
+  const textBlocks = coalesceStructuredBlocks(
+    collectNodes(data?.blocks, "text", []),
+  );
   const sizes = textBlocks.flatMap((block) =>
     (block.lines || [])
       .map(jsonLineSize)
@@ -643,7 +662,21 @@ function segmentedJsonTextBlocks(data) {
   const bodySize = median(sizes);
   const result = [];
   for (const block of textBlocks) {
-    const lines = (block.lines || []).filter((line) => lineText(line));
+    const coalesced = (block.lines || []).filter((line) => lineText(line));
+    const lines = mergeAdjacentStructuredLines(
+      coalesced,
+      (left, right) => {
+        const leftText = lineText(left);
+        const rightText = lineText(right);
+        return (
+          headingText(leftText, jsonLineSize(left), bodySize, left.font) &&
+          headingText(rightText, jsonLineSize(right), bodySize, right.font) &&
+          !/[.!?;:]$/.test(leftText) &&
+          `${leftText} ${rightText}`.length <= 140
+        );
+      },
+      "space",
+    );
     if (!lines.length) continue;
     if (isTocPage(lines)) {
       for (let index = 0; index < lines.length; index += 1) {

@@ -2,8 +2,8 @@ import { expect, it } from "vitest";
 import {
   buildEquationCandidate,
   captionFor,
-  escapeMd,
-  inlineMathMarkdown,
+  isDiagramLike,
+  isEquation,
   jsonFallbackBlocks,
   latexMarkdown,
   looksLikeOcrEquation,
@@ -15,25 +15,6 @@ import {
 
 it("reconstructs equation candidates as LaTeX instead of visual assets", () => {
   expect(latexMarkdown("p ≤ μ + ½")).toBe("p \\leq \\mu + \\frac{1}{2}");
-});
-
-it("keeps ordinary punctuation readable instead of escaping every character", () => {
-  expect(escapeMd("Revenue, management. Price - demand! A/B")).toBe(
-    "Revenue, management. Price - demand! A/B",
-  );
-  expect(escapeMd("\\. escaped punctuation")).toBe(". escaped punctuation");
-});
-
-it("converts confident inline math and leaves prose relations alone", () => {
-  expect(inlineMathMarkdown("The model uses x = y + 2 in practice.")).toBe(
-    "The model uses $x = y + 2$ in practice.",
-  );
-  expect(inlineMathMarkdown("p(D1 > y1) is estimated.")).toBe(
-    "$p(D1 > y1)$ is estimated.",
-  );
-  expect(inlineMathMarkdown("The total amount = the posted amount plus adjustments.")).toBe(
-    "The total amount = the posted amount plus adjustments.",
-  );
 });
 
 it("associates a nearby figure caption with its visual placeholder", () => {
@@ -125,6 +106,14 @@ it("rejects Revenue Management prose and incomplete OCR equations", () => {
   expect(looksLikeOcrEquation("p2 = p1 P(D1 > y1)")).toBe(true);
   expect(looksLikeOcrEquation("Sy <<")).toBe(false);
   expect(looksLikeOcrEquation("x =")).toBe(false);
+});
+
+it("keeps ASCII diagrams out of display math and accepts compact equations", () => {
+  expect(isDiagramLike("+------------------+\n| Hub              |" )).toBe(true);
+  expect(isDiagramLike("+--> Public Key")).toBe(true);
+  expect(isEquation("+------------------+", { bbox: [0, 0, 200, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+  expect(isEquation("p ≤ μ + ½", { bbox: [80, 240, 260, 260], size: 12 }, [0, 0, 612, 792], 10)).toBe(true);
+  expect(isEquation("status = PENDING_ENROLLMENT", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
 });
 
 it("records source provenance and a reversible crop for OCR equation candidates", () => {

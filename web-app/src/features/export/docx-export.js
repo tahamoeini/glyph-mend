@@ -1,5 +1,9 @@
 import {
   AlignmentType,
+  createMathBase,
+  createMathNAryProperties,
+  createMathSubScriptElement,
+  createMathSuperScriptElement,
   Document,
   HeadingLevel,
   ImageRun,
@@ -10,8 +14,10 @@ import {
   MathRadical,
   MathRun,
   MathSubScript,
+  MathSubSuperScript,
   MathSum,
   MathSuperScript,
+  XmlComponent,
   Packer,
   PageBreak,
   Paragraph,
@@ -132,16 +138,69 @@ function asMathRunText(value) {
       return String(value.value ?? "");
     if (value.type === "symbol") return String(value.symbol ?? "");
     if (value.type === "unsupported") return value.raw || `\\${value.command || "?"}`;
-    if (value.type === "operator") return String(value.value ?? "");
+    if (value.type === "operator") return mathOperatorGlyph(value.value);
     if (value.type === "group") return (value.children || []).map(asMathRunText).join("");
   }
   return String(value);
+}
+
+function mathOperatorGlyph(value) {
+  return (
+    {
+      plus: "+",
+      minus: "−",
+      times: "×",
+      divide: "÷",
+      "plus-minus": "±",
+      "less-equal": "≤",
+      "greater-equal": "≥",
+      "not-equal": "≠",
+      approximately: "≈",
+      equivalent: "≡",
+      similar: "∼",
+      proportional: "∝",
+      in: "∈",
+      to: "→",
+      equals: "=",
+      "less-than": "<",
+      "greater-than": ">",
+      separator: "&",
+    }[value] ?? String(value ?? "")
+  );
 }
 
 function resolveMathChildren(node, nodeMap) {
   if (Array.isArray(node?.childrenIds) && nodeMap)
     return node.childrenIds.map((id) => nodeMap.get(id)).filter(Boolean);
   return Array.isArray(node?.children) ? node.children : [];
+}
+
+function mathBinaryComponents(node, nodeMap, operator, rawText, walk) {
+  const left = resolveMathNode(node, nodeMap, "left");
+  const right = resolveMathNode(node, nodeMap, "right");
+  const parts = [];
+  if (left !== null && left !== undefined) parts.push(...walk(left));
+  if (operator) parts.push(new MathRun(operator));
+  if (right !== null && right !== undefined) parts.push(...walk(right));
+  return parts.length ? parts : [new MathRun(rawText || " ")];
+}
+
+function mathNAry(symbol, children, lower, upper) {
+  const component = new XmlComponent("m:nary");
+  component.addChildElement(
+    createMathNAryProperties({
+      accent: symbol,
+      hasSuperScript: Boolean(upper?.length),
+      hasSubScript: Boolean(lower?.length),
+      limitLocationVal: "undOvr",
+    }),
+  );
+  if (lower?.length)
+    component.addChildElement(createMathSubScriptElement({ children: lower }));
+  if (upper?.length)
+    component.addChildElement(createMathSuperScriptElement({ children: upper }));
+  component.addChildElement(createMathBase({ children }));
+  return component;
 }
 
 function mathComponentsFromMathIR(ir, rawText = "") {
@@ -168,28 +227,56 @@ function mathComponentsFromMathIR(ir, rawText = "") {
       }
       case "root": {
         const value = node.value ?? resolveMathNode(node, nodeMap, "value") ?? node.children;
-        return [new MathRadical({ children: walk(value) })];
+        const degree = resolveMathNode(node, nodeMap, "index") ?? node.index;
+        return [
+          new MathRadical({
+            children: walk(value),
+            degree: degree ? walk(degree) : undefined,
+          }),
+        ];
       }
-      case "sum":
-      case "prod": {
+      case "sum": {
         const body = resolveMathNode(node, nodeMap, "body") || node.body;
+        if (!body && !node.bodyId)
+          return mathBinaryComponents(node, nodeMap, "+", rawText, walk);
         const lower = resolveMathNode(node, nodeMap, "lower") || node.lower;
         const upper = resolveMathNode(node, nodeMap, "upper") || node.upper;
+        const lowerComponents = lower ? walk(lower) : undefined;
+        const upperComponents = upper ? walk(upper) : undefined;
         return [
           new MathSum({
             children: walk(body),
-            subScript: lower ? walk(lower) : undefined,
-            superScript: upper ? walk(upper) : undefined,
+            subScript: lowerComponents,
+            superScript: upperComponents,
           }),
+        ];
+      }
+      case "prod": {
+        const body = resolveMathNode(node, nodeMap, "body") || node.body;
+        if (!body && !node.bodyId)
+          return mathBinaryComponents(node, nodeMap, "×", rawText, walk);
+        const lower = resolveMathNode(node, nodeMap, "lower") || node.lower;
+        const upper = resolveMathNode(node, nodeMap, "upper") || node.upper;
+        const children = walk(body);
+        const lowerComponents = lower ? walk(lower) : undefined;
+        const upperComponents = upper ? walk(upper) : undefined;
+        return [
+          mathNAry("∏", children, lowerComponents, upperComponents),
         ];
       }
       case "integral": {
         const body = resolveMathNode(node, nodeMap, "body") || node.body;
         const lower = resolveMathNode(node, nodeMap, "lower") || node.lower;
         const upper = resolveMathNode(node, nodeMap, "upper") || node.upper;
+        const differential =
+          resolveMathNode(node, nodeMap, "differential") || node.differential;
+        const children = [
+          ...walk(body),
+          ...(differential ? walk(differential) : []),
+        ];
         return [
           new MathIntegral({
-            children: walk(body),
+            children,
             subScript: lower ? walk(lower) : undefined,
             superScript: upper ? walk(upper) : undefined,
           }),
@@ -198,6 +285,19 @@ function mathComponentsFromMathIR(ir, rawText = "") {
       case "subscript": {
         const base = resolveMathNode(node, nodeMap, "base") ?? resolveMathNode(node, nodeMap, "left") ?? node.base ?? node.left;
         const script = resolveMathNode(node, nodeMap, "value") ?? resolveMathNode(node, nodeMap, "right") ?? node.value ?? node.right;
+        if (base?.type === "superscript") {
+          const plainBase =
+            resolveMathNode(base, nodeMap, "base") ?? base.base;
+          const superScript =
+            resolveMathNode(base, nodeMap, "value") ?? base.value;
+          return [
+            new MathSubSuperScript({
+              children: walk(plainBase ?? " "),
+              subScript: walk(script ?? " "),
+              superScript: walk(superScript ?? " "),
+            }),
+          ];
+        }
         return [
           new MathSubScript({
             children: walk(base ?? " "),
@@ -208,6 +308,19 @@ function mathComponentsFromMathIR(ir, rawText = "") {
       case "superscript": {
         const base = resolveMathNode(node, nodeMap, "base") ?? resolveMathNode(node, nodeMap, "left") ?? node.base ?? node.left;
         const script = resolveMathNode(node, nodeMap, "value") ?? resolveMathNode(node, nodeMap, "right") ?? node.value ?? node.right;
+        if (base?.type === "subscript") {
+          const plainBase =
+            resolveMathNode(base, nodeMap, "base") ?? base.base;
+          const subScript =
+            resolveMathNode(base, nodeMap, "value") ?? base.value;
+          return [
+            new MathSubSuperScript({
+              children: walk(plainBase ?? " "),
+              subScript: walk(subScript ?? " "),
+              superScript: walk(script ?? " "),
+            }),
+          ];
+        }
         return [
           new MathSuperScript({
             children: walk(base ?? " "),
@@ -216,13 +329,31 @@ function mathComponentsFromMathIR(ir, rawText = "") {
         ];
       }
       case "function": {
+        const name =
+          resolveMathNode(node, nodeMap, "name") || node.name || "function";
+        const argument =
+          resolveMathNode(node, nodeMap, "argument") ||
+          node.argument ||
+          node.children ||
+          [];
         return [
           new MathFunction({
-            name: walk(node.name),
-            children: walk(node.argument ?? node.children ?? []),
+            name: walk(name),
+            children: walk(argument),
           }),
         ];
       }
+      case "accent": {
+        const value =
+          resolveMathNode(node, nodeMap, "value") || node.value || " ";
+        return [new MathRun(`${node.accent || ""}${asMathRunText(value)}`)];
+      }
+      case "environment": {
+        const body = resolveMathNode(node, nodeMap, "body") || node.body;
+        return walk(body);
+      }
+      case "linebreak":
+        return [new MathRun(" ")];
       case "identifier":
       case "number":
       case "text":
@@ -230,15 +361,21 @@ function mathComponentsFromMathIR(ir, rawText = "") {
       case "operator":
         return [new MathRun(asMathRunText(node))];
       case "equation":
-      case "binary": {
-        const left = resolveMathNode(node, nodeMap, "left");
-        const right = resolveMathNode(node, nodeMap, "right");
-        const parts = [];
-        if (left !== null && left !== undefined) parts.push(...walk(left));
-        if (right !== null && right !== undefined) parts.push(...walk(right));
-        if (!parts.length && Array.isArray(node.children)) parts.push(...walk(node.children));
-        return parts.length ? parts : [new MathRun(rawText || " ")];
-      }
+        return mathBinaryComponents(node, nodeMap, "=", rawText, walk);
+      case "difference":
+        return mathBinaryComponents(node, nodeMap, "−", rawText, walk);
+      case "product":
+        return mathBinaryComponents(node, nodeMap, "×", rawText, walk);
+      case "quotient":
+        return mathBinaryComponents(node, nodeMap, "÷", rawText, walk);
+      case "binary":
+        return mathBinaryComponents(
+          node,
+          nodeMap,
+          mathOperatorGlyph(node.value),
+          rawText,
+          walk,
+        );
       case "sequence": {
         const parts = resolveMathChildren(node, nodeMap).flatMap((child) => walk(child));
         return parts.length ? parts : [new MathRun(rawText || " ")];
@@ -269,11 +406,16 @@ function legacyMathComponents(source) {
     const lower = match[1];
     const upper = match[2];
     const body = match[3] || " ";
-    const constructor = text.startsWith("\\sum")
-      ? MathSum
-      : text.startsWith("\\prod")
-        ? MathSum
-        : MathIntegral;
+    if (text.startsWith("\\prod"))
+      return [
+        mathNAry(
+          "∏",
+          legacyMathComponents(body),
+          lower ? legacyMathComponents(lower) : undefined,
+          upper ? legacyMathComponents(upper) : undefined,
+        ),
+      ];
+    const constructor = text.startsWith("\\sum") ? MathSum : MathIntegral;
     return [
       new constructor({
         children: legacyMathComponents(body),
@@ -386,12 +528,28 @@ function extractMathSequence(source) {
     const body = (matchSum[3] || "").trim();
     const bodyParts = extractMathSequence(body);
     const remaining = raw.slice(matchSum[0].length).trim();
+    const lowerParts = lower ? extractMathSequence(lower) : undefined;
+    const upperParts = upper ? extractMathSequence(upper) : undefined;
+    const operator = raw.startsWith("\\sum")
+      ? new MathSum({
+          children: bodyParts.length ? bodyParts : [new MathRun(body || " ")],
+          subScript: lowerParts,
+          superScript: upperParts,
+        })
+      : raw.startsWith("\\prod")
+        ? mathNAry(
+            "∏",
+            bodyParts.length ? bodyParts : [new MathRun(body || " ")],
+            lowerParts,
+            upperParts,
+          )
+        : new MathIntegral({
+            children: bodyParts.length ? bodyParts : [new MathRun(body || " ")],
+            subScript: lowerParts,
+            superScript: upperParts,
+          });
     return [
-      new MathSum({
-        children: bodyParts.length ? bodyParts : [new MathRun(body || " ")],
-        subScript: lower ? extractMathSequence(lower) : undefined,
-        superScript: upper ? extractMathSequence(upper) : undefined,
-      }),
+      operator,
       ...extractMathSequence(remaining),
     ];
   }
@@ -420,17 +578,15 @@ function extractMathSequence(source) {
 
 function mathComponents(source) {
   const raw = source.trim();
-  const sequence = extractMathSequence(raw);
-  if (sequence.length) return sequence;
-
   const parsed = parseLatexToMathIR(raw);
   const irComponents = mathComponentsFromMathIR(parsed, raw);
-  if (irComponents.length && irComponents.some((component) => component && component.constructor && component.constructor.name !== "MathRun")) {
-    return irComponents;
-  }
-  if (parsed.errors?.length || parsed.warnings?.length) {
+  if (!parsed.errors?.length && irComponents.length) return irComponents;
+
+  if (parsed.errors?.length || parsed.warnings?.length)
     return [new MathRun(raw || " ")];
-  }
+
+  const sequence = extractMathSequence(raw);
+  if (sequence.length) return sequence;
   return legacyMathComponents(raw);
 }
 export async function markdownToDocx(

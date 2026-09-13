@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100%;margin:0;padding:0;min-height:100vh;}body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "on-error": "#ffffff", "on-secondary-fixed": "#121c29", "secondary-fixed-dim": "#bdc7d9", "on-error-container": "#93000a", "secondary-container": "#d6e0f2", "background": "#f9f9ff", "surface-bright": "#f9f9ff", "on-primary-fixed-variant": "#00468d", "inverse-surface": "#2c313a", "on-surface-variant": "#414754", "inverse-primary": "#aac7ff", "surface-container-high": "#e4e8f5", "surface-tint": "#005db8", "primary-container": "#0073e0", "on-primary-fixed": "#001b3e", "on-secondary-container": "#596373", "outline": "#717786", "on-secondary-fixed-variant": "#3d4756", "tertiary-fixed": "#6cff82", "on-secondary": "#ffffff", "error-container": "#ffdad6", "on-background": "#171c25", "on-tertiary-container": "#f7fff2", "on-tertiary-fixed-variant": "#00531a", "on-tertiary-fixed": "#002106", "error": "#ba1a1a", "on-primary-container": "#fefcff", "secondary-fixed": "#d9e3f5", "secondary": "#555f6e", "surface-container-low": "#f0f3ff", "on-surface": "#171c25", "surface-container": "#eaeefb", "tertiary-container": "#008730", "on-tertiary": "#ffffff", "primary-fixed": "#d6e3ff", "surface": "#f9f9ff", "outline-variant": "#c0c6d6", "inverse-on-surface": "#ecf0fe", "surface-container-highest": "#dee2ef", "on-primary": "#ffffff", "surface-container-lowest": "#ffffff", "primary-fixed-dim": "#aac7ff", "tertiary": "#006b25", "surface-variant": "dee2ef", "tertiary-fixed-dim": "#47e266", "primary": "#005ab3", "surface-dim": "#d6dae7" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "space-xl": "1.5rem", "space-md": "0.75rem", "space-xs": "0.25rem", "space-lg": "1rem", "gutter": "1rem", "margin": "1rem", "space-sm": "0.5rem" }, "fontFamily": { "code-sm": ["JetBrains Mono"], "label-sm": ["Inter"], "body-lg": ["Inter"], "headline-lg": ["Inter"], "body-sm": ["Inter"], "label-md": ["Inter"], "headline-md": ["Inter"], "body-md": ["Inter"], "headline-sm": ["Inter"] }, "fontSize": { "code-sm": ["11px", { "lineHeight": "15px", "letterSpacing": "0em", "fontWeight": "400" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "500" }], "body-lg": ["15px", { "lineHeight": "22px", "letterSpacing": "-0.005em", "fontWeight": "400" }], "headline-lg": ["28px", { "lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.005em", "fontWeight": "400" }], "label-md": ["13px", { "lineHeight": "16px", "letterSpacing": "-0.005em", "fontWeight": "500" }], "headline-md": ["20px", { "lineHeight": "26px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "body-md": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }], "headline-sm": ["16px", { "lineHeight": "22px", "letterSpacing": "-0.01em", "fontWeight": "600" }] } } } }</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-background text-on-surface font-body-md text-body-md flex flex-col min-h-screen antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><header class="fixed top-0 w-full z-50 pt-safe bg-surface-bright/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-14 px-gutter flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="Brand logo. - Primary color: #0a84ff - Font: inter - Mode: light - Roundness: rounded-md" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1XYA2J66N6acVq5jmPRJ2DkubiuqUDDuKS_2gTwTWsHbtbUKy08GlTxdvtGCwh_seD6tx9KAD8zmZEqefdH5e-lZF0khFqww-etEPypvAi0x3Qy8fbUI8OxtWX3pzGTFGQprZ0rfxsJQKwbj1hS7k-OQ2QsgiQEvREap53SKWmiLDuvECOxCO9yXuVI6lnwEJLLzg2px7UysNJwHAFicTA9RhzAh3ngbdBYPI2LT6mhzOQC_5kxjxq8tg"/><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">GlyphMend</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-none mt-0.5">Inspector Attributes</span></div></div><div class="flex items-center gap-space-xs"><button aria-label="Toggle Appearance" class="w-11 h-11 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors" onclick="document.documentElement.classList.toggle('dark')" type="button"><span class="material-symbols-outlined text-[20px]">light_mode</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm ml-1"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-14 pb-safe bg-background"><div class="flex flex-col w-full pb-safe">
+<!-- Interactive Modal Sheet Container -->
+<div class="w-full max-w-md mx-auto px-gutter py-space-sm flex flex-col gap-space-lg">
+<!-- Sheet Drag Handle & Header -->
+<div class="flex flex-col items-center gap-space-sm pt-space-xs">
+<div class="w-10 h-1 rounded-full bg-surface-container-highest"></div>
+<div class="w-full flex items-center justify-between mt-space-xs">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">tune</span>
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm text-on-surface leading-tight">Document Settings</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant">ArXiv_Quantum_State_Prep.pdf</p>
+</div>
+</div>
+<button aria-label="Close" class="w-8 h-8 rounded-full bg-surface-container hover:bg-surface-container-high active:scale-95 text-on-surface-variant flex items-center justify-center transition-all" type="button">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+</div>
+<!-- Section 1: Scope & Page Range -->
+<section class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between px-space-xs">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Document Scope</span>
+<span class="font-code-sm text-code-sm text-primary bg-primary-fixed px-space-xs py-0.5 rounded">745 Pages Found</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-md">
+<!-- Segmented Control Rail -->
+<div class="bg-surface-container p-1 rounded-lg flex items-center relative" id="range-toggle-group">
+<button class="flex-1 py-1.5 rounded-md font-label-md text-label-md transition-all text-on-surface-variant flex items-center justify-center gap-1.5" id="btn-all-pages" onclick="setScopeMode('all')" type="button">
+<span class="material-symbols-outlined text-[16px]">menu_book</span>
+<span>All pages (745)</span>
+</button>
+<button class="flex-1 py-1.5 rounded-md font-label-md text-label-md transition-all bg-surface-container-lowest text-primary shadow-sm flex items-center justify-center gap-1.5 font-medium" id="btn-custom-range" onclick="setScopeMode('custom')" type="button">
+<span class="material-symbols-outlined text-[16px]">edit_note</span>
+<span>Custom Range</span>
+</button>
+</div>
+<!-- Range Input Field -->
+<div class="flex flex-col gap-1.5" id="range-input-container">
+<label class="font-label-sm text-label-sm text-on-surface-variant" for="page-range-input">Target Intervals</label>
+<div class="flex items-center bg-surface-container-low rounded-lg px-space-sm py-1.5">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px] mr-2">tag</span>
+<input class="bg-transparent border-none outline-none font-code-sm text-code-sm text-on-surface w-full selection:bg-primary-fixed" id="page-range-input" type="text" value="1–5, 8, 12–20"/>
+<button class="text-on-surface-variant hover:text-on-surface p-0.5" onclick="document.getElementById('page-range-input').value=''" type="button">
+<span class="material-symbols-outlined text-[16px]">cancel</span>
+</button>
+</div>
+<p class="font-body-sm text-body-sm text-on-secondary-container flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">info</span>
+            Use commas and hyphens (e.g. 1–10, 15, 22)
+          </p>
+</div>
+</div>
+</section>
+<!-- Section 2: Extraction -->
+<section class="flex flex-col gap-space-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider px-space-xs">Extraction Modules</span>
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
+<!-- Toggle Item 1 -->
+<label class="flex items-center justify-between p-space-md hover:bg-surface-container-low/60 cursor-pointer transition-colors">
+<div class="flex items-start gap-space-sm pr-space-md">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[18px]">table_chart</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Text tables</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Recover structured table content as clean CSV/Markdown</span>
+</div>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+<!-- Toggle Item 2 -->
+<label class="flex items-center justify-between p-space-md hover:bg-surface-container-low/60 cursor-pointer transition-colors bg-surface-container-low/20">
+<div class="flex items-start gap-space-sm pr-space-md">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[18px]">functions</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Editable equations</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Detect inline and display expressions directly into LaTeX</span>
+</div>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+<!-- Toggle Item 3 -->
+<label class="flex items-center justify-between p-space-md hover:bg-surface-container-low/60 cursor-pointer transition-colors">
+<div class="flex items-start gap-space-sm pr-space-md">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[18px]">crop_original</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Preserve visual content</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Keep figures, charts, and formula image backups</span>
+</div>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+<!-- Toggle Item 4 -->
+<label class="flex items-center justify-between p-space-md hover:bg-surface-container-low/60 cursor-pointer transition-colors bg-surface-container-low/20">
+<div class="flex items-start gap-space-sm pr-space-md">
+<div class="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant mt-0.5 shrink-0">
+<span class="material-symbols-outlined text-[18px]">document_scanner</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-semibold">OCR when needed</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Read rasterized pages and low-res flattened text automatically</span>
+</div>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+</div>
+</section>
+<!-- Section 3: Processing Refinement -->
+<section class="flex flex-col gap-space-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider px-space-xs">Layout &amp; Flow Polish</span>
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
+<!-- Toggle Item 5 -->
+<label class="flex items-center justify-between p-space-md hover:bg-surface-container-low/60 cursor-pointer transition-colors">
+<div class="flex flex-col pr-space-md">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Remove repeated headers &amp; footers</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Strip running chapter headers and folios</span>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+<!-- Toggle Item 6 -->
+<label class="flex items-center justify-between p-space-md hover:bg-surface-container-low/60 cursor-pointer transition-colors bg-surface-container-low/20">
+<div class="flex flex-col pr-space-md">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Join split paragraphs across pages</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Heuristically weld hyphenated breaks seamlessly</span>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+<!-- Toggle Item 7 -->
+<label class="flex items-center justify-between p-space-md hover:bg-surface-container-low/60 cursor-pointer transition-colors">
+<div class="flex flex-col pr-space-md">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Detect heading hierarchy (H1–H4)</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Map visual font weights to semantic document headers</span>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+<!-- Toggle Item 8 -->
+<label class="flex items-center justify-between p-space-md hover:bg-surface-container-low/60 cursor-pointer transition-colors bg-surface-container-low/20">
+<div class="flex flex-col pr-space-md">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Keep source page markers</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Inject discreet anchor references (`&lt;!-- pg 4 --&gt;`)</span>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+</div>
+</section>
+<!-- Section 4: Advanced Parameters -->
+<section class="flex flex-col gap-space-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider px-space-xs">Advanced Engine Tuning</span>
+<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-md">
+<!-- OCR Engine Select -->
+<div class="flex flex-col gap-1.5">
+<label class="font-label-md text-label-md text-on-surface font-medium flex items-center justify-between" for="ocr-engine-select">
+<span>OCR Recognition Engine</span>
+<span class="font-body-sm text-body-sm text-tertiary flex items-center gap-1 font-normal">
+<span class="material-symbols-outlined text-[14px]">bolt</span>
+              GPU Accelerated
+            </span>
+</label>
+<div class="relative flex items-center">
+<select class="w-full h-10 px-3 pr-9 bg-surface-container-low rounded-lg font-body-md text-body-md text-on-surface appearance-none outline-none" id="ocr-engine-select">
+<option selected="" value="eng_math">English (eng) + Math</option>
+<option value="multi_euro">Multilingual European (fra, deu, spa)</option>
+<option value="cjk">East Asian (jpn, zho, kor)</option>
+<option value="legacy_tess">Tesseract 5 Legacy Fallback</option>
+</select>
+<span class="material-symbols-outlined text-on-surface-variant absolute right-3 pointer-events-none text-[20px]">unfold_more</span>
+</div>
+</div>
+<!-- Render DPI Segmented Slider/Field -->
+<div class="flex items-center justify-between pt-1">
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface font-medium">Render Quality</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Direct raster density for glyph inspection</span>
+</div>
+<div class="flex items-center gap-1 bg-surface-container p-1 rounded-lg">
+<button class="px-2.5 py-1 rounded-md font-code-sm text-code-sm text-on-surface-variant hover:text-on-surface" onclick="setDpi(this, '150')" type="button">150</button>
+<button class="px-2.5 py-1 rounded-md font-code-sm text-code-sm bg-surface-container-lowest text-primary shadow-sm font-semibold" onclick="setDpi(this, '300')" type="button">300 DPI</button>
+<button class="px-2.5 py-1 rounded-md font-code-sm text-code-sm text-on-surface-variant hover:text-on-surface" onclick="setDpi(this, '600')" type="button">600</button>
+</div>
+</div>
+<!-- Strict Mathematical Mode -->
+<div class="pt-space-xs">
+<label class="flex items-center justify-between cursor-pointer">
+<div class="flex flex-col pr-space-md">
+<div class="flex items-center gap-1.5">
+<span class="font-label-md text-label-md text-on-surface font-semibold">Strict mathematical mode</span>
+<span class="font-label-sm text-label-sm text-primary bg-primary-fixed px-1.5 rounded-full">v2.4</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Isolate equation tokens before running layout block flow</span>
+</div>
+<div class="relative inline-flex items-center cursor-pointer shrink-0">
+<input checked="" class="sr-only peer" onchange="updateCounter()" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-primary after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all shadow-sm"></div>
+</div>
+</label>
+</div>
+</div>
+</section>
+<!-- Execution Feedback / Preset Note -->
+<div class="bg-secondary-container/40 rounded-xl p-space-md flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-fixed">
+<span class="material-symbols-outlined text-[16px]">verified</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-secondary-fixed font-medium">Profile: High Precision Academic</p>
+<p class="font-body-sm text-body-sm text-on-secondary-container"><span id="active-rule-count">9</span> modules currently active</p>
+</div>
+</div>
+<button class="font-label-sm text-label-sm text-primary font-medium hover:underline" onclick="toastProfile()" type="button">
+        Save Profile
+      </button>
+</div>
+<!-- Bottom Action Group -->
+<div class="flex flex-col gap-space-sm pt-space-xs pb-space-lg">
+<button class="w-full h-12 bg-primary hover:bg-primary-container text-on-primary rounded-xl font-headline-sm text-headline-sm flex items-center justify-center gap-2 shadow-sm transition-transform active:scale-[0.99]" id="apply-btn" onclick="applySettings()" type="button">
+<span class="material-symbols-outlined text-[20px]">sync</span>
+<span>Apply to Document</span>
+</button>
+<button class="w-full h-11 bg-transparent hover:bg-surface-container text-secondary rounded-xl font-label-md text-label-md flex items-center justify-center gap-1.5 transition-colors" onclick="resetToDefaults()" type="button">
+<span class="material-symbols-outlined text-[18px]">restart_alt</span>
+<span>Reset Defaults</span>
+</button>
+</div>
+</div>
+</div>
+<script>
+  function setScopeMode(mode) {
+    const btnAll = document.getElementById('btn-all-pages');
+    const btnCustom = document.getElementById('btn-custom-range');
+    const inputContainer = document.getElementById('range-input-container');
+    
+    if (mode === 'all') {
+      btnAll.className = "flex-1 py-1.5 rounded-md font-label-md text-label-md transition-all bg-surface-container-lowest text-primary shadow-sm flex items-center justify-center gap-1.5 font-medium";
+      btnCustom.className = "flex-1 py-1.5 rounded-md font-label-md text-label-md transition-all text-on-surface-variant flex items-center justify-center gap-1.5";
+      inputContainer.classList.add('opacity-40', 'pointer-events-none');
+    } else {
+      btnCustom.className = "flex-1 py-1.5 rounded-md font-label-md text-label-md transition-all bg-surface-container-lowest text-primary shadow-sm flex items-center justify-center gap-1.5 font-medium";
+      btnAll.className = "flex-1 py-1.5 rounded-md font-label-md text-label-md transition-all text-on-surface-variant flex items-center justify-center gap-1.5";
+      inputContainer.classList.remove('opacity-40', 'pointer-events-none');
+    }
+  }
+
+  function setDpi(element, value) {
+    const parent = element.parentElement;
+    parent.querySelectorAll('button').forEach(btn => {
+      btn.className = "px-2.5 py-1 rounded-md font-code-sm text-code-sm text-on-surface-variant hover:text-on-surface";
+      if (!btn.textContent.includes('DPI')) {
+        btn.textContent = btn.textContent.replace(' DPI', '');
+      }
+    });
+    element.className = "px-2.5 py-1 rounded-md font-code-sm text-code-sm bg-surface-container-lowest text-primary shadow-sm font-semibold";
+    element.textContent = value + ' DPI';
+  }
+
+  function updateCounter() {
+    const toggles = document.querySelectorAll('input[type="checkbox"]');
+    let count = 0;
+    toggles.forEach(t => { if(t.checked) count++; });
+    const counterEl = document.getElementById('active-rule-count');
+    if (counterEl) counterEl.textContent = count;
+  }
+
+  function applySettings() {
+    const btn = document.getElementById('apply-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-[20px]">progress_activity</span><span>Applying Rules...</span>';
+    btn.classList.add('pointer-events-none', 'opacity-80');
+    setTimeout(() => {
+      btn.innerHTML = '<span class="material-symbols-outlined text-[20px]">done</span><span>Settings Applied!</span>';
+      setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.classList.remove('pointer-events-none', 'opacity-80');
+      }, 1500);
+    }, 700);
+  }
+
+  function resetToDefaults() {
+    const toggles = document.querySelectorAll('input[type="checkbox"]');
+    toggles.forEach(t => t.checked = true);
+    setScopeMode('custom');
+    document.getElementById('page-range-input').value = '1–5, 8, 12–20';
+    document.getElementById('ocr-engine-select').value = 'eng_math';
+    updateCounter();
+  }
+
+  function toastProfile() {
+    const toast = document.createElement('div');
+    toast.className = "fixed bottom-8 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface px-4 py-2 rounded-xl text-body-sm shadow-xl z-50 transition-opacity duration-300 flex items-center gap-2";
+    toast.innerHTML = '<span class="material-symbols-outlined text-[16px] text-tertiary-fixed">bookmark_added</span> Preset configuration saved';
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, 2000);
+  }
+</script></main></body></html>

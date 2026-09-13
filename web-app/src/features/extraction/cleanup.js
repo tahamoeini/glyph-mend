@@ -1,6 +1,7 @@
 const PAGE = /^\s*<!--\s*page:\s*(\d+)\s*-->\s*$/;
 const STRUCTURAL =
   /^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\||```|~~~|\$\$|\[(?:VISUAL_|SOURCE_))/;
+const FENCE = /^\s*(?:```|~~~)[A-Za-z0-9_-]*\s*$/;
 
 export function normalizeText(value = "") {
   return value
@@ -38,8 +39,14 @@ function plainMarkdownLine(line) {
     .replace(/^\s*#{1,6}\s+/, "")
     .replace(/^\s*>\s?/, "")
     .replace(/\*\*|__|~~|`/g, "")
+    .replace(/\\([\\`*_{}\[\]#+.!|$])/g, "$1")
+    .replace(/\\-/g, "-")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isFenceLine(line) {
+  return FENCE.test(String(line || ""));
 }
 
 function signature(line) {
@@ -47,6 +54,7 @@ function signature(line) {
     .replace(/^\s*(?:page\s*)?(?:[ivxlcdm]{1,10}|\d{1,5})(?:\s*[·|:—–-]\s*|\s+)/i, "")
     .replace(/\s+/g, " ")
     .trim();
+  value = value.replace(/\d{1,5}\s*\/\s*\d{1,5}\s*$/g, "<page>/<pages>");
   const trailing = /^(.*?)\s+(?:page\s*)?(?:\d{1,5}|[ivxlcdm]{1,10})$/i.exec(value);
   if (trailing && trailing[1].length >= 3) value = trailing[1].trim();
   return value.toLowerCase();
@@ -107,7 +115,9 @@ function normalizeEdgeToken(token) {
     .replace(/^[_*`]+|[_*`]+$/g, "")
     .replace(/\\([.!])/g, "$1")
     .toLowerCase();
-  return /^(?:page)?\d{1,5}$/.test(value) || /^[ivxlcdm]{1,10}$/i.test(value)
+  return /^(?:page)?\d{1,5}$/.test(value) ||
+    /^\d{1,5}\s*\/\s*\d{1,5}$/.test(value) ||
+    /^[ivxlcdm]{1,10}$/i.test(value)
     ? "<page>"
     : value;
 }
@@ -202,7 +212,7 @@ function stripCommonEdgeTokens(text, fragment, fromStart) {
 }
 
 function isPageLabel(value) {
-  return /^\s*(?:page\s*)?(?:\d{1,5}|[ivxlcdm]{1,10})\s*$/i.test(
+  return /^\s*(?:page\s*)?(?:\d{1,5}\s*\/\s*\d{1,5}|\d{1,5}|[ivxlcdm]{1,10})\s*$/i.test(
     plainMarkdownLine(value),
   );
 }
@@ -247,39 +257,47 @@ export function removeRunningMatter(
     if (commonHeader) source = stripCommonEdgeTokens(source, commonHeader, true);
     if (commonFooter) source = stripCommonEdgeTokens(source, commonFooter, false);
     const lines = source.split("\n");
-    const cleaned = lines
-      .map((line) => {
-        let value = line;
-        if (headers)
-          value = stripEdgeFragment(value, edges.headers, repeated, true);
-        if (footers)
-          value = stripEdgeFragment(value, edges.footers, repeated, false);
-        return value;
-      })
-      .filter((line) => {
-        const key = signature(line);
-        if (!key && !plainMarkdownLine(line)) return false;
-        const headerMatch =
-          headers && pageHeaderKeys.has(key) && repeated.has(key);
-        const footerMatch =
-          footers && pageFooterKeys.has(key) && repeated.has(key);
-        if (headerMatch || footerMatch) return false;
-        if (isPageLabel(line)) {
-          const raw = plainMarkdownLine(line);
-          const headerLabel =
-            headers &&
-            edges.headers.some((edge) => plainMarkdownLine(edge) === raw);
-          const footerLabel =
-            footers &&
-            edges.footers.some((edge) => plainMarkdownLine(edge) === raw);
-          if (headerLabel || footerLabel) return false;
-        }
-        return true;
-      })
+    const cleaned = [];
+    let inFence = false;
+    for (const line of lines) {
+      if (isFenceLine(line)) {
+        cleaned.push(line);
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) {
+        cleaned.push(line);
+        continue;
+      }
+      let value = line;
+      if (headers)
+        value = stripEdgeFragment(value, edges.headers, repeated, true);
+      if (footers)
+        value = stripEdgeFragment(value, edges.footers, repeated, false);
+      const key = signature(line);
+      if (!key && !plainMarkdownLine(line)) continue;
+      const headerMatch =
+        headers && pageHeaderKeys.has(key) && repeated.has(key);
+      const footerMatch =
+        footers && pageFooterKeys.has(key) && repeated.has(key);
+      if (headerMatch || footerMatch) continue;
+      if (isPageLabel(line)) {
+        const raw = plainMarkdownLine(line);
+        const headerLabel =
+          headers &&
+          edges.headers.some((edge) => plainMarkdownLine(edge) === raw);
+        const footerLabel =
+          footers &&
+          edges.footers.some((edge) => plainMarkdownLine(edge) === raw);
+        if (headerLabel || footerLabel) continue;
+      }
+      cleaned.push(value);
+    }
+    const text = cleaned
       .join("\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
-    return { ...page, text: cleaned };
+    return { ...page, text };
   });
 }
 
@@ -423,6 +441,8 @@ export function plainText(markdown) {
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/^\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?$/gm, "")
     .replace(/\|/g, "\t")
+    .replace(/\\([\\`*_{}\[\]#+.!|$])/g, "$1")
+    .replace(/\\-/g, "-")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -465,11 +485,22 @@ export function qualityAudit(pages, markdown, warnings = []) {
       /\p{L}{2,}-\n+(?:<!--\s*page:[^>]+-->\s*)?\p{Ll}{2,}/gu,
     ) || []
   ).length;
-  const leakedRunning = (
-    markdown.match(
-      /^(?:#{1,6}\s+)?(?:\d+\s+)?(?:the theory and practice of revenue management|[A-Z][A-Za-z &-]+\s+\d{1,4})$/gim,
-    ) || []
-  ).length;
+  const repeated = repeatedEdgeSignatures(pages, true, true);
+  const leakedRunning = markdown
+    .split("\n")
+    .filter((line) => {
+      const value = plainMarkdownLine(line);
+      if (!value) return false;
+      const candidate =
+        isPageLabel(value) ||
+        repeated.has(signature(line));
+      return (
+        candidate &&
+        /^(?:the theory and practice of revenue management|[A-Z][A-Za-z &-]+\s+\d{1,4})$/i.test(
+          value,
+        )
+      );
+    }).length;
   if (empty.length)
     issues.push({
       code: "LOW_TEXT_PAGES",
