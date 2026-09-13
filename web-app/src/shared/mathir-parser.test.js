@@ -13,6 +13,26 @@ it("accepts normalized relation commands emitted by the extractor", () => {
   const ir = parseLatexToMathIR("p \\leq q + 1");
   expect(ir.errors).toEqual([]);
   expect(ir.nodes.length).toBeGreaterThan(0);
+  expect(ir.nodes.find((node) => node.type === "binary")?.value).toBe(
+    "less-equal",
+  );
+});
+
+it("preserves distinct non-equality relation operators in MathIR", () => {
+  const less = parseLatexToMathIR("x \\leq y");
+  const greater = parseLatexToMathIR("x \\geq y");
+  expect(less.nodes.find((node) => node.type === "binary")?.value).toBe(
+    "less-equal",
+  );
+  expect(greater.nodes.find((node) => node.type === "binary")?.value).toBe(
+    "greater-equal",
+  );
+});
+
+it("recognizes supported named function commands", () => {
+  const ir = parseLatexToMathIR("\\max x");
+  expect(ir.errors || []).toHaveLength(0);
+  expect(ir.nodes.some((node) => node.type === "function")).toBe(true);
 });
 
 it("parses nested fraction structure and preserves semantic structure", () => {
