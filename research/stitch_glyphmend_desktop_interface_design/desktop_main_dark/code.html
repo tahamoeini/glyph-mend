@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"secondary-fixed":"#d9e3f5","on-surface":"#171c25","inverse-on-surface":"#ecf0fe","on-background":"#171c25","surface-tint":"#005db8","background":"#f9f9ff","on-error-container":"#93000a","on-primary":"#ffffff","tertiary-fixed":"#6cff82","on-secondary-fixed":"#121c29","on-tertiary-container":"#f7fff2","on-tertiary-fixed":"#002106","surface-dim":"#d6dae7","surface-container":"#eaeefb","surface-container-high":"#e4e8f5","surface-variant":"#dee2ef","on-primary-container":"#fefcff","on-tertiary-fixed-variant":"#00531a","primary-container":"#0073e0","on-error":"#ffffff","on-surface-variant":"#414754","surface-bright":"#f9f9ff","primary":"#005ab3","outline":"#717786","outline-variant":"#c0c6d6","on-primary-fixed-variant":"#00468d","primary-fixed-dim":"#aac7ff","surface":"#f9f9ff","secondary-container":"#d6e0f2","surface-container-lowest":"#ffffff","surface-container-highest":"#dee2ef","error":"#ba1a1a","primary-fixed":"#d6e3ff","secondary-fixed-dim":"#bdc7d9","error-container":"#ffdad6","secondary":"#555f6e","tertiary":"#006b25","inverse-surface":"#2c313a","on-primary-fixed":"#001b3e","tertiary-fixed-dim":"#47e266","inverse-primary":"#aac7ff","on-secondary-container":"#596373","on-secondary":"#ffffff","surface-container-low":"#f0f3ff","tertiary-container":"#008730","on-tertiary":"#ffffff","on-secondary-fixed-variant":"#3d4756"},borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"},spacing:{"margin":"1rem","space-sm":"0.5rem","space-xl":"1.5rem","gutter":"1rem","space-md":"0.75rem","space-xs":"0.25rem","space-lg":"1rem"},fontFamily:{"body-lg":["Inter"],"body-sm":["Inter"],"body-md":["Inter"],"headline-lg":["Inter"],"headline-sm":["Inter"],"label-sm":["Inter"],"label-md":["Inter"],"code-sm":["JetBrains Mono"],"headline-md":["Inter"]},fontSize:{"body-lg":["15px",{"lineHeight":"22px","letterSpacing":"-0.005em","fontWeight":"400"}],"body-sm":["12px",{"lineHeight":"16px","letterSpacing":"0.005em","fontWeight":"400"}],"body-md":["13px",{"lineHeight":"18px","letterSpacing":"0em","fontWeight":"400"}],"headline-lg":["28px",{"lineHeight":"34px","letterSpacing":"-0.02em","fontWeight":"600"}],"headline-sm":["16px",{"lineHeight":"22px","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","letterSpacing":"0.01em","fontWeight":"500"}],"label-md":["13px",{"lineHeight":"16px","letterSpacing":"-0.005em","fontWeight":"500"}],"code-sm":["11px",{"lineHeight":"15px","letterSpacing":"0em","fontWeight":"400"}],"headline-md":["20px",{"lineHeight":"26px","letterSpacing":"-0.015em","fontWeight":"600"}]}}}}</script></head><body class="bg-background font-body-md text-on-surface antialiased select-none min-h-screen flex flex-col"><header class="fixed top-0 left-0 w-full z-50 h-[60px] bg-surface-container-lowest/80 backdrop-blur-xl border-b border-outline-variant/30 shadow-[0_1px_8px_rgba(0,0,0,0.02)]"><div class="w-full h-[60px] px-space-lg flex items-center justify-between"><div class="flex items-center gap-space-md"><div class="flex items-center gap-1.5 pr-space-xs"><div class="w-3 h-3 rounded-full bg-[#ff5f57] border border-black/10"></div><div class="w-3 h-3 rounded-full bg-[#febc2e] border border-black/10"></div><div class="w-3 h-3 rounded-full bg-[#28c840] border border-black/10"></div></div><div class="h-4 w-[1px] bg-outline-variant/40"></div><div class="flex items-center gap-space-sm"><img alt="GlyphMend Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1XYA2J66N6acVq5jmPRJ2DkubiuqUDDuKS_2gTwTWsHbtbUKy08GlTxdvtGCwh_seD6tx9KAD8zmZEqefdH5e-lZF0khFqww-etEPypvAi0x3Qy8fbUI8OxtWX3pzGTFGQprZ0rfxsJQKwbj1hS7k-OQ2QsgiQEvREap53SKWmiLDuvECOxCO9yXuVI6lnwEJLLzg2px7UysNJwHAFicTA9RhzAh3ngbdBYPI2LT6mhzOQC_5kxjxq8tg"/><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight">GlyphMend</span></div><nav class="flex items-center gap-space-xs ml-space-md" data-active-classes="bg-surface-container-high text-on-surface font-semibold"><a aria-current="page" class="px-space-sm py-1 rounded-lg transition-colors bg-surface-container-high text-on-surface font-semibold" data-path="document-workspace" href="#">Workspace</a><a class="px-space-sm py-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-md text-label-md transition-colors" data-path="batch-queue" href="#">Batch Processing</a><a class="px-space-sm py-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface font-label-md text-label-md transition-colors" data-path="preferences" href="#">Settings</a></nav></div><div class="flex items-center gap-space-md"><div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container border border-outline-variant/30"><span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-tertiary-container opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-tertiary"></span></span><span class="font-label-sm text-label-sm text-on-surface-variant">Local processing</span></div><div class="inline-flex items-center p-0.5 rounded-full bg-surface-container border border-outline-variant/20"><button class="flex items-center justify-center h-6 px-2 rounded-full bg-surface-container-lowest shadow-sm text-on-surface transition-all" type="button"><span class="material-symbols-outlined text-[14px]">light_mode</span></button><button class="flex items-center justify-center h-6 px-2 rounded-full text-on-surface-variant hover:text-on-surface transition-all" type="button"><span class="material-symbols-outlined text-[14px]">dark_mode</span></button></div><div class="flex items-center gap-space-xs"><button class="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" type="button"><span class="material-symbols-outlined text-[18px]">keyboard</span></button><button class="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" type="button"><span class="material-symbols-outlined text-[18px]">tune</span></button></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-[60px] bg-background flex-1 flex flex-col"><div class="flex flex-col w-full text-on-surface">
+<div class="w-full relative overflow-hidden flex flex-col items-center justify-between px-space-lg py-space-xl" style="background-color: #171A1F; min-height: calc(100vh - 88px);">
+<!-- Subtle dark ambient glow -->
+<div class="absolute -top-32 left-1/4 w-[600px] h-[340px] rounded-full pointer-events-none opacity-20 blur-[120px]" style="background: radial-gradient(circle, #4DA2FF 0%, rgba(23, 26, 31, 0) 70%);"></div>
+<div class="absolute bottom-10 right-10 w-[480px] h-[280px] rounded-full pointer-events-none opacity-10 blur-[100px]" style="background: radial-gradient(circle, #005ab3 0%, rgba(23, 26, 31, 0) 75%);"></div>
+<!-- Main 1160px Centered Workspace Container -->
+<div class="w-full max-w-[1160px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center z-10 my-auto">
+<!-- LEFT COLUMN (~44% width: col-span-5) -->
+<div class="lg:col-span-5 flex flex-col items-start pr-0 lg:pr-4">
+<!-- Eyebrow Tag -->
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-label-sm font-label-sm tracking-wide shadow-sm" style="background-color: rgba(37, 44, 53, 0.85); color: #8A94A6; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);">
+<span class="w-1.5 h-1.5 rounded-full" style="background-color: #4DA2FF; box-shadow: 0 0 6px #4DA2FF;"></span>
+<span>Private document workspace</span>
+</div>
+<!-- Main Headline -->
+<h1 class="font-headline-lg text-[40px] leading-[48px] font-semibold tracking-tight mt-6" style="color: #F3F5F7;">
+          Turn a PDF into useful, editable content.
+        </h1>
+<!-- Subtitle -->
+<p class="font-body-lg text-body-lg mt-4 max-w-md" style="color: #8A94A6;">
+          Faithful document reconstruction from PDF to structured Markdown with zero telemetric leakage.
+        </p>
+<!-- Trust Statement -->
+<div class="inline-flex items-center gap-2.5 mt-8 px-3.5 py-2 rounded-xl" style="background-color: rgba(31, 36, 44, 0.6); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);">
+<span class="material-symbols-outlined text-[19px]" style="color: #4DA2FF; font-variation-settings: 'FILL' 1;">verified_user</span>
+<span class="font-label-md text-label-md font-medium" style="color: #F3F5F7;">Everything stays on your device.</span>
+</div>
+<!-- Feature Points Matrix -->
+<div class="grid grid-cols-2 gap-4 mt-10 w-full pt-8" style="box-shadow: 0 -1px 0 0 rgba(255, 255, 255, 0.08);">
+<div class="flex items-start gap-2.5">
+<span class="material-symbols-outlined text-[17px] mt-0.5" style="color: #4DA2FF;">terminal</span>
+<div>
+<div class="font-label-md text-label-md font-medium" style="color: #F3F5F7;">Sandboxed AST</div>
+<div class="font-label-sm text-label-sm mt-0.5" style="color: #8A94A6;">WASM-isolated engine</div>
+</div>
+</div>
+<div class="flex items-start gap-2.5">
+<span class="material-symbols-outlined text-[17px] mt-0.5" style="color: #4DA2FF;">table_chart</span>
+<div>
+<div class="font-label-md text-label-md font-medium" style="color: #F3F5F7;">Table Geometry</div>
+<div class="font-label-sm text-label-sm mt-0.5" style="color: #8A94A6;">Preserves headers &amp; cells</div>
+</div>
+</div>
+</div>
+</div>
+<!-- RIGHT COLUMN (~56% width: col-span-7) -->
+<div class="lg:col-span-7 flex flex-col w-full">
+<!-- Large Primary Panel -->
+<div class="rounded-[24px] p-6 sm:p-8 flex flex-col transition-all relative overflow-hidden" style="background-color: #1F242C; box-shadow: 0 16px 40px -8px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);">
+<!-- Inner Drop Surface -->
+<div class="group rounded-[18px] p-8 sm:p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 relative" id="drop-zone" style="background-color: rgba(37, 44, 53, 0.65); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);">
+<!-- Upload Icon Badge -->
+<div class="w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105" style="background-color: rgba(77, 162, 255, 0.15);">
+<span class="material-symbols-outlined text-[24px]" style="color: #4DA2FF;">upload_file</span>
+</div>
+<!-- Headline -->
+<h2 class="font-headline-sm text-headline-sm font-semibold mt-4" style="color: #F3F5F7;">
+              Drop a PDF here
+            </h2>
+<!-- Micro Divider -->
+<div class="font-label-sm text-[11px] tracking-widest uppercase my-2.5 font-medium" style="color: rgba(138, 148, 166, 0.7);">
+              or
+            </div>
+<!-- Primary Action Button -->
+<button class="h-11 px-6 rounded-xl font-label-md text-label-md font-semibold flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.98]" id="browse-btn" style="background-color: #4DA2FF; color: #0A101D; box-shadow: 0 2px 10px rgba(77, 162, 255, 0.35);" type="button">
+<span class="material-symbols-outlined text-[18px]">add</span>
+<span>Choose PDF</span>
+</button>
+<!-- Supporting Lines -->
+<p class="font-label-sm text-label-sm mt-3.5 font-medium" style="color: #8A94A6;">
+              Nothing is uploaded. Processing stays on this device.
+            </p>
+<p class="font-label-sm text-[11px] mt-1" style="color: rgba(138, 148, 166, 0.7);">
+              Supports standard PDF, scanned papers, and multi-column documents up to 250MB
+            </p>
+<!-- Drag Highlight Veil -->
+<div class="absolute inset-0 rounded-[18px] pointer-events-none opacity-0 transition-opacity flex items-center justify-center font-label-md font-semibold" id="drop-veil" style="background-color: rgba(77, 162, 255, 0.12); color: #4DA2FF; box-shadow: 0 0 0 2px #4DA2FF inset;">
+              Release PDF to begin local conversion
+            </div>
+</div>
+<!-- Secondary Actions Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-5">
+<!-- Action 1: Resume -->
+<button class="group rounded-xl py-2.5 px-3.5 flex items-center justify-start gap-2.5 transition-all text-left" style="background-color: #252C35; color: #F3F5F7; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);" type="button">
+<span class="material-symbols-outlined text-[18px] transition-colors group-hover:text-[#4DA2FF]" style="color: #8A94A6;">history</span>
+<div class="flex flex-col min-w-0">
+<span class="font-label-md text-label-md truncate">Resume saved</span>
+<span class="font-label-sm text-[10px]" style="color: #8A94A6;">Auto-checkpoint</span>
+</div>
+</button>
+<!-- Action 2: Import -->
+<button class="group rounded-xl py-2.5 px-3.5 flex items-center justify-start gap-2.5 transition-all text-left" style="background-color: #252C35; color: #F3F5F7; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);" type="button">
+<span class="material-symbols-outlined text-[18px] transition-colors group-hover:text-[#4DA2FF]" style="color: #8A94A6;">file_open</span>
+<div class="flex flex-col min-w-0">
+<span class="font-label-md text-label-md truncate">Import workspace</span>
+<span class="font-label-sm text-[10px]" style="color: #8A94A6;">.glyphpkg bundle</span>
+</div>
+</button>
+<!-- Action 3: Open Markdown -->
+<button class="group rounded-xl py-2.5 px-3.5 flex items-center justify-start gap-2.5 transition-all text-left" style="background-color: #252C35; color: #F3F5F7; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);" type="button">
+<span class="material-symbols-outlined text-[18px] transition-colors group-hover:text-[#4DA2FF]" style="color: #8A94A6;">markdown</span>
+<div class="flex flex-col min-w-0">
+<span class="font-label-md text-label-md truncate">Open Markdown</span>
+<span class="font-label-sm text-[10px]" style="color: #8A94A6;">Direct preview</span>
+</div>
+</button>
+</div>
+<!-- Bottom Meta row inside panel -->
+<div class="flex items-center justify-between mt-4 pt-3.5" style="box-shadow: 0 -1px 0 0 rgba(255, 255, 255, 0.06);">
+<div class="inline-flex items-center gap-1.5 font-label-sm text-label-sm" style="color: #8A94A6;">
+<span class="w-1.5 h-1.5 rounded-full" style="background-color: #47e266;"></span>
+<span>Local Core ready</span>
+</div>
+<!-- Destructive Utility -->
+<button class="font-label-sm text-label-sm font-medium transition-colors flex items-center gap-1 hover:underline" id="reset-data-btn" style="color: rgba(251, 113, 133, 0.85);" type="button">
+<span class="material-symbols-outlined text-[14px]">delete_sweep</span>
+<span>Reset local data</span>
+</button>
+</div>
+</div>
+<!-- System States Visual Inspector Strip -->
+<div class="mt-4 rounded-xl px-4 py-2.5 flex items-center justify-between text-[11px]" style="background-color: rgba(31, 36, 44, 0.5); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05); color: #8A94A6;">
+<span class="font-label-sm text-[11px] uppercase tracking-wider">Interface states:</span>
+<div class="flex items-center gap-3">
+<span class="px-2 py-0.5 rounded" style="background-color: #252C35; color: #F3F5F7;">Default</span>
+<span class="px-2 py-0.5 rounded" style="background-color: rgba(77, 162, 255, 0.2); color: #4DA2FF;">Hovered</span>
+<span class="px-2 py-0.5 rounded" style="background-color: rgba(77, 162, 255, 0.35); color: #F3F5F7;">Pressed</span>
+<span class="px-2 py-0.5 rounded opacity-40" style="background-color: #252C35; color: #8A94A6;">Disabled</span>
+</div>
+</div>
+</div>
+</div>
+<!-- LOWER UTILITY / TRUST FOOTER BAR -->
+<div class="w-full max-w-[1160px] mx-auto mt-8 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4 z-10" style="box-shadow: 0 -1px 0 0 rgba(255, 255, 255, 0.08);">
+<div class="flex items-center gap-6 font-label-sm text-label-sm" style="color: #8A94A6;">
+<span class="inline-flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[15px]" style="color: #4DA2FF;">wifi_off</span>
+          Offline-first
+        </span>
+<span class="inline-flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[15px]" style="color: #4DA2FF;">restore_page</span>
+          Checkpointed
+        </span>
+<span class="inline-flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[15px]" style="color: #4DA2FF;">output</span>
+          Export-ready
+        </span>
+</div>
+<div class="flex items-center gap-4">
+<a class="inline-flex items-center gap-1.5 font-label-sm text-label-sm px-2.5 py-1 rounded-lg transition-colors hover:text-[#F3F5F7]" href="#" style="color: #8A94A6; background-color: rgba(37, 44, 53, 0.5);">
+<span class="material-symbols-outlined text-[15px]">code</span>
+<span>GitHub</span>
+</a>
+<a class="inline-flex items-center gap-1.5 font-label-sm text-label-sm px-2.5 py-1 rounded-lg transition-colors hover:text-[#F3F5F7]" href="#" style="color: #8A94A6; background-color: rgba(37, 44, 53, 0.5);">
+<span class="material-symbols-outlined text-[15px]">rocket_launch</span>
+<span>Product Hunt</span>
+</a>
+</div>
+</div>
+</div>
+<!-- Hidden Native File Input for real interactions -->
+<input accept=".pdf" class="hidden" id="pdf-file-input" type="file"/>
+<script>
+    (function () {
+      const dropZone = document.getElementById('drop-zone');
+      const dropVeil = document.getElementById('drop-veil');
+      const browseBtn = document.getElementById('browse-btn');
+      const fileInput = document.getElementById('pdf-file-input');
+      const resetBtn = document.getElementById('reset-data-btn');
+
+      // Drag & drop visual interaction
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropVeil.classList.remove('opacity-0');
+          dropVeil.classList.add('opacity-100');
+          dropZone.style.boxShadow = '0 0 0 2px #4DA2FF';
+        });
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropVeil.classList.add('opacity-0');
+          dropVeil.classList.remove('opacity-100');
+          dropZone.style.boxShadow = '0 0 0 2px rgba(255, 255, 255, 0.12)';
+        });
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+          handleFile(files[0]);
+        }
+      });
+
+      browseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fileInput.click();
+      });
+
+      dropZone.addEventListener('click', () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleFile(e.target.files[0]);
+        }
+      });
+
+      function handleFile(file) {
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+          alert('Please select a valid PDF file.');
+          return;
+        }
+        // Simulated local ingestion notification
+        const originalText = browseBtn.innerHTML;
+        browseBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-[18px]">progress_activity</span><span>Loading PDF...</span>';
+        setTimeout(() => {
+          browseBtn.innerHTML = '<span class="material-symbols-outlined text-[18px]">check</span><span>Ready</span>';
+          setTimeout(() => {
+            browseBtn.innerHTML = originalText;
+          }, 1500);
+        }, 800);
+      }
+
+      resetBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('Clear local cache, indexing tables, and checkpoints?')) {
+          const prev = resetBtn.innerHTML;
+          resetBtn.innerHTML = '<span>Cleared</span>';
+          setTimeout(() => { resetBtn.innerHTML = prev; }, 1200);
+        }
+      });
+    })();
+  </script>
+</div></main><footer class="w-full bg-surface-container-lowest/60 border-t border-outline-variant/20 py-2 px-space-lg"><div class="w-full flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm"><span>Local Sandboxed Engine • Memory safe</span><span class="font-code-sm text-code-sm text-secondary">v1.4.0-desktop</span></div></footer></body></html>

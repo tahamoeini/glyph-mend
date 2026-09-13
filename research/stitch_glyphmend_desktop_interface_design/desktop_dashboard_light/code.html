@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "on-primary-fixed-variant": "#00468d", "on-tertiary-fixed-variant": "#00531a", "surface-bright": "#f9f9ff", "tertiary-fixed-dim": "#47e266", "tertiary": "#006b25", "surface-variant": "#dee2ef", "secondary-fixed-dim": "#bdc7d9", "primary-container": "#0073e0", "surface": "#f9f9ff", "primary": "#005ab3", "secondary": "#555f6e", "on-primary-fixed": "#001b3e", "on-secondary-container": "#596373", "on-secondary-fixed": "#121c29", "on-tertiary": "#ffffff", "surface-container-lowest": "#ffffff", "surface-container-highest": "#dee2ef", "surface-container-low": "#f0f3ff", "on-primary": "#ffffff", "on-tertiary-fixed": "#002106", "surface-dim": "#d6dae7", "tertiary-container": "#008730", "on-error-container": "#93000a", "inverse-on-surface": "#ecf0fe", "on-primary-container": "#fefcff", "on-secondary-fixed-variant": "#3d4756", "outline-variant": "#c0c6d6", "on-surface-variant": "#414754", "surface-container-high": "#e4e8f5", "background": "#f9f9ff", "inverse-surface": "#2c313a", "on-background": "#171c25", "tertiary-fixed": "#6cff82", "inverse-primary": "#aac7ff", "error-container": "#ffdad6", "primary-fixed-dim": "#aac7ff", "on-error": "#ffffff", "surface-container": "#eaeefb", "secondary-fixed": "#d9e3f5", "on-secondary": "#ffffff", "outline": "#717786", "error": "#ba1a1a", "on-tertiary-container": "#f7fff2", "primary-fixed": "#d6e3ff", "surface-tint": "#005db8", "on-surface": "#171c25", "secondary-container": "#d6e0f2" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "space-xl": "1.5rem", "space-lg": "1rem", "gutter": "1rem", "space-sm": "0.5rem", "margin": "1rem", "space-xs": "0.25rem", "space-md": "0.75rem" }, "fontFamily": { "headline-md": [ "Inter" ], "body-sm": [ "Inter" ], "code-sm": [ "JetBrains Mono" ], "label-sm": [ "Inter" ], "headline-lg": [ "Inter" ], "body-lg": [ "Inter" ], "headline-sm": [ "Inter" ], "body-md": [ "Inter" ], "label-md": [ "Inter" ] }, "fontSize": { "headline-md": [ "20px", { "lineHeight": "26px", "letterSpacing": "-0.015em", "fontWeight": "600" } ], "body-sm": [ "12px", { "lineHeight": "16px", "letterSpacing": "0.005em", "fontWeight": "400" } ], "code-sm": [ "11px", { "lineHeight": "15px", "letterSpacing": "0em", "fontWeight": "400" } ], "label-sm": [ "11px", { "lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "500" } ], "headline-lg": [ "28px", { "lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "600" } ], "body-lg": [ "15px", { "lineHeight": "22px", "letterSpacing": "-0.005em", "fontWeight": "400" } ], "headline-sm": [ "16px", { "lineHeight": "22px", "letterSpacing": "-0.01em", "fontWeight": "600" } ], "body-md": [ "13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" } ], "label-md": [ "13px", { "lineHeight": "16px", "letterSpacing": "-0.005em", "fontWeight": "500" } ] } } } };</script></head><body class="bg-background font-body-md text-on-surface antialiased select-none"><header class="fixed top-0 inset-x-0 h-14 z-50 bg-surface/75 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] px-gutter flex items-center justify-between"><div class="flex items-center gap-space-md"><div class="flex items-center gap-1.5 mr-space-xs"><div class="w-3 h-3 rounded-full bg-error/80"></div><div class="w-3 h-3 rounded-full bg-outline-variant"></div><div class="w-3 h-3 rounded-full bg-tertiary-fixed-dim"></div></div><div class="flex items-center gap-space-sm pl-space-xs"><img alt="Brand logo. - Primary color: #0a84ff
+- Font: inter
+- Mode: light
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1XYA2J66N6acVq5jmPRJ2DkubiuqUDDuKS_2gTwTWsHbtbUKy08GlTxdvtGCwh_seD6tx9KAD8zmZEqefdH5e-lZF0khFqww-etEPypvAi0x3Qy8fbUI8OxtWX3pzGTFGQprZ0rfxsJQKwbj1hS7k-OQ2QsgiQEvREap53SKWmiLDuvECOxCO9yXuVI6lnwEJLLzg2px7UysNJwHAFicTA9RhzAh3ngbdBYPI2LT6mhzOQC_5kxjxq8tg"/><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight">GlyphMend</span></div><nav class="hidden lg:flex items-center ml-space-md gap-space-xs p-0.5 rounded-lg bg-surface-container" data-active-classes="bg-secondary-container text-on-secondary-fixed"><a aria-current="page" class="px-space-md py-1 rounded-md font-label-md transition-colors bg-secondary-container text-on-secondary-fixed" data-path="document-workspace" href="#">Workspace</a><a class="px-space-md py-1 rounded-md font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="document-history" href="#">History</a><a class="px-space-md py-1 rounded-md font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" data-path="batch-queue" href="#">Queue</a></nav></div><div class="hidden md:flex items-center gap-space-sm px-space-md py-1 rounded-lg bg-surface-container-low shadow-[0_1px_4px_rgba(0,0,0,0.02)] max-w-lg truncate"><span class="material-symbols-outlined text-[16px] text-secondary">description</span><span class="font-body-md text-body-md text-on-surface truncate font-medium">The Theory and Practice of Revenue Management.pdf</span><span class="px-space-sm py-0.5 rounded-full bg-surface-container-high font-code-sm text-code-sm text-secondary">745 pages · 17.8 MB</span></div><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs px-space-sm py-1 rounded-full bg-surface-container font-label-sm text-label-sm text-on-surface-variant"><span class="w-2 h-2 rounded-full bg-tertiary shadow-[0_0_8px_rgba(71,226,102,0.8)]"></span><span>Local processing</span></div><div class="flex items-center p-0.5 rounded-lg bg-surface-container"><button class="p-1 rounded-md bg-surface-container-lowest text-on-surface shadow-[0_1px_2px_rgba(0,0,0,0.06)] flex items-center justify-center" type="button"><span class="material-symbols-outlined text-[16px]">light_mode</span></button><button class="p-1 rounded-md text-secondary hover:text-on-surface flex items-center justify-center" type="button"><span class="material-symbols-outlined text-[16px]">dark_mode</span></button></div><div class="flex items-center gap-space-xs"><button class="w-8 h-8 rounded-lg bg-surface-container-low hover:bg-surface-container-high hover:text-on-surface text-secondary flex items-center justify-center transition-colors" type="button"><span class="material-symbols-outlined text-[18px]">tune</span></button><button class="w-8 h-8 rounded-lg bg-surface-container-low hover:bg-surface-container-high hover:text-on-surface text-secondary flex items-center justify-center transition-colors" type="button"><span class="material-symbols-outlined text-[18px]">settings</span></button></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><aside class="fixed left-0 top-14 bottom-0 w-[300px] z-40 bg-surface-container-low/80 backdrop-blur-lg flex flex-col p-gutter"><div class="flex items-center justify-between pb-space-sm"><span class="font-label-md text-label-md text-secondary uppercase tracking-wider">Navigation &amp; Source</span><button class="p-1 rounded-md hover:bg-surface-container-high hover:text-on-surface text-secondary" type="button"><span class="material-symbols-outlined text-[16px]">dock_to_left</span></button></div><nav class="flex flex-col gap-space-xs mt-space-sm" data-active-classes="bg-primary-container text-on-primary-container font-medium"><a aria-current="page" class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg transition-colors bg-primary-container text-on-primary-container font-medium" data-path="document-workspace" href="#"><span class="material-symbols-outlined text-[18px]">auto_fix_high</span><span>Enhance &amp; Correct</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-body-md text-body-md" data-path="document-history" href="#"><span class="material-symbols-outlined text-[18px]">layers</span><span>Layers &amp; Glyphs</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-body-md text-body-md" data-path="batch-queue" href="#"><span class="material-symbols-outlined text-[18px]">splitscreen</span><span>Page Organizer</span></a></nav><div class="mt-auto pt-space-md flex flex-col gap-space-sm"><div class="p-space-md rounded-xl bg-surface-container flex items-center justify-between"><div class="flex flex-col"><span class="font-label-sm text-label-sm text-secondary">Document Engine</span><span class="font-body-sm text-body-sm text-on-surface font-medium">OCR v4.2 Native</span></div><span class="material-symbols-outlined text-tertiary text-[20px]">verified</span></div></div></aside><div class="pl-[300px]"><main class="w-full pt-14 bg-background min-h-screen"><div class="flex flex-col w-full">
+<!-- Top Global Context Sub-bar (Hairline Elevation, Integrated Native State) -->
+<div class="w-full bg-surface-container-low px-space-lg py-1.5 flex items-center justify-between shadow-sm">
+<div class="flex items-center gap-space-md">
+<span class="inline-flex items-center gap-1.5 font-label-sm text-label-sm text-secondary">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+        Workspace Engine: <strong class="font-medium text-on-surface">GlyphMend Neural AST v4.2</strong>
+</span>
+<span class="font-label-sm text-label-sm text-outline-variant">|</span>
+<span class="font-label-sm text-label-sm text-secondary">Active Session: <span class="font-code-sm text-code-sm text-on-surface bg-surface-container px-1.5 py-0.5 rounded">session_892b_doc</span></span>
+</div>
+<!-- Interactive Component State Indicators Legend -->
+<div class="hidden xl:flex items-center gap-space-sm">
+<span class="font-label-sm text-label-sm text-secondary mr-1">Component States:</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container text-secondary font-code-sm text-code-sm">Default</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface font-code-sm text-code-sm shadow-sm">Hover</span>
+<span class="px-2 py-0.5 rounded-full bg-primary text-on-primary font-code-sm text-code-sm shadow-sm">Pressed</span>
+<span class="px-2 py-0.5 rounded-full bg-surface-variant text-outline font-code-sm text-code-sm opacity-60">Disabled</span>
+<span class="px-2 py-0.5 rounded-full bg-tertiary-container text-on-tertiary-container font-code-sm text-code-sm flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-on-tertiary-container animate-pulse"></span>
+        Processing
+      </span>
+</div>
+</div>
+<!-- Primary 3-Column Native Workspace Layout -->
+<div class="w-full flex flex-col lg:flex-row items-stretch gap-0 bg-surface-container-low">
+<!-- ========================================================================= -->
+<!-- 1. LEFT PANEL: Configuration & Extraction Controls (300px fixed width)     -->
+<!-- ========================================================================= -->
+<aside class="w-full lg:w-[300px] lg:min-w-[300px] bg-surface-container-lowest flex flex-col p-space-md gap-space-lg overflow-y-auto max-h-[calc(100vh-6rem)] shadow-[inset_-1px_0_0_rgba(192,198,214,0.35)]">
+<!-- Document Summary Header -->
+<div class="p-space-md rounded-xl bg-surface-container-low shadow-sm flex flex-col gap-space-xs">
+<div class="flex items-start gap-space-sm">
+<div class="w-9 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 text-primary shadow-sm">
+<span class="material-symbols-outlined text-[22px]">picture_as_pdf</span>
+</div>
+<div class="flex flex-col min-w-0">
+<h2 class="font-headline-sm text-headline-sm text-on-surface truncate leading-tight" title="The Theory and Practice of Revenue Management.pdf">
+              The Theory and Practice of Revenue Management.pdf
+            </h2>
+<div class="flex items-center gap-space-xs mt-0.5">
+<span class="font-code-sm text-code-sm text-secondary">745 pages · 17.8 MB</span>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-between pt-space-xs mt-space-xs">
+<a class="font-label-sm text-label-sm text-primary hover:text-on-primary-fixed-variant transition-colors flex items-center gap-1" href="#">
+<span class="material-symbols-outlined text-[14px]">swap_horiz</span>
+            Choose another PDF
+          </a>
+<span class="font-code-sm text-code-sm text-tertiary font-medium bg-tertiary-fixed-dim/20 px-1.5 py-0.5 rounded">PDF 1.7 Spec</span>
+</div>
+</div>
+<!-- SECTION 01: Scope & Page Selection -->
+<div class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary tracking-wider uppercase font-semibold">01 Document Scope</span>
+<span class="font-code-sm text-code-sm text-outline">Target: 14 pages</span>
+</div>
+<!-- Segmented Selector -->
+<div class="grid grid-cols-2 p-0.5 rounded-xl bg-surface-container">
+<button class="py-1.5 rounded-lg font-label-md text-label-md text-secondary hover:text-on-surface transition-all text-center" type="button">
+            All pages
+          </button>
+<button class="py-1.5 rounded-lg font-label-md text-label-md bg-surface-container-lowest text-on-surface font-semibold shadow-sm text-center" type="button">
+            Custom Range
+          </button>
+</div>
+<div class="flex flex-col gap-1">
+<div class="relative">
+<input class="w-full h-8 px-3 rounded-lg bg-surface-container-low font-code-sm text-code-sm text-on-surface placeholder-secondary focus:outline-none focus:bg-surface-container-lowest shadow-inner" type="text" value="1–5, 8, 12–20"/>
+<span class="absolute right-2.5 top-2 material-symbols-outlined text-[16px] text-secondary">bookmark_manager</span>
+</div>
+<p class="font-body-sm text-body-sm text-secondary">Use commas and hyphens (e.g. 1-10, 15, 22)</p>
+</div>
+</div>
+<!-- SECTION 02: Extraction Engine Modules -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between mb-1">
+<span class="font-label-sm text-label-sm text-secondary tracking-wider uppercase font-semibold">02 Extraction Features</span>
+<span class="font-label-sm text-label-sm text-primary font-medium cursor-pointer">Reset defaults</span>
+</div>
+<!-- Toggle Row: Text tables -->
+<label class="flex items-center justify-between p-2 rounded-xl hover:bg-surface-container-low cursor-pointer transition-colors">
+<div class="flex flex-col pr-2">
+<span class="font-label-md text-label-md text-on-surface font-medium">Text tables</span>
+<span class="font-body-sm text-body-sm text-secondary">Recover structured table content &amp; column spans</span>
+</div>
+<input checked="" class="w-4 h-4 rounded text-primary accent-primary cursor-pointer shrink-0" type="checkbox"/>
+</label>
+<!-- Toggle Row: Equations -->
+<label class="flex items-center justify-between p-2 rounded-xl hover:bg-surface-container-low cursor-pointer transition-colors">
+<div class="flex flex-col pr-2">
+<span class="font-label-md text-label-md text-on-surface font-medium">Editable equations</span>
+<span class="font-body-sm text-body-sm text-secondary">Detect mathematical expressions &amp; map to LaTeX</span>
+</div>
+<input checked="" class="w-4 h-4 rounded text-primary accent-primary cursor-pointer shrink-0" type="checkbox"/>
+</label>
+<!-- Toggle Row: Visual Content -->
+<label class="flex items-center justify-between p-2 rounded-xl hover:bg-surface-container-low cursor-pointer transition-colors">
+<div class="flex flex-col pr-2">
+<span class="font-label-md text-label-md text-on-surface font-medium">Preserve visual content</span>
+<span class="font-body-sm text-body-sm text-secondary">Keep figures, chart crops, and formula fallbacks</span>
+</div>
+<input checked="" class="w-4 h-4 rounded text-primary accent-primary cursor-pointer shrink-0" type="checkbox"/>
+</label>
+<!-- Toggle Row: OCR Fallback -->
+<label class="flex items-center justify-between p-2 rounded-xl hover:bg-surface-container-low cursor-pointer transition-colors">
+<div class="flex flex-col pr-2">
+<span class="font-label-md text-label-md text-on-surface font-medium">OCR when needed</span>
+<span class="font-body-sm text-body-sm text-secondary">Auto-scan rasterized pages without usable text</span>
+</div>
+<input checked="" class="w-4 h-4 rounded text-primary accent-primary cursor-pointer shrink-0" type="checkbox"/>
+</label>
+</div>
+<!-- SECTION 03: Processing Filters (Dense Grid) -->
+<div class="flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm text-secondary tracking-wider uppercase font-semibold mb-1">03 Semantic Normalization</span>
+<div class="flex flex-col gap-1 text-on-surface">
+<label class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer">
+<span class="font-body-sm text-body-sm text-on-surface">Remove repeated headers</span>
+<input checked="" class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer">
+<span class="font-body-sm text-body-sm text-on-surface">Remove repeated footers</span>
+<input checked="" class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer">
+<span class="font-body-sm text-body-sm text-on-surface">Join split paragraphs</span>
+<input checked="" class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer">
+<span class="font-body-sm text-body-sm text-on-surface">Detect heading levels (H1-H4)</span>
+<input checked="" class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer">
+<span class="font-body-sm text-body-sm text-secondary">Normalize task lists</span>
+<input class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer">
+<span class="font-body-sm text-body-sm text-on-surface">Preserve flow notices</span>
+<input checked="" class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer">
+<span class="font-body-sm text-body-sm text-on-surface">Keep unresolved visuals</span>
+<input checked="" class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+<label class="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer">
+<span class="font-body-sm text-body-sm text-on-surface">Keep source page markers</span>
+<input checked="" class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+</div>
+</div>
+<!-- SECTION 04: Advanced Accordion (Expanded State) -->
+<div class="rounded-xl bg-surface-container-low p-space-sm flex flex-col gap-space-xs shadow-sm">
+<div class="flex items-center justify-between py-1 cursor-pointer">
+<span class="font-label-sm text-label-sm text-on-surface font-semibold flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-secondary">tune</span>
+            04 Advanced Engine Settings
+          </span>
+<span class="material-symbols-outlined text-[16px] text-secondary">expand_less</span>
+</div>
+<div class="flex flex-col gap-space-xs pt-1">
+<div class="flex items-center justify-between">
+<span class="font-body-sm text-body-sm text-secondary">Force Full OCR</span>
+<input class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</div>
+<div class="flex flex-col gap-1">
+<span class="font-label-sm text-label-sm text-secondary">OCR Language Stack</span>
+<div class="w-full bg-surface-container-lowest px-2 py-1.5 rounded-lg font-code-sm text-code-sm text-on-surface flex items-center justify-between shadow-inner">
+<span>English (eng) + Math</span>
+<span class="material-symbols-outlined text-[14px] text-secondary">unfold_more</span>
+</div>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="font-body-sm text-body-sm text-secondary">Raster DPI Target</span>
+<span class="font-code-sm text-code-sm text-on-surface font-medium bg-surface-container px-2 py-0.5 rounded">300 DPI</span>
+</div>
+<div class="flex items-center justify-between pt-1">
+<span class="font-body-sm text-body-sm text-secondary">Strict Mathematical AST</span>
+<input checked="" class="w-3.5 h-3.5 rounded text-primary accent-primary" type="checkbox"/>
+</div>
+</div>
+</div>
+<!-- Left Panel Execution / Progress Dock -->
+<div class="mt-auto pt-space-sm flex flex-col gap-space-sm">
+<!-- Live Progress Indicator -->
+<div class="p-space-sm rounded-xl bg-surface-container flex flex-col gap-1.5">
+<div class="flex items-center justify-between font-label-sm text-label-sm">
+<span class="text-on-surface font-semibold flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+              Checkpoint Active
+            </span>
+<span class="font-code-sm text-code-sm text-primary font-medium">625 / 745 pages (84%)</span>
+</div>
+<div class="w-full h-1.5 bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary-container rounded-full" style="width: 84%;"></div>
+</div>
+<span class="font-body-sm text-body-sm text-secondary">Reconstructing complex matrices on section 3.2...</span>
+</div>
+<!-- Action Buttons -->
+<button class="w-full py-2.5 px-4 rounded-xl bg-primary hover:bg-on-primary-fixed-variant active:scale-[0.99] text-on-primary font-label-md text-label-md font-semibold transition-all flex items-center justify-center gap-2 shadow-md" type="button">
+<span>Extract document</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+<!-- Secondary Control Matrix (Pause / Cancel states) -->
+<div class="grid grid-cols-2 gap-space-xs">
+<button class="py-1.5 px-3 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-label-sm text-label-sm flex items-center justify-center gap-1 transition-colors" type="button">
+<span class="material-symbols-outlined text-[14px]">pause</span>
+            Pause
+          </button>
+<button class="py-1.5 px-3 rounded-lg bg-surface-container hover:bg-surface-variant text-error font-label-sm text-label-sm flex items-center justify-center gap-1 transition-colors" type="button">
+<span class="material-symbols-outlined text-[14px]">cancel</span>
+            Cancel
+          </button>
+</div>
+</div>
+</aside>
+<!-- ========================================================================= -->
+<!-- 2. CENTER PANEL: Document Canvas Workspace (Fluid & Primary Focus)        -->
+<!-- ========================================================================= -->
+<main class="flex-1 flex flex-col min-w-0 bg-surface-container p-space-md lg:p-space-lg gap-space-md">
+<!-- Top Canvas Controller Ribbon -->
+<div class="w-full bg-surface-container-lowest rounded-xl p-space-xs px-space-md flex flex-wrap items-center justify-between gap-space-sm shadow-sm">
+<!-- Segmented Output Views -->
+<div class="flex items-center p-0.5 rounded-lg bg-surface-container">
+<button class="px-space-md py-1 rounded-md bg-surface-container-lowest text-primary font-label-md text-label-md font-semibold shadow-sm flex items-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[16px]">code</span>
+            Markdown
+          </button>
+<button class="px-space-md py-1 rounded-md text-secondary hover:text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+            Rendered
+          </button>
+<button class="px-space-md py-1 rounded-md text-secondary hover:text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[16px]">splitscreen</span>
+            Split View
+          </button>
+<button class="px-space-md py-1 rounded-md text-secondary hover:text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5" type="button">
+<span class="material-symbols-outlined text-[16px]">terminal</span>
+            Log
+          </button>
+</div>
+<!-- Realtime Statistics -->
+<div class="flex items-center gap-space-md font-code-sm text-code-sm text-secondary">
+<span>84,120 characters</span>
+<span class="text-outline-variant">•</span>
+<span>745 pages processed</span>
+<span class="text-outline-variant">•</span>
+<span class="text-tertiary flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+            100% Validated AST
+          </span>
+</div>
+</div>
+<!-- Document Inner Context Toolbar -->
+<div class="w-full bg-surface-container-lowest rounded-xl px-space-md py-2 flex items-center justify-between gap-space-md shadow-sm">
+<div class="flex items-center gap-space-sm flex-1 max-w-md">
+<span class="material-symbols-outlined text-[18px] text-secondary">search</span>
+<input class="w-full bg-transparent font-body-md text-body-md text-on-surface placeholder-secondary focus:outline-none" placeholder="Find in output..." type="text"/>
+<kbd class="px-1.5 py-0.5 rounded bg-surface-container text-secondary font-code-sm text-code-sm shadow-sm">⌘F</kbd>
+</div>
+<div class="flex items-center gap-space-md">
+<span class="flex items-center gap-1.5 font-label-sm text-label-sm text-secondary">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+            Changes save automatically
+          </span>
+<div class="flex items-center gap-1">
+<button class="p-1 rounded-md hover:bg-surface-container text-secondary hover:text-on-surface" title="Copy Raw Markdown" type="button">
+<span class="material-symbols-outlined text-[18px]">content_copy</span>
+</button>
+<button class="p-1 rounded-md hover:bg-surface-container text-secondary hover:text-on-surface" title="Format Layout" type="button">
+<span class="material-symbols-outlined text-[18px]">format_align_left</span>
+</button>
+<button class="p-1 rounded-md hover:bg-surface-container text-secondary hover:text-on-surface" title="Download Current Slice" type="button">
+<span class="material-symbols-outlined text-[18px]">download</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Center Document Page Canvas (High Fidelity Markdown Editor View) -->
+<div class="relative flex-1 bg-surface-container-lowest rounded-2xl shadow-md p-space-xl overflow-y-auto max-h-[calc(100vh-14rem)] flex flex-col gap-space-lg">
+<!-- Document Content Body -->
+<article class="prose max-w-4xl w-full mx-auto flex flex-col gap-space-md font-body-lg text-body-lg text-on-surface">
+<!-- Document Level H1 -->
+<div class="flex items-baseline justify-between border-b pb-space-sm">
+<h1 class="font-headline-lg text-headline-lg text-on-surface font-semibold tracking-tight">
+              3. Dynamic Capacity Allocation and Bid-Price Controls
+            </h1>
+<span class="font-code-sm text-code-sm text-secondary bg-surface-container px-2 py-0.5 rounded-full">Source: p. 112–115</span>
+</div>
+<p class="text-on-surface-variant leading-relaxed">
+            In network revenue management, the canonical deterministic linear programming (DLP) approximation provides dual multipliers associated with flight leg capacities. Let <code class="font-code-sm text-code-sm px-1.5 py-0.5 bg-surface-container-low rounded text-on-surface font-medium">\mathcal{J}</code> denote the set of flight itineraries and <code class="font-code-sm text-code-sm px-1.5 py-0.5 bg-surface-container-low rounded text-on-surface font-medium">\mathcal{I}</code> represent physical flight legs. The primal resource allocation problem over finite planning horizon is formulated as:
+          </p>
+<!-- Mathematical Equation Block Display (LaTeX Representation) -->
+<div class="my-space-sm p-space-lg rounded-xl bg-surface-container-low shadow-sm flex flex-col items-center justify-center gap-space-xs group relative">
+<div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+<button class="px-2 py-1 rounded bg-surface-container-lowest text-secondary hover:text-on-surface font-code-sm text-code-sm shadow-sm" type="button">Edit LaTeX</button>
+<button class="p-1 rounded bg-surface-container-lowest text-secondary hover:text-on-surface shadow-sm" type="button">
+<span class="material-symbols-outlined text-[14px]">content_copy</span>
+</button>
+</div>
+<div class="font-code-sm text-code-sm text-on-surface tracking-wider bg-surface-container-lowest px-4 py-3 rounded-lg w-full text-center overflow-x-auto shadow-inner">
+              $$\max \sum_{j \in \mathcal{J}} p_j x_j \quad \text{s.t.} \quad \sum_{j \in \mathcal{J}} A_{ij} x_j \le c_i, \; \forall i \in \mathcal{I}$$
+            </div>
+<span class="font-label-sm text-label-sm text-secondary">(Equation 3.1 — Canonical DLP Multiplier System)</span>
+</div>
+<!-- Section H3 -->
+<h3 class="font-headline-md text-headline-md text-on-surface font-semibold mt-space-md">
+            3.1 Leg-Level Displacement Cost
+          </h3>
+<p class="text-on-surface-variant leading-relaxed">
+            Let <code class="font-code-sm text-code-sm px-1.5 py-0.5 bg-surface-container-low rounded">$$\pi_i^*$$</code> denote the optimal shadow price associated with leg resource constraint <code class="font-code-sm text-code-sm px-1.5 py-0.5 bg-surface-container-low rounded">$$c_i$$</code>. The dynamic bid-price policy rejects any product request <code class="font-code-sm text-code-sm px-1.5 py-0.5 bg-surface-container-low rounded">$$j$$</code> at stage <code class="font-code-sm text-code-sm px-1.5 py-0.5 bg-surface-container-low rounded">$$t$$</code> whose fare <code class="font-code-sm text-code-sm px-1.5 py-0.5 bg-surface-container-low rounded">$$p_j$$</code> falls below the sum of marginal displacement costs along its constituent legs:
+          </p>
+<!-- Table Content Block -->
+<div class="my-space-sm flex flex-col gap-space-xs">
+<span class="font-label-md text-label-md text-on-surface font-medium">Table 3.1: Optimal Bid Prices across 12-stage Horizon</span>
+<div class="w-full overflow-x-auto rounded-xl bg-surface-container-low shadow-sm p-1">
+<table class="w-full text-left font-body-sm text-body-sm">
+<thead>
+<tr class="bg-surface-container text-on-surface font-medium">
+<th class="p-2.5 rounded-l-lg font-code-sm">Leg ID</th>
+<th class="p-2.5">Origin-Dest</th>
+<th class="p-2.5 font-code-sm">Capacity</th>
+<th class="p-2.5 font-code-sm">Shadow Price $\pi_i$</th>
+<th class="p-2.5 rounded-r-lg">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-variant text-on-surface">
+<tr class="hover:bg-surface-container-lowest/60 transition-colors">
+<td class="p-2.5 font-code-sm font-medium">AA-104</td>
+<td class="p-2.5">JFK → LHR</td>
+<td class="p-2.5 font-code-sm">280</td>
+<td class="p-2.5 font-code-sm text-primary font-semibold">$142.50</td>
+<td class="p-2.5"><span class="px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm">Bound</span></td>
+</tr>
+<tr class="hover:bg-surface-container-lowest/60 transition-colors">
+<td class="p-2.5 font-code-sm font-medium">AA-208</td>
+<td class="p-2.5">ORD → FRA</td>
+<td class="p-2.5 font-code-sm">310</td>
+<td class="p-2.5 font-code-sm text-primary font-semibold">$88.20</td>
+<td class="p-2.5"><span class="px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm">Slack</span></td>
+</tr>
+<tr class="hover:bg-surface-container-lowest/60 transition-colors">
+<td class="p-2.5 font-code-sm font-medium">DL-442</td>
+<td class="p-2.5">ATL → CDG</td>
+<td class="p-2.5 font-code-sm">245</td>
+<td class="p-2.5 font-code-sm text-primary font-semibold">$195.00</td>
+<td class="p-2.5"><span class="px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm">Bound</span></td>
+</tr>
+<tr class="hover:bg-surface-container-lowest/60 transition-colors">
+<td class="p-2.5 font-code-sm font-medium">UA-890</td>
+<td class="p-2.5">SFO → NRT</td>
+<td class="p-2.5 font-code-sm">360</td>
+<td class="p-2.5 font-code-sm text-primary font-semibold">$64.10</td>
+<td class="p-2.5"><span class="px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm">Slack</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p class="text-on-surface-variant leading-relaxed">
+            In non-homogeneous Poisson arrival settings, where <span class="font-code-sm text-code-sm bg-surface-container px-1 py-0.5 rounded text-on-surface">$\lambda_t(p) = \alpha e^{-\beta p}$</span> denotes instantaneous arrival intensity, bid prices serve as deterministic certainty equivalents that approximate the discrete Hamilton-Jacobi-Bellman dynamic programming recursion.
+          </p>
+</article>
+<!-- Floating Source PDF Page Preview HUD Pill at Bottom -->
+<div class="sticky bottom-4 mx-auto z-10 flex items-center gap-space-sm px-4 py-2 rounded-full bg-surface-container-lowest/90 backdrop-blur-md shadow-xl">
+<div class="flex items-center gap-1">
+<button class="w-6 h-6 rounded-full hover:bg-surface-container flex items-center justify-center text-secondary hover:text-on-surface" type="button">
+<span class="material-symbols-outlined text-[16px]">chevron_left</span>
+</button>
+<span class="font-code-sm text-code-sm text-on-surface font-medium px-2">Page 112 / 745</span>
+<button class="w-6 h-6 rounded-full hover:bg-surface-container flex items-center justify-center text-secondary hover:text-on-surface" type="button">
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+<span class="w-px h-4 bg-outline-variant"></span>
+<div class="flex items-center gap-1">
+<button class="w-6 h-6 rounded-full hover:bg-surface-container flex items-center justify-center text-secondary hover:text-on-surface" type="button">
+<span class="material-symbols-outlined text-[14px]">remove</span>
+</button>
+<span class="font-code-sm text-code-sm text-secondary font-medium">100%</span>
+<button class="w-6 h-6 rounded-full hover:bg-surface-container flex items-center justify-center text-secondary hover:text-on-surface" type="button">
+<span class="material-symbols-outlined text-[14px]">add</span>
+</button>
+</div>
+<span class="w-px h-4 bg-outline-variant"></span>
+<button class="p-1 rounded-full hover:bg-surface-container text-secondary hover:text-primary flex items-center" title="Inspect original PDF snippet" type="button">
+<span class="material-symbols-outlined text-[18px]">find_in_page</span>
+</button>
+</div>
+</div>
+</main>
+<!-- ========================================================================= -->
+<!-- 3. RIGHT INSPECTOR: Quality Audit, Review Queue & Export (290px width)    -->
+<!-- ========================================================================= -->
+<aside class="w-full lg:w-[290px] lg:min-w-[290px] bg-surface-container-lowest flex flex-col p-space-md gap-space-lg overflow-y-auto max-h-[calc(100vh-6rem)] shadow-[inset_1px_0_0_rgba(192,198,214,0.35)]">
+<!-- Quality Overview Section -->
+<div class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div>
+<span class="font-label-sm text-label-sm text-secondary uppercase font-semibold">Results &amp; Audit</span>
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-semibold">Quality Overview</h3>
+</div>
+<span class="px-2 py-1 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm font-semibold flex items-center gap-1 shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-ping"></span>
+            Review (8)
+          </span>
+</div>
+<!-- Metric Grid -->
+<div class="grid grid-cols-2 gap-space-xs">
+<div class="p-space-sm rounded-xl bg-surface-container-low shadow-sm flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Pages Target</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-semibold">745</span>
+</div>
+<div class="p-space-sm rounded-xl bg-surface-container-low shadow-sm flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Flagged Issues</span>
+<span class="font-headline-sm text-headline-sm text-error font-semibold">8</span>
+</div>
+<div class="p-space-sm rounded-xl bg-surface-container-low shadow-sm flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Math Equations</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-semibold">126</span>
+</div>
+<div class="p-space-sm rounded-xl bg-surface-container-low shadow-sm flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Detected Tables</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-semibold">42</span>
+</div>
+</div>
+</div>
+<!-- Review Queue & Filter Chips -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-on-surface font-semibold">Review Queue</span>
+<span class="font-code-sm text-code-sm text-secondary">Equations first</span>
+</div>
+<!-- 4 Summary Filter Chips -->
+<div class="flex items-center gap-1 flex-wrap pt-0.5">
+<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface font-code-sm text-code-sm font-medium cursor-pointer shadow-sm">Total: 126</span>
+<span class="px-2 py-0.5 rounded-full bg-tertiary-fixed-dim/20 text-tertiary font-code-sm text-code-sm font-medium cursor-pointer">Accepted: 114</span>
+<span class="px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-code-sm text-code-sm font-semibold cursor-pointer">Review: 8</span>
+<span class="px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-code-sm text-code-sm cursor-pointer">Preserved: 4</span>
+</div>
+<!-- Interactive Queue List Items -->
+<div class="flex flex-col gap-1.5 mt-space-xs">
+<!-- Item 1: Selected / Review -->
+<div class="p-space-sm rounded-xl bg-surface-container shadow-sm flex flex-col gap-1 cursor-pointer transition-all">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface font-semibold flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-primary">functions</span>
+                Equation · Page 114
+              </span>
+<span class="px-1.5 py-0.5 rounded bg-error-container text-on-error-container font-label-sm text-label-sm font-medium">Review</span>
+</div>
+<span class="font-code-sm text-code-sm text-secondary truncate">\int_0^\infty f(x|\theta) dx</span>
+</div>
+<!-- Item 2: Accepted -->
+<div class="p-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors flex items-center justify-between cursor-pointer">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-tertiary">check_circle</span>
+<span class="font-body-sm text-body-sm text-on-surface font-medium">Equation · Page 216</span>
+</div>
+<span class="px-1.5 py-0.5 rounded bg-tertiary-fixed-dim/20 text-tertiary font-label-sm text-label-sm font-medium">Accepted</span>
+</div>
+<!-- Item 3: Preserved -->
+<div class="p-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors flex items-center justify-between cursor-pointer">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-primary">image</span>
+<span class="font-body-sm text-body-sm text-on-surface font-medium">Visual · Page 410</span>
+</div>
+<span class="px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-sm text-label-sm">Preserved</span>
+</div>
+</div>
+</div>
+<!-- Selected Review Item Detail Card (Equation Page 114) -->
+<div class="p-space-md rounded-xl bg-surface-container-low shadow-sm flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary">Selected AST Target</span>
+<span class="font-code-sm text-code-sm text-tertiary font-semibold">94.2% match</span>
+</div>
+<div class="p-2 rounded-lg bg-surface-container-lowest font-code-sm text-code-sm text-on-surface shadow-inner overflow-x-auto">
+          \int_0^\infty f(x|\theta) dx
+        </div>
+<!-- Source Snippet Visual Crop Proof -->
+<div class="flex flex-col gap-1 mt-1">
+<span class="font-label-sm text-label-sm text-secondary">Source Raster Crop Proof:</span>
+<div class="w-full h-14 rounded-lg bg-surface-container flex items-center justify-center p-2 relative overflow-hidden shadow-inner">
+<div class="w-full h-full flex items-center justify-center font-code-sm text-code-sm text-on-surface-variant italic select-none">
+              ∫₀^∞ f(x|θ) dx  [Vector Slice]
+            </div>
+<span class="absolute bottom-1 right-1 font-code-sm text-[10px] text-secondary bg-surface-container-lowest/80 px-1 rounded">p. 114 @ 300DPI</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<button class="flex-1 py-1.5 rounded-lg bg-primary hover:bg-on-primary-fixed-variant text-on-primary font-label-sm text-label-sm font-medium transition-colors text-center" type="button">
+            Accept Formula
+          </button>
+<button class="py-1.5 px-2 rounded-lg bg-surface-container hover:bg-surface-variant text-secondary hover:text-on-surface transition-colors" title="Reject &amp; Keep Image" type="button">
+<span class="material-symbols-outlined text-[16px]">crop_free</span>
+</button>
+</div>
+</div>
+<!-- Word & Document Metadata Settings -->
+<div class="flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm text-secondary tracking-wider uppercase font-semibold">Metadata &amp; Structure</span>
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-secondary">Document Title Tag</label>
+<input class="w-full h-8 px-2.5 rounded-lg bg-surface-container-low font-body-sm text-body-sm text-on-surface truncate focus:outline-none focus:bg-surface-container-lowest shadow-inner" type="text" value="The Theory and Practice of Revenue Management"/>
+</div>
+<label class="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors">
+<span class="font-body-sm text-body-sm text-on-surface">Source page breaks</span>
+<input checked="" class="w-4 h-4 rounded text-primary accent-primary" type="checkbox"/>
+</label>
+</div>
+<!-- Local Export Module -->
+<div class="mt-auto pt-space-xs flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary uppercase font-semibold">Export Locally</span>
+<span class="font-label-sm text-label-sm text-tertiary flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[14px]">lock</span>
+            No upload
+          </span>
+</div>
+<div class="flex flex-col gap-1">
+<!-- MD -->
+<button class="w-full py-1.5 px-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container flex items-center justify-between text-left transition-colors" type="button">
+<div class="flex items-center gap-2">
+<span class="font-code-sm text-code-sm font-semibold text-primary">MD</span>
+<span class="font-body-sm text-body-sm text-on-surface">Markdown (.md)</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-secondary">download</span>
+</button>
+<!-- DOCX -->
+<button class="w-full py-1.5 px-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container flex items-center justify-between text-left transition-colors" type="button">
+<div class="flex items-center gap-2">
+<span class="font-code-sm text-code-sm font-semibold text-primary">DOCX</span>
+<span class="font-body-sm text-body-sm text-on-surface">Word Document</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-secondary">download</span>
+</button>
+<!-- TXT -->
+<button class="w-full py-1.5 px-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container flex items-center justify-between text-left transition-colors" type="button">
+<div class="flex items-center gap-2">
+<span class="font-code-sm text-code-sm font-semibold text-secondary">TXT</span>
+<span class="font-body-sm text-body-sm text-on-surface">Plain text</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-secondary">download</span>
+</button>
+<!-- JSON Quality Report -->
+<button class="w-full py-1.5 px-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container flex items-center justify-between text-left transition-colors" type="button">
+<div class="flex items-center gap-2">
+<span class="font-code-sm text-code-sm font-semibold text-secondary">JSON</span>
+<span class="font-body-sm text-body-sm text-on-surface">Quality Audit Report</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-secondary">download</span>
+</button>
+<!-- ZIP Full Bundle (Prominent Primary Export) -->
+<button class="w-full mt-1 py-2 px-space-sm rounded-xl bg-primary hover:bg-on-primary-fixed-variant text-on-primary flex items-center justify-between text-left transition-all shadow-md" type="button">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">folder_zip</span>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm font-semibold">Reconstructable ZIP</span>
+<span class="font-code-sm text-[10px] text-on-primary/80">Source evidence &amp; semantic assets</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[18px]">file_download</span>
+</button>
+</div>
+</div>
+</aside>
+</div>
+</div></main></div></body></html>
