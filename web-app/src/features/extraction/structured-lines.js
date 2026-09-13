@@ -1,3 +1,5 @@
+const ESCAPED_PUNCTUATION = /\\([!"#$%&'()*+,\-./:;<=>?@[\]^_`{|}~])/g;
+
 function rect(value) {
   if (Array.isArray(value) && value.length >= 4)
     return value.slice(0, 4).map(Number);
@@ -19,8 +21,14 @@ function charValue(value) {
 }
 
 function lineValue(line) {
-  if (typeof line?.text === "string") return line.text;
-  return (line?.chars || []).map(charValue).join("");
+  const value =
+    typeof line?.text === "string"
+      ? line.text
+      : (line?.chars || []).map(charValue).join("");
+  // Some PDF producers escape every ASCII punctuation mark. Those escapes are
+  // source noise rather than Markdown intent; remove them before semantic
+  // reconstruction while leaving LaTeX commands such as `\\frac` untouched.
+  return String(value).replace(ESCAPED_PUNCTUATION, "$1");
 }
 
 function median(values) {
@@ -182,8 +190,13 @@ function blocksShareLine(left, right) {
 export function coalesceStructuredLines(lines = []) {
   const result = [];
   for (const source of lines) {
-    if (!lineValue(source).trim()) continue;
-    const line = { ...source, bbox: lineBox(source) || source?.bbox };
+    const text = lineValue(source);
+    if (!text.trim()) continue;
+    const line = {
+      ...source,
+      text,
+      bbox: lineBox(source) || source?.bbox,
+    };
     const previous = result.at(-1);
     if (previous && sameVisualLine(previous, line))
       result[result.length - 1] = mergeLineRecords(previous, line);
