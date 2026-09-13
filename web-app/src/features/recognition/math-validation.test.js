@@ -63,6 +63,33 @@ describe("equation validation gating", () => {
     expect(result.validation.parseSuccess).toBe(false);
   });
 
+  it("accepts parseable structured PDF text at review confidence without weakening OCR gating", () => {
+    const sourceAsset = { id: "source-crop-5", page: 3, bbox: [10, 20, 200, 60] };
+    const structured = validateEquationCandidate(
+      {
+        latex: "x = y",
+        provider: "mupdf-structured-text",
+        confidence: { overall: 0.7, token: 0.7, sequence: 0.7 },
+      },
+      sourceAsset,
+      "x = y",
+    );
+    const ocr = validateEquationCandidate(
+      {
+        latex: "x = y",
+        provider: "tesseract-ocr",
+        confidence: { overall: 0.7, token: 0.7, sequence: 0.7 },
+      },
+      sourceAsset,
+      "x = y",
+    );
+
+    expect(structured.accepted).toBe(true);
+    expect(structured.disposition).toBe("accepted");
+    expect(ocr.accepted).toBe(false);
+    expect(ocr.disposition).toBe("review");
+  });
+
   it("uses a conservative visual similarity fallback for structure-sensitive math", () => {
     const score = createBaselineVisualSimilarity("\\sum_{i=1}^n i", "\\sum_{i=1}^n i^2");
     expect(score.score).toBeLessThan(1);
