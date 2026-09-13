@@ -24,6 +24,15 @@ it("coalesces same-baseline visual spans without inserting letter breaks", () =>
   expect(lines[0].text).toBe("This is a title");
 });
 
+it("removes producer punctuation escapes without damaging LaTeX commands", () => {
+  const lines = coalesceStructuredLines([
+    line("short \\-lived value \\. and \\frac{1}{2}", 10, 20, 220),
+  ]);
+
+  expect(lines).toHaveLength(1);
+  expect(lines[0].text).toBe("short -lived value . and \\frac{1}{2}");
+});
+
 it("keeps real vertical lines separate", () => {
   const lines = coalesceStructuredLines([
     line("Heading", 10, 20, 70),
