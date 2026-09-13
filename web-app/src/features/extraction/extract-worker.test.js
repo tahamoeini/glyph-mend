@@ -2,6 +2,8 @@ import { expect, it } from "vitest";
 import {
   buildEquationCandidate,
   captionFor,
+  isDiagramLike,
+  isEquation,
   jsonFallbackBlocks,
   latexMarkdown,
   looksLikeOcrEquation,
@@ -104,6 +106,14 @@ it("rejects Revenue Management prose and incomplete OCR equations", () => {
   expect(looksLikeOcrEquation("p2 = p1 P(D1 > y1)")).toBe(true);
   expect(looksLikeOcrEquation("Sy <<")).toBe(false);
   expect(looksLikeOcrEquation("x =")).toBe(false);
+});
+
+it("keeps ASCII diagrams out of display math and accepts compact equations", () => {
+  expect(isDiagramLike("+------------------+\n| Hub              |" )).toBe(true);
+  expect(isDiagramLike("+--> Public Key")).toBe(true);
+  expect(isEquation("+------------------+", { bbox: [0, 0, 200, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+  expect(isEquation("p ≤ μ + ½", { bbox: [80, 240, 260, 260], size: 12 }, [0, 0, 612, 792], 10)).toBe(true);
+  expect(isEquation("status = PENDING_ENROLLMENT", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
 });
 
 it("records source provenance and a reversible crop for OCR equation candidates", () => {

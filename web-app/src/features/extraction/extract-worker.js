@@ -1,6 +1,8 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
+import { coalesceStructuredBlocks } from "./structured-lines.js";
+import { validateEquationCandidate } from "../recognition/math-validation.js";
 import {
   ACTIVE_FORMAT_LIMITS,
   validateExtractionRequest,
@@ -61,13 +63,25 @@ function normalizeTextLine(value = "") {
   return normalizeText(value).replace(/\s+/g, " ").trim();
 }
 
-function escapeMd(value) {
-  return value.replace(/([\\`*{}\[\]<>#+\-.!_|$])/g, "\\$1");
+function escapeMd(value, { protectBlockStart = true, table = false } = {}) {
+  // Intraword underscores are literal in CommonMark and escaping them makes
+  // identifiers such as REENROLL_REQUIRED look like damaged source text.
+  // Braces, brackets, underscores, and dollar signs are literal in the
+  // CommonMark emitted by this app. Escaping them made source code and
+  // identifiers look corrupted in the editor and in DOCX export.
+  let text = String(value ?? "").replace(/([`*])/g, "\\$1");
+  if (table) text = text.replace(/\|/g, "\\|");
+  if (
+    protectBlockStart &&
+    /^(?:\s*(?:#{1,6}\s|[-+*]\s|>\s|```|~~~))/.test(text)
+  )
+    text = text.replace(/^(\s*)(?=\S)/, "$1\\");
+  return text;
 }
 
 function joinWrapped(lines) {
   return lines
-    .map((line) => line.text)
+    .map((line) => String(line?.text ?? ""))
     .join(" ")
     .replace(/(\p{L})-\s+(?=\p{Ll})/gu, "$1")
     .replace(/\s+/g, " ")
@@ -107,7 +121,7 @@ function tableFor(block, bodySize) {
 function markdownTable(rows) {
   const columns = Math.max(...rows.map((row) => row.length));
   const normalized = rows.map((row) => [
-    ...row.map(escapeMd),
+    ...row.map((value) => escapeMd(value, { protectBlockStart: false, table: true })),
     ...Array(Math.max(0, columns - row.length)).fill(""),
   ]);
   const header = normalized[0];
@@ -116,6 +130,103 @@ function markdownTable(rows) {
     `| ${Array(columns).fill("---").join(" | ")} |`,
     ...normalized.slice(1).map((row) => `| ${row.join(" | ")} |`),
   ].join("\n");
+}
+
+function pageTableFromBlocks(blocks, bodySize, pageBounds) {
+  const lines = blocks
+    .flatMap((block) => block.lines || [])
+    .map((line) => {
+      const bbox = line.bbox;
+      return {
+        line,
+        text: joinWrapped([line]),
+        bbox,
+        y: bbox?.length === 4 ? (bbox[1] + bbox[3]) / 2 : NaN,
+      };
+    })
+    .filter(
+      (item) =>
+        item.text &&
+        item.bbox?.length === 4 &&
+        item.bbox[2] > item.bbox[0] &&
+        item.bbox[3] > item.bbox[1] &&
+        !isDiagramLike(item.text),
+    )
+    .sort((a, b) => a.y - b.y || a.bbox[0] - b.bbox[0]);
+  if (lines.length < 6) return null;
+
+  const rowTolerance = Math.max(2.5, bodySize * 0.72);
+  const rows = [];
+  for (const item of lines) {
+    const row = rows.at(-1);
+    if (!row || Math.abs(item.y - row.y) > rowTolerance) {
+      rows.push({ y: item.y, items: [item] });
+      continue;
+    }
+    row.items.push(item);
+    row.y =
+      row.items.reduce((sum, value) => sum + value.y, 0) / row.items.length;
+  }
+
+  const pageWidth = pageBounds[2] - pageBounds[0];
+  const cellRows = rows
+    .map((row) => ({
+      ...row,
+      items: row.items.sort((a, b) => a.bbox[0] - b.bbox[0]),
+    }))
+    .filter(
+      (row) =>
+        row.items.length >= 2 &&
+        row.items.length <= 8 &&
+        row.items.every(
+          (item) =>
+            item.text.length <= 90 &&
+            item.text.split(/\s+/).length <= 12 &&
+            !/[{}]/u.test(item.text),
+        ),
+    );
+  if (cellRows.length < 3) return null;
+
+  const alignmentTolerance = Math.max(bodySize * 2.2, pageWidth * 0.035);
+  let best = null;
+  for (let start = 0; start < cellRows.length; start += 1) {
+    const columns = cellRows[start].items.length;
+    const starts = cellRows[start].items.map((item) => item.bbox[0]);
+    const run = [cellRows[start]];
+    for (let index = start + 1; index < cellRows.length; index += 1) {
+      const row = cellRows[index];
+      const previous = run.at(-1);
+      if (
+        row.items.length !== columns ||
+        row.y - previous.y > Math.max(bodySize * 4.8, 52) ||
+        row.items.some(
+          (item, column) =>
+            Math.abs(item.bbox[0] - starts[column]) > alignmentTolerance,
+        )
+      )
+        break;
+      run.push(row);
+    }
+    if (!best || run.length > best.length) best = run;
+  }
+  if (!best || best.length < 3) return null;
+
+  const values = best.map((row) => row.items.map((item) => item.text));
+  const textCells = values.flat();
+  const sentenceLike = textCells.filter(
+    (value) =>
+      value.split(/\s+/).length > 10 ||
+      /\b(?:the|and|that|this|with|from|which|because|therefore)\b/i.test(
+        value,
+      ),
+  ).length;
+  if (sentenceLike / textCells.length > 0.28) return null;
+
+  return {
+    markdown: markdownTable(values),
+    lines: new Set(best.flatMap((row) => row.items.map((item) => item.line))),
+    y: best[0].y,
+  };
 }
 
 function wordBox(word) {
@@ -241,11 +352,47 @@ export function latexMarkdown(value) {
   return text;
 }
 
-function isEquation(text, block, pageBounds, bodySize) {
+export function isDiagramLike(text) {
+  const value = String(text || "").trim();
+  if (!value || value.length > 180) return false;
+  const compact = value.replace(/\s+/g, "");
+  if (/^[|+_\-v^<>]+$/u.test(compact)) return true;
+  if (/^\|(?:\s+[^|]+)?$/u.test(value) && !/[.!?;:]$/u.test(value))
+    return true;
+  if (/^[|+\-]*[-=]*>+\s+/u.test(value)) return true;
+  if (/(?:\+[-=]{3,}\+|[-=]{4,}|_{4,}|\|.*\|)/u.test(value)) return true;
+  const drawing = (compact.match(/[|+_\-]/gu) || []).length;
+  return drawing >= 4 && drawing / Math.max(1, compact.length) > 0.35;
+}
+
+export function isEquation(text, block, pageBounds, bodySize) {
   if (!text || text.length > 240 || text.split(/\s+/).length > 28) return false;
   if (/^(?:figure|fig\.|table|chapter|source|note|proof)\b/i.test(text)) return false;
+  if (isDiagramLike(text)) return false;
+  if (/^\s*[|>]/u.test(text)) return false;
+  if (/\b(?:GET|POST|PUT|PATCH|DELETE|HTTP|HTTPS|JSON|API|URL|status|command(?:Id)?|type|version|endpoint|token|certificate|websocket|public\s+key)\b/i.test(text))
+    return false;
+  if (/[?]/u.test(text)) return false;
   const score = mathScore(text);
-  if (score < 4) return false;
+  const hasRelation = /[=<>≤≥≠≈]/u.test(text);
+  const hasMathCommand = /\\(?:frac|sqrt|sum|prod|int|sin|cos|tan|log|ln|exp)\b/u.test(text);
+  const hasScript = /(?:\b[A-Za-z]\s*_\s*[A-Za-z0-9({\[]|\^\s*[A-Za-z0-9({\[])/u.test(text);
+  const hasNumeric = /\d/u.test(text);
+  const hasOperator = /[+*/^_×÷∑∏∫√]/u.test(text) ||
+    /(?:^|\s)-(?=\s|[A-Za-z0-9({\[])/u.test(text);
+  const identifiers = text.match(/[A-Za-z]+/gu) || [];
+  const compactFormula = identifiers.length > 0 && identifiers.every((value) => value.length <= 3);
+  if (!hasRelation && !hasMathCommand && !hasScript) return false;
+  if (score < 2) return false;
+  if (
+    hasRelation &&
+    !hasMathCommand &&
+    !hasScript &&
+    !hasNumeric &&
+    !hasOperator &&
+    !compactFormula
+  )
+    return false;
   const prose =
     /\b(?:the|and|that|this|with|from|where|which|then|than|for|are|was|were|have|has|into|when)\b/i.test(
       text,
@@ -382,6 +529,7 @@ function readStructuredPage(page) {
 
   if (!blocks.length) blocks.push(...jsonFallbackBlocks(structured));
   if (!blocks.length) blocks.push(...textFallbackBlocks(structured));
+  const stableBlocks = coalesceStructuredBlocks(blocks);
   structured.destroy?.();
 
   const device = new mupdf.Device({
@@ -412,7 +560,7 @@ function readStructuredPage(page) {
   } catch {
     /* text extraction is still usable */
   }
-  return { blocks, images, vectors };
+  return { blocks: stableBlocks, images, vectors };
 }
 
 function cropPage(page, bbox, scale = 2) {
@@ -523,7 +671,7 @@ export function buildEquationCandidate(pageNumber, candidate, rendered, sourceTy
     sourceAsset,
     evidence: {
       text: baseText,
-      source: "pdf-structure-text",
+      source: sourceType === "raster" ? "ocr-layout-text" : "pdf-structure-text",
       reason: "equation-like text and math symbol density",
       cue: baseText && /[=<>≤≥≠≈+−×÷∑∏∫√∞]/.test(baseText) ? "math-symbol-density" : "text-layout",
     },
@@ -540,6 +688,84 @@ export function buildEquationCandidate(pageNumber, candidate, rendered, sourceTy
     },
     disposition,
     cropAsset: sourceAsset,
+  };
+}
+
+function validateEquationReconstruction(
+  pageNumber,
+  bbox,
+  text,
+  crop,
+  sourceType = "raster",
+) {
+  const provider = sourceType === "raster" ? "tesseract-ocr" : "mupdf-structured-text";
+  const candidate = buildEquationCandidate(
+    pageNumber,
+    { kind: "equation", bbox, y: bbox[1], text },
+    crop,
+    sourceType,
+    text,
+  );
+  const validation = validateEquationCandidate(
+    {
+      latex: text,
+      normalized: text,
+      confidence: candidate.confidence,
+      provider,
+      version: "browser-local",
+    },
+    candidate.sourceAsset,
+    text,
+  );
+  candidate.validation = validation.validation;
+  candidate.manifest = validation.manifest;
+  candidate.output = validation.output;
+  candidate.disposition = validation.disposition;
+
+  const fallbackAsset = !validation.accepted && crop.data?.byteLength
+    ? {
+        id: candidate.sourceAsset.id,
+        page: pageNumber,
+        kind: "equation",
+        bbox,
+        sourceType: "raster",
+        caption: "Equation preserved for review",
+        ...crop,
+      }
+    : null;
+  return {
+    candidate,
+    validation,
+    fallbackAsset,
+    fallbackMarker: fallbackAsset
+      ? sourceMarker(pageNumber, fallbackAsset)
+      : validation.accepted
+        ? ""
+        : escapeMd(text, { protectBlockStart: false }),
+    provider,
+  };
+}
+
+function equationReviewItem(candidate, validation, provider) {
+  return {
+    id: candidate.sourceAsset?.id || candidate.id || "equation-unknown",
+    page: candidate.page,
+    kind: "equation",
+    sourceAsset: candidate.sourceAsset,
+    candidate: {
+      id: candidate.id,
+      kind: "equation",
+      latex: validation.output.latex || candidate.text || "",
+      normalized: validation.output.normalized || candidate.text || "",
+      provider,
+      version: "browser-local",
+      confidence: candidate.confidence,
+      modelHash: candidate.sourceAsset?.provenance?.modelHash || null,
+    },
+    validation: validation.validation,
+    manifest: validation.manifest,
+    disposition: candidate.disposition,
+    status: candidate.disposition,
   };
 }
 
@@ -603,6 +829,259 @@ function sourceMarker(pageNumber, asset) {
     ? ` caption="${asset.caption.replace(/["\\]/g, " ").replace(/\s+/g, " ").trim()}"`
     : "";
   return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"${caption}]`;
+}
+
+function headingLikeText(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text || text.length > 140 || /[.!?,;:]$/u.test(text)) return false;
+  if (/^(?:\d{1,4}[/-]){2}\d{1,4}\b|^https?:\/\//i.test(text)) return false;
+  const words = text.split(/\s+/);
+  if (words.length > 16) return false;
+  const letters = [...text].filter((char) => /\p{L}/u.test(char));
+  if (!letters.length) return false;
+  const uppercase =
+    letters.filter((char) => char === char.toUpperCase()).length /
+    letters.length;
+  const wordLike = words.filter((word) => /\p{L}/u.test(word));
+  return (
+    uppercase > 0.72 ||
+    wordLike.length > 0 &&
+    wordLike.every((word) =>
+      /^(?:[A-Z][\p{L}'’&-]*|(?:and|of|the|to|in|for|a|an))$/u.test(word),
+    )
+  );
+}
+
+function headingLevel(markdown) {
+  const match = /^(#{1,6})\s+/.exec(String(markdown || ""));
+  return match ? match[1].length : 1;
+}
+
+function mergeWrappedHeadingEntries(entries, bodySize) {
+  const gapLimit = Math.max(22, bodySize * 3.2);
+  const result = [];
+  for (const entry of entries) {
+    const previous = result.at(-1);
+    const previousText = previous?.rawText;
+    const currentText = entry.rawText;
+    const previousHeading = /^#{1,6}\s+/.test(previous?.markdown || "");
+    const currentHeading = /^#{1,6}\s+/.test(entry.markdown || "");
+    const sameHeadingLevel =
+      previousHeading &&
+      currentHeading &&
+      headingLevel(previous.markdown) === headingLevel(entry.markdown);
+    const canMerge =
+      previous?.kind === "text" &&
+      entry.kind === "text" &&
+      typeof previousText === "string" &&
+      typeof currentText === "string" &&
+      previousText.length + currentText.length <= 160 &&
+      Math.abs(Number(entry.y) - Number(previous.y)) <= gapLimit &&
+      ((sameHeadingLevel &&
+        headingLikeText(previousText) &&
+        headingLikeText(currentText)) ||
+        (previousHeading && !currentHeading && headingLikeText(currentText)) ||
+        (!previousHeading && currentHeading && headingLikeText(previousText)));
+    if (canMerge) {
+      const text = `${previousText} ${currentText}`.replace(/\s+/g, " ").trim();
+      const level = Math.min(
+        headingLevel(previous.markdown),
+        headingLevel(entry.markdown),
+      );
+      result[result.length - 1] = {
+        ...previous,
+        markdown: `${"#".repeat(level)} ${escapeMd(text, {
+          protectBlockStart: false,
+        })}`,
+        rawText: text,
+      };
+      continue;
+    }
+    result.push(entry);
+  }
+
+  // Chat export pages can place the message title above an identical, larger
+  // Markdown heading. Keep the semantic heading and discard only that exact
+  // duplicate at the top of the page.
+  for (let index = 0; index < Math.min(result.length, 8); index += 1) {
+    const candidate = result[index];
+    if (
+      candidate?.kind !== "text" ||
+      typeof candidate.rawText !== "string" ||
+      /^#{1,6}\s+/.test(candidate.markdown || "") ||
+      !headingLikeText(candidate.rawText)
+    )
+      continue;
+    const firstText = candidate.rawText.replace(/\s+/g, " ").trim();
+    const duplicateIndex = result.findIndex(
+      (entry, entryIndex) =>
+        entryIndex > index &&
+        entryIndex <= index + 3 &&
+        /^#{1,6}\s+/.test(entry.markdown || "") &&
+        typeof entry.rawText === "string" &&
+        entry.rawText.replace(/\s+/g, " ").trim().toLowerCase() ===
+          firstText.toLowerCase(),
+    );
+    if (duplicateIndex >= 0) {
+      result.splice(index, 1);
+      break;
+    }
+  }
+  return result;
+}
+
+function isDiagramLabel(text) {
+  const value = String(text || "").trim();
+  if (!value || value.length > 90 || /[.!?;:]$/u.test(value)) return false;
+  if (
+    /^(?:https?:\/\/|www\.)/iu.test(value) ||
+    /^\d{1,4}\/\d{1,4}$/u.test(value) ||
+    /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/iu.test(value)
+  )
+    return false;
+  if (/^(?:the|a|an|this|that|for|when|instead|once|if|use)\b/i.test(value))
+    return false;
+  const words = value.split(/\s+/);
+  const letters = value.match(/[A-Za-z]/gu) || [];
+  const upperCaseLetters = value.match(/[A-Z]/gu) || [];
+  const statusLabel =
+    letters.length > 0 &&
+    upperCaseLetters.length / letters.length >= 0.78 &&
+    words.length <= 6 &&
+    !/[=,]/u.test(value);
+  const flowLabel = /^(?:network interruption|same certificate|reconciliation|approaching expiry|generate new key \+ CSR|certificate generation \d+|generation \d+\s+(?:ACTIVE|RETIRED)|Hub issues generation \d+)$/iu.test(value);
+  return (
+    words.length <= 8 &&
+    (statusLabel ||
+      flowLabel ||
+      /(?:\/|→|←|↔|\b(?:WSS|HTTPS|mTLS|Hub|Server|Channel)\b)/iu.test(value))
+  );
+}
+
+function renderDiagramLine(entry, left, bodySize) {
+  const value = String(entry.rawText || "").replace(/[ \t]+$/u, "").trimStart();
+  const x = Number(entry.x);
+  const column = Math.max(4, bodySize * 0.58);
+  const indent = Number.isFinite(x)
+    ? Math.max(0, Math.round((x - left) / column))
+    : 0;
+  return `${" ".repeat(indent)}${value}`;
+}
+
+function mergeDiagramEntries(entries, bodySize) {
+  const result = [];
+  const gapLimit = Math.max(28, bodySize * 4.2);
+  for (let index = 0; index < entries.length; index += 1) {
+    const first = entries[index];
+    if (
+      first.kind !== "text" ||
+      (!isDiagramLike(first.rawText) && !isDiagramLabel(first.rawText))
+    ) {
+      result.push(first);
+      continue;
+    }
+
+    const run = [first];
+    let anchors = isDiagramLike(first.rawText) ? 1 : 0;
+    while (index + 1 < entries.length) {
+      const next = entries[index + 1];
+      const previous = run.at(-1);
+      if (
+        next.kind !== "text" ||
+        (!isDiagramLike(next.rawText) && !isDiagramLabel(next.rawText)) ||
+        next.y - previous.y > gapLimit
+      )
+        break;
+      run.push(next);
+      if (isDiagramLike(next.rawText)) anchors += 1;
+      index += 1;
+    }
+
+    if (run.length && anchors >= 2 && result.at(-1)?.kind === "text") {
+      const previous = result.at(-1);
+      if (
+        isDiagramLabel(previous.rawText) &&
+        first.y - previous.y <= gapLimit
+      ) {
+        run.unshift(result.pop());
+      }
+    }
+
+    if (run.length < 2 || anchors < 2) {
+      result.push(...run);
+      continue;
+    }
+
+    const xValues = run.map((entry) => Number(entry.x)).filter(Number.isFinite);
+    const left = xValues.length ? Math.min(...xValues) : 0;
+    result.push({
+      ...first,
+      kind: "diagram",
+      rawText: undefined,
+      markdown: [
+        "```",
+        ...run.map((entry) => renderDiagramLine(entry, left, bodySize)),
+        "```",
+      ].join("\n"),
+    });
+  }
+  return result;
+}
+
+function codeSignal(text) {
+  const value = String(text || "").trim();
+  if (!value || value.length > 180) return 0;
+  if (/^[{}[\],]+$/u.test(value)) return 2;
+  if (/^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+/iu.test(value))
+    return 2;
+  if (/^[A-Za-z][\w.-]*\s*(?:=|:)\s*.+$/u.test(value)) return 2;
+  if (/^[A-Z][A-Z0-9_]{2,}$/.test(value)) return 1;
+  if (/^[A-Za-z][A-Za-z0-9]*(?:[A-Z][A-Za-z0-9]*)+$/.test(value)) return 1;
+  if (/^[A-Za-z][\w.-]*,?$/.test(value) && value.length <= 42) return 1;
+  return 0;
+}
+
+function mergeCodeEntries(entries, bodySize) {
+  const result = [];
+  const gapLimit = Math.max(22, bodySize * 3.1);
+  for (let index = 0; index < entries.length; index += 1) {
+    const first = entries[index];
+    const firstSignal =
+      first.kind === "text" ? codeSignal(first.rawText) : 0;
+    if (!firstSignal) {
+      result.push(first);
+      continue;
+    }
+
+    const run = [first];
+    let anchors = firstSignal >= 2 ? 1 : 0;
+    while (index + 1 < entries.length) {
+      const next = entries[index + 1];
+      const signal = next.kind === "text" ? codeSignal(next.rawText) : 0;
+      const previous = run.at(-1);
+      if (!signal || next.y - previous.y > gapLimit) break;
+      run.push(next);
+      if (signal >= 2) anchors += 1;
+      index += 1;
+    }
+
+    if (run.length < 2 || anchors < 2) {
+      result.push(...run);
+      continue;
+    }
+
+    result.push({
+      ...first,
+      kind: "code",
+      rawText: undefined,
+      markdown: [
+        "```",
+        ...run.map((entry) => String(entry.rawText || "").replace(/[ \t]+$/u, "").trim()),
+        "```",
+      ].join("\n"),
+    });
+  }
+  return result;
 }
 
 function horizontalAffinity(a, b, bodySize) {
@@ -680,6 +1159,9 @@ export function looksLikeOcrEquation(text) {
     return false;
   const words = text.split(/\s+/).length;
   if (words > 24) return false;
+  if (/^\s*[|>]/u.test(text)) return false;
+  if (/\b(?:GET|POST|PUT|PATCH|DELETE|HTTP|HTTPS|JSON|API|URL|status|command(?:Id)?|type|version|endpoint|token|certificate|websocket)\b/i.test(text))
+    return false;
   if (/[=<>≤≥≠≈+−×÷]\s*$/u.test(text)) return false;
   const mathSymbols = (text.match(MATH_SYMBOLS) || []).length;
   const hasRelation = /[=<>≤≥≠≈]/.test(text);
@@ -847,6 +1329,10 @@ async function ensureOcrWorker(options, paths) {
       workerPath: paths.workerPath,
       corePath: paths.corePath,
       langPath: paths.langPath,
+      gzip: false,
+      // The language bundle is served locally. Avoid a stale IndexedDB copy
+      // from a previous app version causing TessBaseAPI.Init to fail.
+      cacheMethod: "none",
       logger: (event) => {
         const message = ocrProgressMessage(ocrProgressPage, event);
         if (message) self.postMessage(message);
@@ -922,6 +1408,14 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   let ocrCandidates = [];
   const reviewItems = [];
 
+  const pageTable =
+    !options.forceOcr && options.detectTables
+      ? pageTableFromBlocks(blocks, bodySize, pageBounds)
+      : null;
+  const pageTableLines = pageTable?.lines || new Set();
+  if (pageTable)
+    entries.push({ y: pageTable.y, markdown: pageTable.markdown, kind: "table" });
+
   let ocrApplied = false;
   if (
     options.forceOcr ||
@@ -938,20 +1432,19 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       pageNumber,
     );
     const lines = ocrLines(ocrData);
+    const detectedVisuals = ocrVisualCandidates(ocrData, lines, pageBounds);
     const detected =
       options.preserveVisuals === false
-        ? { candidates: [], excludeRanges: [], equationRanges: [] }
-        : ocrVisualCandidates(ocrData, lines, pageBounds);
+        ? {
+            candidates: [],
+            excludeRanges: [],
+            equationRanges: options.extractEquations
+              ? detectedVisuals.equationRanges
+              : [],
+          }
+        : detectedVisuals;
     ocrCandidates = detected.candidates;
     ocrApplied = true;
-    entries.push(
-      ...ocrMarkdownEntries(ocrData, escapeMd, {
-        pageBounds,
-        rawHeight: ocrData._rasterHeight,
-        excludeRanges: detected.excludeRanges,
-        equationRanges: options.extractEquations ? detected.equationRanges : [],
-      }),
-    );
 
     const rawHeight = Math.max(
       1,
@@ -960,7 +1453,10 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     );
     const [left, top, right, bottom] = pageBounds;
     const pageWidth = right - left;
-    const equationGroups = detected.equationRanges || [];
+    const equationGroups = options.extractEquations
+      ? detected.equationRanges || []
+      : [];
+    const validatedEquationRanges = [];
     for (const group of equationGroups) {
       const pageEquationText = group.latex || group.text || "";
       const pageBBox = [
@@ -969,65 +1465,37 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         right - pageWidth * 0.065,
         geometryYFromRaw(group.y1, pageBounds, rawHeight),
       ];
-      const crop = cropPage(page, pageBBox, 2.6);
-      const candidate = buildEquationCandidate(
+      let crop = { data: new Uint8Array(), width: 0, height: 0 };
+      try {
+        crop = cropPage(page, pageBBox, 2.6);
+      } catch {
+        /* the textual candidate remains reviewable if its crop is unavailable */
+      }
+      const reconstruction = validateEquationReconstruction(
         pageNumber,
-        { kind: "equation", bbox: pageBBox, y: pageBBox[1], text: pageEquationText },
-        crop,
-        pageEquationText.includes("\\") ? "native" : "raster",
+        pageBBox,
         pageEquationText,
+        crop,
+        "raster",
       );
-      ocrCandidates.push(candidate);
-      reviewItems.push({
-        id: candidate.sourceAsset?.id || candidate.id || `p${pageNumber}-equation-${reviewItems.length + 1}`,
-        page: pageNumber,
-        kind: "equation",
-        sourceAsset: candidate.sourceAsset,
-        candidate: {
-          id: candidate.id,
-          kind: "equation",
-          latex: pageEquationText,
-          normalized: pageEquationText,
-          provider: candidate.sourceType || "raster",
-          version: "browser-local",
-          confidence: candidate.confidence,
-          modelHash: candidate.sourceAsset?.provenance?.modelHash || null,
-        },
-        validation: {
-          parseSuccess: false,
-          renderSuccess: false,
-          semanticEquivalent: false,
-          confidencePass: candidate.disposition === "accepted",
-          mandatoryPassed: false,
-          sourcePreserved: true,
-          notes: [candidate.evidence?.reason || "equation candidate detected"],
-        },
-        manifest: {
-          kind: "equation",
-          sourceAsset: candidate.sourceAsset,
-          reconstruction: {
-            format: "semantic-ir",
-            source: {
-              kind: candidate.disposition,
-              recognizer: {
-                name: candidate.sourceType || "unknown",
-                version: "browser-local",
-                preprocessVersion: "1",
-              },
-            },
-          },
-          provenance: {
-            producer: "extract-worker",
-            validationEvidence: {
-              level: candidate.disposition === "accepted" ? "high" : candidate.disposition === "review" ? "medium" : "low",
-              notes: [candidate.evidence?.reason || "equation candidate detected"],
-            },
-          },
-        },
-        disposition: candidate.disposition,
-        status: candidate.disposition,
+      const { candidate, validation, fallbackAsset } = reconstruction;
+      if (fallbackAsset) assets.push(fallbackAsset);
+      validatedEquationRanges.push({
+        ...group,
+        latex: validation.output.latex || pageEquationText,
+        fallbackMarker: reconstruction.fallbackMarker,
       });
+      ocrCandidates.push(candidate);
+      reviewItems.push(equationReviewItem(candidate, validation, "tesseract-ocr"));
     }
+    entries.push(
+      ...ocrMarkdownEntries(ocrData, escapeMd, {
+        pageBounds,
+        rawHeight: ocrData._rasterHeight,
+        excludeRanges: detected.excludeRanges,
+        equationRanges: validatedEquationRanges,
+      }),
+    );
     for (const item of lines) {
       if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
       if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
@@ -1037,7 +1505,9 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   for (const block of (ocrApplied ? [] : blocks).sort(
     (a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0],
   )) {
-    const text = joinWrapped(block.lines);
+    const remainingLines = block.lines.filter((line) => !pageTableLines.has(line));
+    if (!remainingLines.length) continue;
+    const text = joinWrapped(remainingLines);
     if (!text) continue;
     const topEdge = block.bbox[1] <= pageBounds[1] + pageHeight * 0.09;
     const bottomEdge = block.bbox[3] >= pageBounds[3] - pageHeight * 0.08;
@@ -1048,18 +1518,57 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       /^\s*(?:\d{1,5}|[ivxlcdm]{1,10})\s*$/i.test(text)
     )
       continue;
-    const table = options.detectTables ? tableFor(block, bodySize) : null;
+    const table =
+      options.detectTables && remainingLines.length === block.lines.length
+        ? tableFor({ ...block, lines: remainingLines }, bodySize)
+        : null;
     const heading = options.detectHeadings
       ? headingFor(text, block.maxSize, bodySize)
       : null;
+    const rawVisualText =
+      remainingLines.length === 1
+        ? String(remainingLines[0]?.text || text).replace(/[ \t]+$/u, "")
+        : text;
     let markdown;
+    let entryKind = "text";
+    let rawText = rawVisualText;
     if (table) markdown = markdownTable(table);
-    else if (
-      options.extractEquations &&
-      isEquation(text, block, pageBounds, bodySize)
-    )
-      markdown = `$$\n${latexMarkdown(text)}\n$$`;
-    else if (heading) markdown = `${"#".repeat(heading)} ${escapeMd(text)}`;
+    else if (options.extractEquations && isEquation(text, block, pageBounds, bodySize)) {
+      const equationText = latexMarkdown(text);
+      let crop = { data: new Uint8Array(), width: 0, height: 0 };
+      try {
+        crop = cropPage(page, block.bbox, 2.6);
+      } catch {
+        /* the equation can still be preserved as text if rasterization fails */
+      }
+      const reconstruction = validateEquationReconstruction(
+        pageNumber,
+        block.bbox,
+        equationText,
+        crop,
+        "vector",
+      );
+      if (reconstruction.fallbackAsset) assets.push(reconstruction.fallbackAsset);
+      if (reconstruction.validation.accepted) {
+        markdown = `$$\n${reconstruction.validation.output.latex}\n$$`;
+        entryKind = "equation";
+      } else {
+        markdown = reconstruction.fallbackMarker;
+        entryKind = "equation-fallback";
+      }
+      rawText = undefined;
+      reviewItems.push(
+        equationReviewItem(
+          reconstruction.candidate,
+          reconstruction.validation,
+          "mupdf-structured-text",
+        ),
+      );
+    }
+    else if (heading)
+      markdown = `${"#".repeat(heading)} ${escapeMd(text, {
+        protectBlockStart: false,
+      })}`;
     else if (
       block.size < bodySize * 0.82 &&
       block.bbox[1] > pageBounds[1] + pageHeight * 0.55
@@ -1068,7 +1577,13 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         ? text.replace(/^(\d{1,3})\s+(.+)/, "> [^$1]: $2")
         : `> ${escapeMd(text)}`;
     else markdown = escapeMd(text);
-    entries.push({ y: block.bbox[1], markdown });
+    entries.push({
+      y: block.bbox[1],
+      x: block.bbox[0],
+      markdown,
+      kind: entryKind,
+      rawText,
+    });
   }
 
   if (options.preserveVisuals !== false) {
@@ -1100,7 +1615,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           pageNumber,
         );
         if (recoveredTable) {
-          entries.push({ y: bbox[1], markdown: recoveredTable });
+          entries.push({ y: bbox[1], markdown: recoveredTable, kind: "table" });
         } else {
           const asset = {
             id: `p${pageNumber}-image-${index + 1}`,
@@ -1110,7 +1625,11 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
             ...rendered,
           };
           assets.push(asset);
-          entries.push({ y: bbox[1], markdown: sourceMarker(pageNumber, asset) });
+          entries.push({
+            y: bbox[1],
+            markdown: sourceMarker(pageNumber, asset),
+            kind: "visual",
+          });
         }
       } catch {
         /* text extraction remains usable when an image cannot be rendered */
@@ -1149,7 +1668,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
             pageNumber,
           );
           if (recoveredTable) {
-            entries.push({ y: candidate.y, markdown: recoveredTable });
+            entries.push({ y: candidate.y, markdown: recoveredTable, kind: "table" });
             continue;
           }
           const asset = {
@@ -1163,7 +1682,11 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
             ...rendered,
           };
           assets.push(asset);
-          entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
+          entries.push({
+            y: candidate.y,
+            markdown: sourceMarker(pageNumber, asset),
+            kind: "visual",
+          });
         } catch {
           /* reported through raw vector counts */
         }
@@ -1195,7 +1718,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           pageNumber,
         );
         if (recoveredTable) {
-          entries.push({ y: candidate.y, markdown: recoveredTable });
+          entries.push({ y: candidate.y, markdown: recoveredTable, kind: "table" });
           continue;
         }
         const fallbackKind = /^table\b/i.test(candidate.caption || "")
@@ -1211,15 +1734,26 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           ...rendered,
         };
         assets.push(asset);
-        entries.push({ y: candidate.y, markdown: sourceMarker(pageNumber, asset) });
+        entries.push({
+          y: candidate.y,
+          markdown: sourceMarker(pageNumber, asset),
+          kind: "visual",
+        });
       } catch {
         /* OCR text remains available even if a local visual crop fails */
       }
     }
   }
 
-  entries.sort((a, b) => a.y - b.y);
-  const text = entries.map((entry) => entry.markdown).join("\n\n");
+  entries.sort((a, b) => a.y - b.y || (a.x || 0) - (b.x || 0));
+  const textEntries = mergeCodeEntries(
+    mergeDiagramEntries(
+      mergeWrappedHeadingEntries(entries, bodySize),
+      bodySize,
+    ),
+    bodySize,
+  );
+  const text = textEntries.map((entry) => entry.markdown).join("\n\n");
   const quality = {
     characters: text.length,
     textBlocks: blocks.length,
@@ -1227,7 +1761,9 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     vectors: vectors.length,
     equations: (text.match(/^\$\$/gm) || []).length / 2,
     preservedVisuals: assets.length,
-    preservedEquationFallbacks: (text.match(/^\$\$/gm) || []).length / 2,
+    preservedEquationFallbacks: textEntries.filter(
+      (entry) => entry.kind === "equation-fallback",
+    ).length,
     suspiciousGaps: 0,
     ocrApplied,
   };

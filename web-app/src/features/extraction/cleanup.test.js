@@ -73,6 +73,22 @@ describe("cleanup", () => {
       }),
     ).toBe("Chapter title\nBody 1\n\nChapter title\nBody 2\n\nChapter title\nBody 3");
   });
+  it("removes URL footers with dynamic page fractions without touching body URLs", () => {
+    const pages = [1, 2, 3].map((page) => ({
+      page,
+      text: `Body ${page}\nhttps://share.example/reconnection/${page}/3`,
+      edges: {
+        headers: [],
+        footers: [`https://share.example/reconnection/${page}/3`],
+      },
+    }));
+    const result = removeRunningMatter(pages, { headers: false, footers: true });
+    expect(result.map((page) => page.text)).toEqual([
+      "Body 1",
+      "Body 2",
+      "Body 3",
+    ]);
+  });
   it("respects header/footer switches independently", () => {
     const pages = [1, 2, 3].map((page) => ({
       page,
@@ -146,6 +162,19 @@ describe("cleanup", () => {
     expect(
       cleanupDocument([{ page: 2, text: "Hello" }], { preserveMarkers: true }),
     ).toContain("<!-- page: 2 -->"));
+  it("preserves code and diagram fences while removing running matter", () => {
+    const fence = "```";
+    const pages = [1, 2, 3].map((page) => ({
+      page,
+      text: `RUNNING TITLE ${page}\n\n${fence}\nRUNNING TITLE ${page}\n${page}/3\nA -> B\n${fence}\n\n${page}`,
+      edges: { headers: [`RUNNING TITLE ${page}`], footers: [`${page}`] },
+    }));
+    const result = cleanupDocument(pages, {
+      removeHeaders: true,
+      removeFooters: true,
+    });
+    expect(result).toContain(`\`\`\`\nRUNNING TITLE 1\n1/3\nA -> B\n\`\`\``);
+  });
 });
 it("applies browser semantic switches", () => {
   const source = "☑ Done\n\n$$\nx=1\n$$\n\n[VISUAL_PLACEHOLDER page=1]";
@@ -159,6 +188,10 @@ it("applies browser semantic switches", () => {
 describe("exports", () => {
   it("strips common Markdown for plain text", () =>
     expect(plainText("# Title\n\n**Bold**")).toBe("Title\n\nBold"));
+  it("removes only Markdown escape slashes while retaining LaTeX commands", () =>
+    expect(plainText("short \\-lived value \\. \\frac{1}{2}")).toBe(
+      "short -lived value . \\frac{1}{2}",
+    ));
   it("reports document features", () =>
     expect(
       documentMetrics('# One\n\n$$\nx=1\n$$\n[SOURCE_VISUAL id="x"]')

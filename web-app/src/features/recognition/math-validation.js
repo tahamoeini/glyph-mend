@@ -127,7 +127,15 @@ function compareMathIR(actualLatex = "", expectedLatex = "") {
   const actual = parseCandidate({ latex: actualLatex });
   const expected = parseCandidate({ latex: expectedLatex || actualLatex });
   if (!actual.success || !expected.success) return false;
-  return canonicalSignature(actual.mathir) === canonicalSignature(expected.mathir);
+  // Provenance, parser confidence, and disposition are metadata, not math
+  // semantics. Compare only the normalized graph so a valid reconstruction is
+  // not rejected merely because it came from a different confidence path.
+  const comparable = (value) => ({
+    rootId: value.rootId,
+    nodes: value.nodes,
+  });
+  return canonicalSignature(comparable(actual.mathir)) ===
+    canonicalSignature(comparable(expected.mathir));
 }
 
 export function validateEquationCandidate(candidate = {}, sourceAsset = {}, expectedLatex = "", policy = DEFAULT_POLICY) {

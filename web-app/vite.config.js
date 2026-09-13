@@ -1,3 +1,4 @@
+import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
@@ -40,9 +41,16 @@ export default defineConfig({
           dest: "tesseract",
         },
         {
-          // Tesseract 7's LSTM-only core uses this bundled integer model.
+          // Serve the local model uncompressed. Chromium can turn a streamed
+          // `.gz` static-copy response into an empty 204 during development,
+          // which makes Tesseract write a zero-byte traineddata file.
           src: "node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz",
           dest: "tessdata",
+          rename: "eng.traineddata",
+          transform: {
+            encoding: "buffer",
+            handler: (content) => gunzipSync(content),
+          },
         },
       ],
     }),

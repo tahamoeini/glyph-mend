@@ -124,10 +124,10 @@ function joinLines(lines) {
   );
 }
 
-function escapeOcr(text, escapeMarkdown) {
+function escapeOcr(text, escapeMarkdown, options = {}) {
   // OCR is not a mathematical parser. In particular, isolated dollar signs can
   // otherwise turn OCR noise into Markdown display-math delimiters.
-  return escapeMarkdown(text).replace(/\$/g, "\\$");
+  return escapeMarkdown(text, options).replace(/\$/g, "\\$");
 }
 
 function looksLikeContents(lines) {
@@ -203,7 +203,10 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
     if (!paragraph.length) return;
     entries.push({
       y: mapY(paragraph[0].y0),
+      x: paragraph[0].x0,
       markdown: escapeOcr(joinLines(paragraph), escapeMarkdown),
+      kind: "text",
+      rawText: joinLines(paragraph),
     });
     paragraph = [];
   };
@@ -218,7 +221,9 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
         equation.emitted = true;
         entries.push({
           y: mapY(equation.y0),
-          markdown: `$$\n${equation.latex}\n$$`,
+          kind: equation.fallbackMarker ? "equation-fallback" : "equation",
+          markdown:
+            equation.fallbackMarker || `$$\n${equation.latex}\n$$`,
         });
       }
       continue;
@@ -240,7 +245,12 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
       flushParagraph();
       entries.push({
         y: mapY(line.y0),
-        markdown: `${"#".repeat(level)} ${escapeOcr(line.text, escapeMarkdown)}`,
+        x: line.x0,
+        markdown: `${"#".repeat(level)} ${escapeOcr(line.text, escapeMarkdown, {
+          protectBlockStart: false,
+        })}`,
+        kind: "text",
+        rawText: line.text,
       });
       continue;
     }

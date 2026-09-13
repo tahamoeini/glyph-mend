@@ -48,6 +48,21 @@ describe("equation validation gating", () => {
     expect(result.validation.sourcePreserved).toBe(true);
   });
 
+  it("never accepts a high-confidence candidate with a parse error", () => {
+    const result = validateEquationCandidate(
+      {
+        latex: "x =",
+        confidence: { overall: 0.99, token: 0.99, sequence: 0.99 },
+      },
+      { id: "source-crop-4", page: 3, bbox: [10, 20, 200, 60] },
+      "x =",
+    );
+
+    expect(result.accepted).toBe(false);
+    expect(result.disposition).toBe("preserved");
+    expect(result.validation.parseSuccess).toBe(false);
+  });
+
   it("uses a conservative visual similarity fallback for structure-sensitive math", () => {
     const score = createBaselineVisualSimilarity("\\sum_{i=1}^n i", "\\sum_{i=1}^n i^2");
     expect(score.score).toBeLessThan(1);

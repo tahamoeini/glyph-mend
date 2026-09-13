@@ -1,3 +1,9 @@
+import {
+  coalesceStructuredBlocks,
+  mergeAdjacentStructuredLines,
+  structuredLineText,
+} from "./structured-lines.js";
+
 function rect(value) {
   if (Array.isArray(value) && value.length >= 4)
     return value.slice(0, 4).map(Number);
@@ -26,12 +32,16 @@ function collectTextBlocks(nodes, result = []) {
 }
 
 function lineText(line) {
-  return String(line?.text || "").replace(/\s+/g, " ").trim();
+  return structuredLineText(line);
 }
 
 function lineSize(line) {
   const box = rect(line?.bbox);
-  return Number(line?.font?.size) || (box ? Math.max(6, box[3] - box[1]) : 10);
+  return (
+    Number(line?.font?.size) ||
+    Number(line?.font) ||
+    (box ? Math.max(6, box[3] - box[1]) : 10)
+  );
 }
 
 function lineBounds(lines) {
@@ -72,7 +82,7 @@ function structuralLine(text, size, bodySize, font = null) {
 }
 
 function normalizedJsonBlocks(data) {
-  const source = collectTextBlocks(data?.blocks);
+  const source = coalesceStructuredBlocks(collectTextBlocks(data?.blocks));
   const allLines = source
     .flatMap((block) => block.lines || [])
     .filter((line) => lineText(line));
@@ -81,7 +91,21 @@ function normalizedJsonBlocks(data) {
   );
   const result = [];
   for (const block of source) {
-    const lines = (block.lines || []).filter((line) => lineText(line));
+    const coalesced = (block.lines || []).filter((line) => lineText(line));
+    const lines = mergeAdjacentStructuredLines(
+      coalesced,
+      (left, right) => {
+        const leftText = lineText(left);
+        const rightText = lineText(right);
+        return (
+          structuralLine(leftText, lineSize(left), bodySize, left.font) &&
+          structuralLine(rightText, lineSize(right), bodySize, right.font) &&
+          !/[.!?;:]$/.test(leftText) &&
+          `${leftText} ${rightText}`.length <= 160
+        );
+      },
+      "space",
+    );
     let body = [];
     const flush = () => {
       if (!body.length) return;
@@ -294,7 +318,8 @@ export function installFinalStructuredFidelity(mupdf) {
     };
 
     const result = original.call(this, proxy);
-    const capturedLineCount = captured.reduce(
+    const stableCaptured = coalesceStructuredBlocks(captured);
+    const capturedLineCount = stableCaptured.reduce(
       (count, value) => count + value.lines.length,
       0,
     );
@@ -304,7 +329,7 @@ export function installFinalStructuredFidelity(mupdf) {
       jsonBlocks.length >= 2;
 
     if (preferJson) replayJson(walker, jsonBlocks);
-    else replayCaptured(walker, splitCapturedCollapsed(captured));
+    else replayCaptured(walker, splitCapturedCollapsed(stableCaptured));
     for (const args of images) walker.onImageBlock?.(...args);
     return result;
   };

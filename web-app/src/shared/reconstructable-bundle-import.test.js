@@ -65,7 +65,7 @@ it("rejects traversal in ZIP metadata before decompression", () => {
 
 it("rejects suspicious compression ratios before decompression", () => {
   const archive = zipSync({
-    "manifest.json": strToU8("A".repeat(20_000)),
+    "manifest.json": Uint8Array.from(strToU8("A".repeat(20_000))),
   }, { level: 9 });
   expect(() => preflightReconstructableZip(archive, { maxCompressionRatio: 2 })).toThrow(/compression-ratio/i);
 });

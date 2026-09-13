@@ -265,6 +265,10 @@ test("adapts workspace panes by available width without losing editor state", as
     }
     const columns = await page.locator("#workspace").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
     expect(columns).toBeGreaterThanOrEqual(panes);
+    const topbarColumns = await page.locator(".topbar").evaluate((node) =>
+      getComputedStyle(node).gridTemplateColumns.trim().split(/\s+/).length,
+    );
+    expect(topbarColumns).toBe(width < 700 ? 2 : 3);
   }
 
   await page.setViewportSize({ width: 1200, height: 960 });
@@ -324,7 +328,9 @@ test("opens and closes the settings drawer on a small screen", async ({
     "aria-expanded",
     "true",
   );
-  await page.locator("#sidebarBackdrop").click();
+  // The sheet is bottom-anchored on compact layouts; click the visible
+  // backdrop area above it rather than the sheet's intercepted center point.
+  await page.locator("#sidebarBackdrop").click({ position: { x: 10, y: 10 } });
   await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
 });
 
