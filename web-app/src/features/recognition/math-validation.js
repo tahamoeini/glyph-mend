@@ -151,7 +151,12 @@ export function validateEquationCandidate(candidate = {}, sourceAsset = {}, expe
   const visual = createBaselineVisualSimilarity(actualLatex, expected || actualLatex);
   const semanticEquivalent = compareMathIR(actualLatex, expected || actualLatex);
   const renderSuccess = parsed.success;
-  const confidencePass = confidence.overall >= threshold.accept;
+  const structuredTextConfidencePass =
+    candidate.provider === "mupdf-structured-text" &&
+    visual.exact &&
+    confidence.overall >= threshold.review;
+  const confidencePass =
+    confidence.overall >= threshold.accept || structuredTextConfidencePass;
   const mandatoryPassed = parsed.success && renderSuccess && semanticEquivalent && confidencePass;
 
   let disposition = "preserved";
@@ -211,7 +216,7 @@ export function validateEquationCandidate(candidate = {}, sourceAsset = {}, expe
       expectedLatex: expected,
       parse: parsed,
       visual,
-        semanticEquivalent,
+      semanticEquivalent,
     },
   };
 }
