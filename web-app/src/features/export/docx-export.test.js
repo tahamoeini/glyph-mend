@@ -62,6 +62,14 @@ it("retains relations, arithmetic operators, and root degrees", async () => {
   expect(xml).toContain("<m:deg>");
 });
 
+it("retains non-equality relation operators in native DOCX math", async () => {
+  const files = await contents(
+    await markdownToDocx("$$\nx \\leq y\n$$", "Test"),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toMatch(/<m:t>(?:≤|&#x2264;|&#8804;)<\/m:t>/u);
+});
+
 it("keeps an integral differential in the native equation body", async () => {
   const files = await contents(
     await markdownToDocx("$$\n\\int_0^1 x^2 \\mathrm{d}x\n$$", "Test"),
