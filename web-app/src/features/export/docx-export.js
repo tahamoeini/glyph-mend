@@ -580,18 +580,7 @@ function mathComponents(source) {
   const raw = source.trim();
   const parsed = parseLatexToMathIR(raw);
   const irComponents = mathComponentsFromMathIR(parsed, raw);
-  if (
-    !parsed.errors?.length &&
-    irComponents.length &&
-    irComponents.some(
-      (component) =>
-        component &&
-        component.constructor &&
-        component.constructor.name !== "MathRun",
-    )
-  ) {
-    return irComponents;
-  }
+  if (!parsed.errors?.length && irComponents.length) return irComponents;
 
   if (parsed.errors?.length || parsed.warnings?.length)
     return [new MathRun(raw || " ")];
