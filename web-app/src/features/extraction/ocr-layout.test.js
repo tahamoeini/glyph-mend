@@ -156,6 +156,15 @@ it("serializes detected OCR equations as LaTeX Markdown and repairs line wraps",
   ]);
 });
 
+it("suppresses an equation text range when validation requires visual fallback", () => {
+  const entries = ocrMarkdownEntries(
+    { text: "x =", blocks: null },
+    identity,
+    { equationRanges: [{ y0: 0, y1: 10, latex: "x =", emit: false }] },
+  );
+  expect(entries).toEqual([]);
+});
+
 it("keeps sentence-like numbered OCR lines out of heading syntax", () => {
   const entries = ocrMarkdownEntries(
     { text: "1. This is a numbered instruction.\n\n1.2 Revenue Controls", blocks: null },

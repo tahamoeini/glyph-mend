@@ -2,6 +2,7 @@ import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 import { coalesceStructuredBlocks } from "./structured-lines.js";
+import { inlineMathMarkdown } from "./math-markdown.js";
 import { validateEquationCandidate } from "../recognition/math-validation.js";
 import {
   ACTIVE_FORMAT_LIMITS,
@@ -1566,9 +1567,12 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       );
     }
     else if (heading)
-      markdown = `${"#".repeat(heading)} ${escapeMd(text, {
+      markdown = `${"#".repeat(heading)} ${escapeMd(
+        options.extractEquations ? inlineMathMarkdown(text) : text,
+        {
         protectBlockStart: false,
-      })}`;
+        },
+      )}`;
     else if (
       block.size < bodySize * 0.82 &&
       block.bbox[1] > pageBounds[1] + pageHeight * 0.55
@@ -1576,7 +1580,10 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       markdown = /^(\d{1,3})\s+(.+)/.test(text)
         ? text.replace(/^(\d{1,3})\s+(.+)/, "> [^$1]: $2")
         : `> ${escapeMd(text)}`;
-    else markdown = escapeMd(text);
+    else
+      markdown = escapeMd(
+        options.extractEquations ? inlineMathMarkdown(text) : text,
+      );
     entries.push({
       y: block.bbox[1],
       x: block.bbox[0],

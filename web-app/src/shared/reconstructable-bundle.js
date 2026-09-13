@@ -325,7 +325,10 @@ export async function buildReconstructableBundle({
   assertBundleResourceLimits(files, limits);
   if (files["manifest.json"].byteLength > limits.maxManifestBytes) throw new RangeError("Bundle manifest exceeds the byte limit.");
   const zipInput = Object.fromEntries(Object.entries(files).map(([path, value]) => [path, Uint8Array.from(value)]));
-  const zipBytes = zipSync(zipInput, { level: 6, mtime: new Date("1980-01-01T00:00:00Z") }).slice();
+  // fflate serializes DOS timestamps through local date components. Use a
+  // midday local date inside the representable range so the timestamp remains
+  // valid in every browser timezone while keeping the archive deterministic.
+  const zipBytes = zipSync(zipInput, { level: 6, mtime: new Date(1980, 0, 2, 12, 0, 0) }).slice();
   return {
     blob: new Blob([zipBytes], { type: "application/zip" }),
     bytes: zipBytes,

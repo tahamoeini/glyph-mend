@@ -9,6 +9,12 @@ it("parses a simple inline equation into MathIR", () => {
   expect(ir.disposition).toBe("accepted");
 });
 
+it("accepts normalized relation commands emitted by the extractor", () => {
+  const ir = parseLatexToMathIR("p \\leq q + 1");
+  expect(ir.errors).toEqual([]);
+  expect(ir.nodes.length).toBeGreaterThan(0);
+});
+
 it("parses nested fraction structure and preserves semantic structure", () => {
   const ast = parseLatexToAst("\\frac{1}{1 + \\frac{1}{x}}");
   expect(ast.type).toBe("fraction");

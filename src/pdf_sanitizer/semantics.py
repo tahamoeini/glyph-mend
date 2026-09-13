@@ -128,6 +128,18 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _LATEX_SIGNAL_RE = re.compile(r"\\(?:frac|sqrt|sum|prod|int|partial|nabla|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|phi|omega|leq|geq|neq|approx|infty|to)\b")
 _RELATION_RE = re.compile(r"(?:=|≤|≥|≠|≈|≡|(?<!<)<(?![!A-Za-z/])|(?<!>)>(?![A-Za-z]))")
 _VARIABLE_OPERATOR_RE = re.compile(r"(?:^|\s|\()[A-Za-z][A-Za-z0-9_]*\s*(?:[+*/^]|-(?!\d))\s*(?:[A-Za-z0-9(])")
+_ESCAPED_PUNCTUATION_RE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\]^_`{|}~])")
+_INLINE_TEX_PAREN_RE = re.compile(r"\\\(([^\n]{1,240}?)\\\)")
+_INLINE_DOLLAR_RE = re.compile(r"(?<!\$)\$([^$\n]{1,240})\$(?!\$)")
+_MATH_ATOM = r"(?:\\[A-Za-z]+|[A-Za-zα-ωΑ-Ω][A-Za-z0-9_]*|\d+(?:\.\d+)?|[()[\]{}])"
+_MATH_TERM = rf"{_MATH_ATOM}(?:\s*[\[(]\s*{_MATH_ATOM}(?:\s*[,;]\s*{_MATH_ATOM})*\s*[\])])?"
+_INLINE_EQUATION_RE = re.compile(
+    rf"(?<![\w$(]){_MATH_TERM}\s*(?:=|≤|≥|≠|≈|≡|<|>)\s*{_MATH_TERM}"
+    rf"(?:\s*(?:[+\-−×÷*/^]|=|≤|≥|≠|≈|≡|<|>)\s*{_MATH_TERM}){{0,12}}"
+)
+_INLINE_PAREN_EXPRESSION_RE = re.compile(
+    r"(?<![\w$])(?:[A-Za-z][A-Za-z0-9_]*)?\([^()\n]{1,70}[=<>≤≥≠≈+*/^][^()\n]{0,70}\)"
+)
 
 
 def _bbox(value: Any) -> BBox | None:
@@ -159,7 +171,7 @@ def _replace_math_symbol(value: str, source: str, replacement: str) -> str:
 def text_to_latex(text: str) -> str:
     """Conservatively normalize Unicode math into GitHub/MathJax-friendly LaTeX."""
 
-    value = text.strip()
+    value = _ESCAPED_PUNCTUATION_RE.sub(r"\1", text.strip())
     for source, replacement in _FRACTIONS.items():
         value = value.replace(source, replacement)
 
@@ -171,6 +183,57 @@ def text_to_latex(text: str) -> str:
         value = _replace_math_symbol(value, source, replacement)
 
     return re.sub(r"[ \t]+", " ", value).strip()
+
+
+def _inline_math_is_plausible(value: str) -> bool:
+    candidate = value.strip()
+    if not candidate or len(candidate) > 120 or _URL_RE.search(candidate):
+        return False
+    if re.match(r"(?:amount|total|posted|adjustments|the|this|that)\b", candidate, re.IGNORECASE):
+        return False
+    words = _WORD_RE.findall(candidate)
+    prose_words = re.findall(
+        r"\b(?:the|and|that|this|with|from|where|which|then|than|for|are|was|were|have|has|into|when|amount|total|posted|plus|adjustments)\b",
+        candidate,
+        re.IGNORECASE,
+    )
+    score = _math_score(candidate, [])
+    compact_expression = bool(re.fullmatch(r"[\wα-ωΑ-Ω\s()[\]{}=<>≤≥≠≈+\-−×÷*/^]+", candidate))
+    if score < 4 and not (compact_expression and score >= 2):
+        return False
+    if len(words) > 8 and len(prose_words) >= 2:
+        return False
+    return True
+
+
+def normalize_inline_math(markdown: str) -> str:
+    """Convert confident inline math to ``$...$`` while preserving uncertain text."""
+
+    if not markdown:
+        return markdown
+
+    def transform(part: str) -> str:
+        protected: list[str] = []
+
+        def protect(match: re.Match[str]) -> str:
+            token = f"\x00GLYPHMEND_MATH_{len(protected)}\x00"
+            protected.append(f"${text_to_latex(match.group(1))}$")
+            return token
+
+        value = _INLINE_TEX_PAREN_RE.sub(protect, part)
+        value = _INLINE_DOLLAR_RE.sub(protect, value)
+
+        def replace(match: re.Match[str]) -> str:
+            candidate = match.group(0).strip()
+            return f"${text_to_latex(candidate)}$" if _inline_math_is_plausible(candidate) else match.group(0)
+
+        value = _INLINE_EQUATION_RE.sub(replace, value)
+        value = _INLINE_PAREN_EXPRESSION_RE.sub(replace, value)
+        for index, replacement in enumerate(protected):
+            value = value.replace(f"\x00GLYPHMEND_MATH_{index}\x00", replacement)
+        return value
+
+    return _outside_fences(markdown, transform)
 
 
 def _span_text(span: dict[str, Any]) -> str:
@@ -333,6 +396,9 @@ def normalize_display_math_lines(markdown: str) -> str:
 
     def transform(part: str) -> str:
         part = _repair_existing_math_blocks(part)
+        # PyMuPDF4LLM may emit Markdown escapes for ordinary punctuation. They are
+        # useful around syntax tokens, but make extracted prose visibly noisy when
+        # every comma, period, or hyphen is prefixed with a backslash.
         lines: list[str] = []
         inside_math = False
         for line in part.split("\n"):
@@ -350,7 +416,8 @@ def normalize_display_math_lines(markdown: str) -> str:
             if _plausible_math(stripped) and _math_score(stripped, []) >= 6:
                 lines.extend(("$$", text_to_latex(stripped), "$$"))
             else:
-                lines.append(line)
+                line = normalize_inline_math(line)
+                lines.append(_ESCAPED_PUNCTUATION_RE.sub(r"\1", line))
         return "\n".join(lines)
 
     return _outside_fences(markdown, transform)

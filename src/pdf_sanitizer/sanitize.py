@@ -12,6 +12,7 @@ _FENCE_RE = re.compile(
 )
 _ESCAPED_BR_RE = re.compile(r"&lt;br\s*/?&gt;", re.IGNORECASE)
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_ESCAPED_PUNCTUATION_RE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\]^_`{|}~])")
 # Some older embedded PDF fonts map the ordinary comma glyph to U+201A. Replace it
 # only in word/list punctuation contexts, not globally, because U+201A is legitimate
 # opening punctuation in some languages.
@@ -89,6 +90,12 @@ def sanitize_markdown(text: str) -> str:
         value = value.replace(marker, "")
 
     value = _MISENCODED_COMMA_RE.sub(",", value)
+
+    # Markdown producers sometimes escape every ASCII punctuation mark instead of
+    # escaping only syntax that needs protection. Keep the extracted document
+    # readable: commands such as ``\\frac`` remain intact, while ``\\.`` and
+    # ``\\-`` become ordinary punctuation again.
+    value = _ESCAPED_PUNCTUATION_RE.sub(r"\1", value)
 
     # PyMuPDF uses <br> inside table/layout cells to preserve visual line wrapping.
     # In a semantic Markdown export those visual wraps are noise, not structure. Flatten
