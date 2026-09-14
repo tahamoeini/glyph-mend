@@ -1503,6 +1503,33 @@ function bind() {
   $("inspectorToggle").onclick = toggleInspector;
   $("compactSettingsButton").onclick = toggleSidebar;
   $("compactInspectorButton").onclick = toggleInspector;
+  document.querySelectorAll("[data-workspace-nav]").forEach((button) => {
+    button.onclick = () => {
+      const target = button.dataset.workspaceNav;
+      document.querySelectorAll("[data-workspace-nav]").forEach((candidate) => {
+        candidate.classList.toggle("active", candidate === button);
+      });
+      if (target === "settings") {
+        if (isCompactLayout()) {
+          if (!document.body.classList.contains("sidebar-open")) toggleSidebar();
+        } else if (document.body.classList.contains("sidebar-collapsed")) {
+          toggleSidebar();
+        }
+        return;
+      }
+      if (target === "inspector") {
+        if (isCompactLayout()) {
+          if (!document.body.classList.contains("inspector-open")) toggleInspector();
+        } else {
+          toggleInspector();
+        }
+        return;
+      }
+      closeSettingsSheet({ restoreFocus: false });
+      closeInspectorSheet({ restoreFocus: false });
+      document.querySelector(".editor")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+  });
   $("sidebarBackdrop").onclick = closeSettingsSheet;
   $("inspectorBackdrop").onclick = closeInspectorSheet;
   onMediaChange(media.colorScheme, () => {
