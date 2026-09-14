@@ -5142,3 +5142,52 @@ body:has(#welcome:not(.hidden)) .topbar {
     }
   }
 }
+
+
+/* Stitch desktop landing proportions: wide editorial stage with the same
+   hero/intake/capability/footer relationship as the reference screens. */
+@layer stitch-reference-desktop-landing {
+  @media (min-width: 1200px) {
+    body:has(#welcome:not(.hidden)) main {
+      min-height: calc(100dvh - var(--topbar-height, 60px));
+    }
+
+    [data-ui-region="landing"] {
+      width: calc(100% - 64px);
+      max-width: 1450px;
+      min-height: calc(100dvh - var(--topbar-height, 60px));
+      padding: clamp(42px, 7vh, 88px) 0 24px;
+      grid-template-columns: minmax(320px, .82fr) minmax(560px, 1.18fr);
+      column-gap: clamp(48px, 7vw, 112px);
+      row-gap: 24px;
+    }
+
+    [data-ui-region="landing"] > [data-ui-region="hero"] {
+      max-width: 620px;
+    }
+
+    [data-ui-region="hero"] h1 {
+      max-width: 620px;
+      font-size: clamp(46px, 4.2vw, 68px);
+    }
+
+    [data-ui-region="hero"] .lede {
+      max-width: 600px;
+      font-size: clamp(17px, 1.45vw, 20px);
+    }
+
+    [data-ui-region="landing"] > [data-ui-region="capabilities"] {
+      max-width: 620px;
+    }
+
+    [data-ui-region="landing"] > [data-ui-region="intake"] {
+      max-width: 700px;
+      padding: 28px;
+    }
+
+    [data-ui-region="intake"] .drop-zone {
+      min-height: 360px;
+      padding: 36px;
+    }
+  }
+}
