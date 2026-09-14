@@ -1,7 +1,10 @@
+import { splitEquationProse } from "./math-markdown.js";
+
 const PAGE = /^\s*<!--\s*page:\s*(\d+)\s*-->\s*$/;
 const STRUCTURAL =
   /^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\||```|~~~|\$\$|\[(?:VISUAL_|SOURCE_))/;
 const FENCE = /^\s*(?:```|~~~)[A-Za-z0-9_-]*\s*$/;
+const DISPLAY_MATH = String.fromCharCode(36).repeat(2);
 
 export function normalizeText(value = "") {
   return value
@@ -380,6 +383,90 @@ export function normalizeHeadingHierarchy(markdown) {
   return result.join("\n");
 }
 
+export function repairLineWrapHyphens(markdown) {
+  const lines = String(markdown || "").split("\n");
+  const result = [];
+  let fenced = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isFenceLine(line)) {
+      fenced = !fenced;
+      result.push(line);
+      continue;
+    }
+    const next = lines[index + 1];
+    const match =
+      !fenced &&
+      !PAGE.test(line) &&
+      !STRUCTURAL.test(line.trim()) &&
+      /(\p{L}{2,})-\s*$/u.exec(line);
+    if (
+      match &&
+      next &&
+      !PAGE.test(next) &&
+      !STRUCTURAL.test(next.trim()) &&
+      /^\s*\p{Ll}{2,}/u.test(next)
+    ) {
+      result.push(line.slice(0, match.index) + match[1] + next.trimStart());
+      index += 1;
+      continue;
+    }
+    result.push(line);
+  }
+  return result.join("\n");
+}
+
+function falseDisplayMathBody(body) {
+  const text = String(body || "").replace(/\s+/g, " ").trim();
+  const words = text ? text.split(" ").length : 0;
+  if (
+    /^(?:theorem|lemma|proposition|corollary|example)\b/i.test(text) &&
+    words > 5 &&
+    /[,;]/u.test(text)
+  )
+    return true;
+  return (
+    /^(?:of|by|from|for|as)\b/i.test(text) &&
+    words > 5 &&
+    /\b(?:the|and|that|this|with|from|which|used|capacity|choices)\b/i.test(text)
+  );
+}
+
+export function repairDisplayMathProse(markdown) {
+  const lines = String(markdown || "").split("\n");
+  const result = [];
+  let fenced = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (isFenceLine(line)) {
+      fenced = !fenced;
+      result.push(line);
+      continue;
+    }
+    if (!fenced && line.trim() === DISPLAY_MATH) {
+      const end = lines.findIndex(
+        (candidate, cursor) => cursor > index && candidate.trim() === DISPLAY_MATH,
+      );
+      if (end > index) {
+        const body = lines.slice(index + 1, end).join("\n");
+        const split = splitEquationProse(body);
+        if (split) {
+          result.push(DISPLAY_MATH, split.equation, DISPLAY_MATH, "", split.prose);
+          index = end;
+          continue;
+        }
+        if (falseDisplayMathBody(body)) {
+          result.push(body);
+          index = end;
+          continue;
+        }
+      }
+    }
+    result.push(line);
+  }
+  return result.join("\n");
+}
+
 export function joinPageParagraphs(markdown) {
   return markdown.replace(
     /([^\n]+)\n\n(<!-- page: \d+ -->)\n\n([^\n]+)/g,
@@ -417,6 +504,9 @@ export function cleanupDocument(rawPages, options = {}) {
   if (options.detectHeadings !== false)
     markdown = normalizeHeadingHierarchy(markdown);
   if (options.joinParagraphs) markdown = joinPageParagraphs(markdown);
+  markdown = repairLineWrapHyphens(markdown);
+  if (options.extractEquations !== false)
+    markdown = repairDisplayMathProse(markdown);
   if (options.extractEquations === false)
     markdown = markdown.replace(/^\$\$\s*$[\s\S]*?^\$\$\s*$/gm, "");
   if (options.taskLists)
@@ -586,7 +676,10 @@ export function qualityAudit(pages, markdown, warnings = []) {
       message:
         "These pages required OCR; review complex tables, formulas, and layout against the source.",
     });
-  const ocrPages = pages.filter((page) => page.quality?.ocrApplied).length;
+  const ocrPageNumbers = pages
+    .filter((page) => page.quality?.ocrApplied)
+    .map((page) => page.page);
+  const ocrPages = ocrPageNumbers.length;
   if (pages.length && ocrPages === pages.length)
     issues.push({
       code: "OCR_ONLY_DOCUMENT",
@@ -618,5 +711,11 @@ export function qualityAudit(pages, markdown, warnings = []) {
         ? "warnings"
         : "pass",
     issues,
+    coverage: {
+      totalPages: pages.length,
+      ocrAppliedPages: ocrPageNumbers,
+      ocrOnlyPages: ocrOnly.map((page) => page.page),
+      failedPages,
+    },
   };
 }

@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   buildEquationCandidate,
   captionFor,
+  equationImageCandidatesFor,
   isDiagramLike,
   isEquation,
   jsonFallbackBlocks,
@@ -114,6 +115,41 @@ it("keeps ASCII diagrams out of display math and accepts compact equations", () 
   expect(isEquation("+------------------+", { bbox: [0, 0, 200, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
   expect(isEquation("p ≤ μ + ½", { bbox: [80, 240, 260, 260], size: 12 }, [0, 0, 612, 792], 10)).toBe(true);
   expect(isEquation("status = PENDING_ENROLLMENT", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+});
+
+it("finds compact equation images next to a formula cue", () => {
+  const candidates = equationImageCandidatesFor(
+    [{ bbox: [120, 180, 280, 205], image: {} }],
+    [{
+      lines: [{
+        text: "The condition is satisfying",
+        bbox: [70, 150, 300, 166],
+      }],
+    }],
+    [0, 0, 336, 504],
+    10,
+  );
+  expect(candidates).toHaveLength(1);
+  expect(candidates[0]).toMatchObject({
+    kind: "equation-image",
+    sourceImageIndex: 0,
+    cueText: "The condition is satisfying",
+  });
+});
+
+it("does not classify a captioned figure as an equation image", () => {
+  const candidates = equationImageCandidatesFor(
+    [{ bbox: [120, 180, 280, 205], image: {} }],
+    [{
+      lines: [
+        { text: "satisfying", bbox: [70, 150, 300, 166] },
+        { text: "Figure 4.2. Demand curve", bbox: [70, 210, 300, 224] },
+      ],
+    }],
+    [0, 0, 336, 504],
+    10,
+  );
+  expect(candidates).toHaveLength(0);
 });
 
 it("records source provenance and a reversible crop for OCR equation candidates", () => {

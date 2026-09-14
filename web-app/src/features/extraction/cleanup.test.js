@@ -5,6 +5,8 @@ import {
   headingFor,
   joinPageParagraphs,
   normalizeHeadingHierarchy,
+  repairDisplayMathProse,
+  repairLineWrapHyphens,
   normalizeText,
   parsePageRange,
   plainText,
@@ -154,6 +156,28 @@ describe("cleanup", () => {
     );
   });
 
+  it("repairs line-wrap hyphens without touching code fences", () => {
+    const fence = String.fromCharCode(96).repeat(3);
+    const fenced = [fence, "con-\ntent", fence].join("\n");
+    expect(
+      repairLineWrapHyphens(["Un-\nder and grow-\ning", fenced].join("\n\n")),
+    ).toBe(["Under and growing", fenced].join("\n\n"));
+  });
+  it("repairs mixed display math while keeping the prose editable", () => {
+    const displayMath = String.fromCharCode(36).repeat(2);
+    const source = [
+      displayMath,
+      "0.284 × 33 = 16.23. This is higher than given",
+      displayMath,
+    ].join("\n");
+    expect(repairDisplayMathProse(source)).toBe([
+      displayMath,
+      "0.284 × 33 = 16.23",
+      displayMath,
+      "",
+      "This is higher than given",
+    ].join("\n"));
+  });
   it("does not report ordinary compound words as broken wrap hyphens", () => {
     const audit = qualityAudit([], "single-resource capacity-control", []);
     expect(audit.issues.some((issue) => issue.code === "WRAP_HYPHENS")).toBe(false);
@@ -276,6 +300,7 @@ describe("exports", () => {
       "Recovered OCR text",
     );
     expect(audit.status).toBe("warnings");
+    expect(audit.coverage.ocrAppliedPages).toEqual([1]);
     const issue = audit.issues.find((item) => item.code === "OCR_ONLY_PAGES");
     expect(issue).toEqual(expect.objectContaining({ pages: [1] }));
     expect(issue.message).not.toMatch(/renditions are retained/i);
