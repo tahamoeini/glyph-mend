@@ -399,7 +399,7 @@ export function isEquation(text, block, pageBounds, bodySize) {
     return false;
   const prose =
     /\b(?:the|and|that|this|with|from|where|which|then|than|for|are|was|were|have|has|into|when)\b/i.test(
-      text,
+      mathText,
     );
   if (prose && score < 7) return false;
   const width = block.bbox[2] - block.bbox[0];

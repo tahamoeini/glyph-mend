@@ -20,7 +20,7 @@ const INLINE_PAREN_EXPRESSION =
   /(?<![\w$])(?:[A-Za-z][A-Za-z0-9_]*)?\([^()\n]{1,70}[=<>≤≥≠≈+*/^][^()\n]{0,70}\)/gu;
 const DISPLAY_MATH_BOUNDARY = /[.!?](?=\s+[A-Z][a-z]{2,}\b)/gu;
 const EQUATION_RELATION = /[=<>≤≥≠≈≡]/u;
-const EQUATION_OPERATOR = /[+\-−×÷*/^_]/u;
+const EQUATION_OPERATOR = /[=+\-−×÷*/^_]/u;
 
 function equationLikePrefix(value) {
   const text = normalize(value);
