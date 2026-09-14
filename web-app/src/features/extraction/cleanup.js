@@ -394,24 +394,26 @@ export function repairLineWrapHyphens(markdown) {
       result.push(line);
       continue;
     }
-    const next = lines[index + 1];
-    const match =
+    let current = line;
+    while (
       !fenced &&
-      !PAGE.test(line) &&
-      !STRUCTURAL.test(line.trim()) &&
-      /(\p{L}{2,})-\s*$/u.exec(line);
-    if (
-      match &&
-      next &&
-      !PAGE.test(next) &&
-      !STRUCTURAL.test(next.trim()) &&
-      /^\s*\p{Ll}{2,}/u.test(next)
+      !PAGE.test(current) &&
+      !STRUCTURAL.test(current.trim())
     ) {
-      result.push(line.slice(0, match.index) + match[1] + next.trimStart());
+      const next = lines[index + 1];
+      const match = /(\p{L}{2,})-\s*$/u.exec(current);
+      if (
+        !match ||
+        !next ||
+        PAGE.test(next) ||
+        STRUCTURAL.test(next.trim()) ||
+        !/^\s*\p{Ll}{2,}/u.test(next)
+      )
+        break;
+      current = current.slice(0, match.index) + match[1] + next.trimStart();
       index += 1;
-      continue;
     }
-    result.push(line);
+    result.push(current);
   }
   return result.join("\n");
 }
