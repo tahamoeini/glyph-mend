@@ -1358,9 +1358,9 @@ function restoreSidebarPreference() {
 
 function syncWorkspaceLayoutState() {
   const availableWidth = document.querySelector("main")?.clientWidth || window.innerWidth;
-  const mode = availableWidth < 700 ? "compact" : availableWidth < 1040 ? "medium" : availableWidth < 1440 ? "wide" : "extra-wide";
+  const mode = availableWidth < 700 ? "compact" : availableWidth < 1200 ? "medium" : availableWidth < 1440 ? "wide" : "extra-wide";
   document.documentElement.dataset.layoutMode = mode;
-  const compact = mode === "compact";
+  const compact = mode === "compact" || mode === "medium";
   if (!compact) {
     closeSettingsSheet({ restoreFocus: false });
     closeInspectorSheet({ restoreFocus: false });
@@ -1536,6 +1536,8 @@ function bind() {
   $("inspectorToggle").onclick = toggleInspector;
   $("compactSettingsButton").onclick = toggleSidebar;
   $("compactInspectorButton").onclick = toggleInspector;
+  $("closeSettingsButton").onclick = () => closeSettingsSheet();
+  $("closeInspectorButton").onclick = () => closeInspectorSheet();
   $("sidebarBackdrop").onclick = closeSettingsSheet;
   $("inspectorBackdrop").onclick = closeInspectorSheet;
   onMediaChange(media.colorScheme, () => {
