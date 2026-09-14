@@ -1247,7 +1247,9 @@ function setInspectorExpanded(isExpanded) {
 }
 
 function isCompactLayout() {
-  return document.documentElement.dataset.layoutMode === "compact";
+  return ["compact", "medium"].includes(
+    document.documentElement.dataset.layoutMode,
+  );
 }
 
 function focusableIn(container) {
