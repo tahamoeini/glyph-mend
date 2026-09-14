@@ -1,239 +1,142 @@
-<!DOCTYPE html>
-
-<html class="light" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100%;margin:0;padding:0;min-height:100vh;}body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "on-error": "#ffffff", "on-secondary-fixed": "#121c29", "secondary-fixed-dim": "#bdc7d9", "on-error-container": "#93000a", "secondary-container": "#d6e0f2", "background": "#f9f9ff", "surface-bright": "#f9f9ff", "on-primary-fixed-variant": "#00468d", "inverse-surface": "#2c313a", "on-surface-variant": "#414754", "inverse-primary": "#aac7ff", "surface-container-high": "#e4e8f5", "surface-tint": "#005db8", "primary-container": "#0073e0", "on-primary-fixed": "#001b3e", "on-secondary-container": "#596373", "outline": "#717786", "on-secondary-fixed-variant": "#3d4756", "tertiary-fixed": "#6cff82", "on-secondary": "#ffffff", "error-container": "#ffdad6", "on-background": "#171c25", "on-tertiary-container": "#f7fff2", "on-tertiary-fixed-variant": "#00531a", "on-tertiary-fixed": "#002106", "error": "#ba1a1a", "on-primary-container": "#fefcff", "secondary-fixed": "#d9e3f5", "secondary": "#555f6e", "surface-container-low": "#f0f3ff", "on-surface": "#171c25", "surface-container": "#eaeefb", "tertiary-container": "#008730", "on-tertiary": "#ffffff", "primary-fixed": "#d6e3ff", "surface": "#f9f9ff", "outline-variant": "#c0c6d6", "inverse-on-surface": "#ecf0fe", "surface-container-highest": "#dee2ef", "on-primary": "#ffffff", "surface-container-lowest": "#ffffff", "primary-fixed-dim": "#aac7ff", "tertiary": "#006b25", "surface-variant": "dee2ef", "tertiary-fixed-dim": "#47e266", "primary": "#005ab3", "surface-dim": "#d6dae7" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "space-xl": "1.5rem", "space-md": "0.75rem", "space-xs": "0.25rem", "space-lg": "1rem", "gutter": "1rem", "margin": "1rem", "space-sm": "0.5rem" }, "fontFamily": { "code-sm": ["JetBrains Mono"], "label-sm": ["Inter"], "body-lg": ["Inter"], "headline-lg": ["Inter"], "body-sm": ["Inter"], "label-md": ["Inter"], "headline-md": ["Inter"], "body-md": ["Inter"], "headline-sm": ["Inter"] }, "fontSize": { "code-sm": ["11px", { "lineHeight": "15px", "letterSpacing": "0em", "fontWeight": "400" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "500" }], "body-lg": ["15px", { "lineHeight": "22px", "letterSpacing": "-0.005em", "fontWeight": "400" }], "headline-lg": ["28px", { "lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.005em", "fontWeight": "400" }], "label-md": ["13px", { "lineHeight": "16px", "letterSpacing": "-0.005em", "fontWeight": "500" }], "headline-md": ["20px", { "lineHeight": "26px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "body-md": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }], "headline-sm": ["16px", { "lineHeight": "22px", "letterSpacing": "-0.01em", "fontWeight": "600" }] } } } }</script><style>
+<!DOCTYPE html><html class="light" lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{width:100%;margin:0;padding:0;min-height:100vh;}body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "on-error": "#ffffff", "on-secondary-fixed": "#121c29", "secondary-fixed-dim": "#bdc7d9", "on-error-container": "#93000a", "secondary-container": "#d6e0f2", "background": "#f9f9ff", "surface-bright": "#f9f9ff", "on-primary-fixed-variant": "#00468d", "inverse-surface": "#2c313a", "on-surface-variant": "#414754", "inverse-primary": "#aac7ff", "surface-container-high": "#e4e8f5", "surface-tint": "#005db8", "primary-container": "#0073e0", "on-primary-fixed": "#001b3e", "on-secondary-container": "#596373", "outline": "#717786", "on-secondary-fixed-variant": "#3d4756", "tertiary-fixed": "#6cff82", "on-secondary": "#ffffff", "error-container": "#ffdad6", "on-background": "#171c25", "on-tertiary-container": "#f7fff2", "on-tertiary-fixed-variant": "#00531a", "on-tertiary-fixed": "#002106", "error": "#ba1a1a", "on-primary-container": "#fefcff", "secondary-fixed": "#d9e3f5", "secondary": "#555f6e", "surface-container-low": "#f0f3ff", "on-surface": "#171c25", "surface-container": "#eaeefb", "tertiary-container": "#008730", "on-tertiary": "#ffffff", "primary-fixed": "#d6e3ff", "surface": "#f9f9ff", "outline-variant": "#c0c6d6", "inverse-on-surface": "#ecf0fe", "surface-container-highest": "#dee2ef", "on-primary": "#ffffff", "surface-container-lowest": "#ffffff", "primary-fixed-dim": "#aac7ff", "tertiary": "#006b25", "surface-variant": "dee2ef", "tertiary-fixed-dim": "#47e266", "primary": "#005ab3", "surface-dim": "#d6dae7" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "space-xl": "1.5rem", "space-md": "0.75rem", "space-xs": "0.25rem", "space-lg": "1rem", "gutter": "1rem", "margin": "1rem", "space-sm": "0.5rem" }, "fontFamily": { "code-sm": ["JetBrains Mono"], "label-sm": ["Inter"], "body-lg": ["Inter"], "headline-lg": ["Inter"], "body-sm": ["Inter"], "label-md": ["Inter"], "headline-md": ["Inter"], "body-md": ["Inter"], "headline-sm": ["Inter"] }, "fontSize": { "code-sm": ["11px", { "lineHeight": "15px", "letterSpacing": "0em", "fontWeight": "400" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "500" }], "body-lg": ["15px", { "lineHeight": "22px", "letterSpacing": "-0.005em", "fontWeight": "400" }], "headline-lg": ["28px", { "lineHeight": "34px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.005em", "fontWeight": "400" }], "label-md": ["13px", { "lineHeight": "16px", "letterSpacing": "-0.005em", "fontWeight": "500" }], "headline-md": ["20px", { "lineHeight": "26px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "body-md": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }], "headline-sm": ["16px", { "lineHeight": "22px", "letterSpacing": "-0.01em", "fontWeight": "600" }] } } } }</script><style>
     body {
       min-height: max(884px, 100dvh);
     }
   </style>
-  </head><body class="bg-background text-on-surface font-body-md text-body-md flex flex-col min-h-screen antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><header class="fixed top-0 w-full z-50 pt-safe bg-surface-bright/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-14 px-gutter flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="Brand logo. - Primary color: #0a84ff - Font: inter - Mode: light - Roundness: rounded-md" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1XYA2J66N6acVq5jmPRJ2DkubiuqUDDuKS_2gTwTWsHbtbUKy08GlTxdvtGCwh_seD6tx9KAD8zmZEqefdH5e-lZF0khFqww-etEPypvAi0x3Qy8fbUI8OxtWX3pzGTFGQprZ0rfxsJQKwbj1hS7k-OQ2QsgiQEvREap53SKWmiLDuvECOxCO9yXuVI6lnwEJLLzg2px7UysNJwHAFicTA9RhzAh3ngbdBYPI2LT6mhzOQC_5kxjxq8tg"/><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">GlyphMend</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-none mt-0.5">Inspector Attributes</span></div></div><div class="flex items-center gap-space-xs"><button aria-label="Toggle Appearance" class="w-11 h-11 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors" onclick="document.documentElement.classList.toggle('dark')" type="button"><span class="material-symbols-outlined text-[20px]">light_mode</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm ml-1"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-14 pb-safe bg-background"><div class="flex flex-col w-full max-w-[390px] mx-auto px-gutter py-space-md">
+  </head><body class="bg-background text-on-surface font-body-md text-body-md flex flex-col min-h-screen antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><header class="fixed top-0 w-full z-50 pt-safe bg-surface-bright/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-14 px-gutter flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="Brand logo. - Primary color: #0a84ff - Font: inter - Mode: light - Roundness: rounded-md" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1XYA2J66N6acVq5jmPRJ2DkubiuqUDDuKS_2gTwTWsHbtbUKy08GlTxdvtGCwh_seD6tx9KAD8zmZEqefdH5e-lZF0khFqww-etEPypvAi0x3Qy8fbUI8OxtWX3pzGTFGQprZ0rfxsJQKwbj1hS7k-OQ2QsgiQEvREap53SKWmiLDuvECOxCO9yXuVI6lnwEJLLzg2px7UysNJwHAFicTA9RhzAh3ngbdBYPI2LT6mhzOQC_5kxjxq8tg"><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight leading-none">GlyphMend</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-none mt-0.5">Inspector Attributes</span></div></div><div class="flex items-center gap-space-xs"><button aria-label="Toggle Appearance" class="w-11 h-11 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors" onclick="document.documentElement.classList.toggle('dark')" type="button"><span class="material-symbols-outlined text-[20px]">light_mode</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm ml-1"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="flex-1 flex flex-col relative w-full pt-14 pb-safe bg-background"><div class="flex flex-col w-full max-w-[390px] mx-auto px-gutter py-space-md">
 <!-- Interactive Modal Card Sheet Container -->
-<div class="flex flex-col w-full bg-surface-container-lowest rounded-xl shadow-md overflow-hidden relative">
-<!-- Drag Handle & Top Ambient Accents -->
+<div class="flex flex-col w-full bg-surface-container-lowest rounded-xl shadow-md overflow-hidden relative"><!-- Drag Handle & Top Ambient Accents -->
 <div class="flex flex-col items-center pt-space-sm pb-space-xs">
-<div class="w-10 h-1 rounded-full bg-surface-container-highest"></div>
+  <div class="w-10 h-1 rounded-full bg-surface-container-highest"></div>
 </div>
+
 <!-- Panel Header -->
 <div class="flex items-center justify-between px-space-lg py-space-sm">
-<div class="flex flex-col">
-<div class="flex items-center gap-space-xs">
-<h2 class="font-headline-sm text-headline-sm text-on-surface">Quality &amp; Export</h2>
-<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm">
-<span class="material-symbols-outlined text-[12px] text-tertiary">lock</span>
-            Local only
-          </span>
+  <div class="flex flex-col">
+    <div class="flex items-center gap-space-xs">
+      <h2 class="font-headline-md text-headline-md text-on-surface">Export Document</h2>
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-secondary-container font-label-sm text-label-sm">
+        <span class="material-symbols-outlined text-[12px] text-tertiary">lock</span>
+        Local only
+      </span>
+    </div>
+    <p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Choose your preferred format. Everything compiles locally on your device.</p>
+  </div>
+  <button aria-label="Dismiss panel" class="w-8 h-8 rounded-lg flex items-center justify-center bg-surface-container-low text-on-surface-variant active:scale-95 transition-transform flex-shrink-0" type="button">
+    <span class="material-symbols-outlined text-[18px]">close</span>
+  </button>
 </div>
-<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Isolated runtime • Zero external calls</p>
+
+<!-- Streamlined Reassuring Quality & Review Summary -->
+<div class="px-space-lg py-space-xs">
+  <div class="p-space-sm rounded-xl bg-surface-container-low flex flex-col gap-space-xs">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-tertiary text-[18px]">check_circle</span>
+        <span class="font-label-md text-label-md font-semibold text-on-surface">Extraction Complete</span>
+        <span class="px-1.5 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant font-code-sm text-code-sm">99.2% accuracy</span>
+      </div>
+      <span class="font-label-sm text-label-sm text-on-surface-variant">745 pages</span>
+    </div>
+    <div class="flex items-center justify-between pt-1 border-t border-surface-container-highest/60 text-body-sm text-body-sm">
+      <div class="flex items-center gap-1 text-on-surface-variant">
+        <span class="material-symbols-outlined text-[14px] text-error">flag</span>
+        <span class="">8 items flagged for optional check</span>
+      </div>
+      <div class="flex items-center gap-space-xs">
+        <button class="px-2 py-0.5 rounded text-label-sm font-label-sm text-primary hover:bg-surface-container transition-colors" type="button">
+          Review
+        </button>
+        <button class="px-2 py-0.5 rounded text-label-sm font-label-sm bg-surface-container-highest text-on-surface active:scale-95 transition-transform" type="button">
+          Accept all
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
-<button aria-label="Dismiss panel" class="w-8 h-8 rounded-lg flex items-center justify-center bg-surface-container-low text-on-surface-variant active:scale-95 transition-transform" type="button">
-<span class="material-symbols-outlined text-[18px]">close</span>
-</button>
-</div>
-<!-- Section 1: Quality Overview -->
-<div class="px-space-lg pt-space-xs pb-space-md flex flex-col gap-space-sm">
-<!-- Status Banner -->
-<div class="flex items-center justify-between px-space-md py-space-sm rounded-lg bg-surface-container-low">
-<div class="flex items-center gap-space-xs">
-<div class="w-2 h-2 rounded-full bg-error"></div>
-<span class="font-label-md text-label-md text-on-surface">Inspection Status</span>
-</div>
-<div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm">
-<span class="material-symbols-outlined text-[14px]">flag</span>
-          Review Required (8)
+
+<!-- Export Format Cards (Front & Center) -->
+<div class="px-space-lg py-space-sm flex flex-col gap-space-xs">
+  <!-- Quick Action: Copy All Text Button -->
+  <button class="w-full flex items-center justify-center gap-2 py-2 px-space-md rounded-lg bg-surface-container text-primary font-label-md text-label-md hover:bg-surface-container-high active:scale-95 transition-all shadow-sm" type="button">
+    <span class="material-symbols-outlined text-[18px]">content_copy</span>
+    <span class="">Copy All Text to Clipboard</span>
+  </button>
+
+  <!-- Word Document (.docx) - Featured / Recommended -->
+  <div class="flex items-center justify-between p-space-sm rounded-xl bg-primary-fixed text-on-primary-fixed shadow-sm relative overflow-hidden">
+    <div class="flex items-center gap-space-sm min-w-0">
+      <div class="w-10 h-10 rounded-lg bg-primary text-on-primary flex items-center justify-center font-code-sm text-code-sm font-semibold flex-shrink-0">
+        DOC
+      </div>
+      <div class="flex flex-col min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-label-md text-label-md font-semibold truncate">Word Document (.docx)</span>
+          <span class="px-1.5 py-0.5 rounded-full bg-primary text-on-primary font-label-sm text-[11px] leading-none font-medium">Recommended</span>
         </div>
+        <span class="font-body-sm text-body-sm text-on-primary-fixed-variant truncate">Formatted with headings, tables &amp; math</span>
+      </div>
+    </div>
+    <button aria-label="Download Word Document" class="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center active:scale-90 transition-transform ml-2 flex-shrink-0 shadow-sm" type="button">
+      <span class="material-symbols-outlined text-[20px]">download</span>
+    </button>
+  </div>
+
+  <!-- Clean Markdown (.md) -->
+  <div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
+    <div class="flex items-center gap-space-sm min-w-0">
+      <div class="w-9 h-9 rounded-md bg-surface-container-highest text-on-surface flex items-center justify-center font-code-sm text-code-sm font-semibold flex-shrink-0">
+        MD
+      </div>
+      <div class="flex flex-col min-w-0">
+        <span class="font-label-md text-label-md text-on-surface font-medium truncate">Clean Markdown (.md)</span>
+        <span class="font-body-sm text-body-sm text-on-surface-variant truncate">For Obsidian, Notion, or text editors</span>
+      </div>
+    </div>
+    <button aria-label="Download Markdown" class="w-8 h-8 rounded-lg text-on-surface-variant flex items-center justify-center hover:bg-surface-container-highest active:scale-90 transition-transform ml-2 flex-shrink-0" type="button">
+      <span class="material-symbols-outlined text-[18px]">download</span>
+    </button>
+  </div>
+
+  <!-- Plain Text (.txt) -->
+  <div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
+    <div class="flex items-center gap-space-sm min-w-0">
+      <div class="w-9 h-9 rounded-md bg-surface-container-highest text-on-surface flex items-center justify-center font-code-sm text-code-sm font-semibold flex-shrink-0">
+        TXT
+      </div>
+      <div class="flex flex-col min-w-0">
+        <span class="font-label-md text-label-md text-on-surface font-medium truncate">Plain Text (.txt)</span>
+        <span class="font-body-sm text-body-sm text-on-surface-variant truncate">Pure text without formatting</span>
+      </div>
+    </div>
+    <button aria-label="Download Plain Text" class="w-8 h-8 rounded-lg text-on-surface-variant flex items-center justify-center hover:bg-surface-container-highest active:scale-90 transition-transform ml-2 flex-shrink-0" type="button">
+      <span class="material-symbols-outlined text-[18px]">download</span>
+    </button>
+  </div>
+
+  <!-- PDF / ZIP Package (.zip) -->
+  <div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
+    <div class="flex items-center gap-space-sm min-w-0">
+      <div class="w-9 h-9 rounded-md bg-surface-container-highest text-on-surface flex items-center justify-center font-code-sm text-code-sm font-semibold flex-shrink-0">
+        ZIP
+      </div>
+      <div class="flex flex-col min-w-0">
+        <span class="font-label-md text-label-md text-on-surface font-medium truncate">PDF / ZIP Package (.zip)</span>
+        <span class="font-body-sm text-body-sm text-on-surface-variant truncate">All extracted files &amp; original images</span>
+      </div>
+    </div>
+    <button aria-label="Download Package Bundle" class="w-8 h-8 rounded-lg text-on-surface-variant flex items-center justify-center hover:bg-surface-container-highest active:scale-90 transition-transform ml-2 flex-shrink-0" type="button">
+      <span class="material-symbols-outlined text-[18px]">download</span>
+    </button>
+  </div>
 </div>
-<!-- 4-Grid Compact Metrics -->
-<div class="grid grid-cols-2 gap-space-xs">
-<div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col">
-<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-<span class="material-symbols-outlined text-[14px]">auto_stories</span>
-            Pages Processed
-          </span>
-<span class="font-headline-md text-headline-md text-on-surface mt-0.5">745</span>
-</div>
-<div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col">
-<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-<span class="material-symbols-outlined text-[14px] text-error">priority_high</span>
-            Flagged Issues
-          </span>
-<span class="font-headline-md text-headline-md text-error mt-0.5">8</span>
-</div>
-<div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col">
-<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-<span class="material-symbols-outlined text-[14px]">functions</span>
-            Math Equations
-          </span>
-<span class="font-headline-md text-headline-md text-on-surface mt-0.5">126</span>
-</div>
-<div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col">
-<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-<span class="material-symbols-outlined text-[14px]">table_chart</span>
-            Data Tables
-          </span>
-<span class="font-headline-md text-headline-md text-on-surface mt-0.5">42</span>
-</div>
-</div>
-</div>
-<!-- Section 2: Review Queue -->
-<div class="px-space-lg py-space-sm flex flex-col gap-space-sm bg-surface-container-low/50">
-<div class="flex items-center justify-between">
-<span class="font-headline-sm text-headline-sm text-on-surface">Review Queue</span>
-<span class="font-code-sm text-code-sm text-on-surface-variant">Queue Item 3 of 8</span>
-</div>
-<!-- Segmented Category Filters -->
-<div class="flex items-center gap-1 overflow-x-auto pb-0.5" id="reviewFilterChips">
-<button class="px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-surface-container-high text-on-surface active:scale-95 transition-all whitespace-nowrap">
-          All <span class="text-on-surface-variant ml-0.5 font-code-sm">126</span>
-</button>
-<button class="px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-surface-container text-on-surface-variant active:scale-95 transition-all whitespace-nowrap">
-          Accepted <span class="text-on-surface-variant ml-0.5 font-code-sm">114</span>
-</button>
-<button class="px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-primary text-on-primary shadow-sm active:scale-95 transition-all whitespace-nowrap">
-          Review <span class="text-primary-fixed ml-0.5 font-code-sm">8</span>
-</button>
-<button class="px-2.5 py-1 rounded-full text-label-sm font-label-sm bg-surface-container text-on-surface-variant active:scale-95 transition-all whitespace-nowrap">
-          Preserved <span class="text-on-surface-variant ml-0.5 font-code-sm">4</span>
-</button>
-</div>
-<!-- Selected Review Item Card -->
-<div class="flex flex-col p-space-md rounded-xl bg-surface-container-lowest shadow-sm gap-space-sm relative">
-<div class="flex items-center justify-between">
-<div class="flex items-center gap-1.5">
-<span class="w-2 h-2 rounded-full bg-primary"></span>
-<span class="font-label-md text-label-md text-on-surface font-semibold">Equation • Page 114</span>
-</div>
-<span class="px-2 py-0.5 rounded-md bg-surface-container font-code-sm text-code-sm text-on-surface-variant">
-            94.2% conf
-          </span>
-</div>
-<!-- Raster Source Snippet -->
-<div class="flex flex-col gap-1">
-<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-<span class="material-symbols-outlined text-[13px]">crop</span>
-            Source Raster Snippet
-          </span>
-<div class="w-full h-14 rounded-lg bg-surface-container flex items-center justify-center overflow-hidden relative">
-<img class="w-full h-full object-cover filter contrast-125 opacity-90" data-alt="High resolution macro crop of a scanned technical mathematical paper showing integral symbols and greek lambda variables on slightly aged cream manuscript background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCC0QIxIxEHApStcsp8fctF01NKtZKfcmIiuYNxiZBRVQY8u6rlCguS9S1BhXE0C045V2ergXuUu4XkD0NZgAjDC4jI2b14IEfws3Xxyx-_848X3f2HhpSC6c18uHfUmyNAUvv741IVx5ScW8NiZJKnCckyHx6SmgqEfuFg_jFja0zBt_3V09GK80dqwSD3W4lOgwE9qR8jORx8QMBqoSIDAXeYOQt0BAyPB3-LUMnIRa6G3gIjtLU"/>
-<div class="absolute bottom-1 right-2 px-1.5 py-0.5 rounded bg-inverse-surface/80 text-inverse-on-surface font-code-sm text-code-sm backdrop-blur-sm">
-              300 DPI
-            </div>
-</div>
-</div>
-<!-- Reconstructed LaTeX representation -->
-<div class="flex flex-col gap-1">
-<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-<span class="material-symbols-outlined text-[13px]">code</span>
-            Reconstructed LaTeX
-          </span>
-<div class="p-space-sm rounded-lg bg-surface-container-low font-code-sm text-code-sm text-on-surface overflow-x-auto select-all">
-<code>\lambda_k^* = \arg\min_{\lambda} \int_0^\infty f(x|\theta) dx</code>
-</div>
-</div>
-<!-- Inline Quick Actions -->
-<div class="grid grid-cols-2 gap-space-sm mt-1">
-<button class="flex items-center justify-center gap-1 py-2 px-space-md rounded-lg bg-surface-container text-on-surface font-label-md text-label-md hover:bg-surface-container-high active:scale-95 transition-all" type="button">
-<span class="material-symbols-outlined text-[16px]">image</span>
-            Keep Image
-          </button>
-<button class="flex items-center justify-center gap-1 py-2 px-space-md rounded-lg bg-primary text-on-primary font-label-md text-label-md shadow-sm hover:opacity-95 active:scale-95 transition-all" type="button">
-<span class="material-symbols-outlined text-[16px]">done</span>
-            Accept Formula
-          </button>
-</div>
-</div>
-</div>
-<!-- Section 3: Export Formats -->
-<div class="px-space-lg pt-space-md pb-space-lg flex flex-col gap-space-sm">
-<div class="flex items-center justify-between">
-<div class="flex flex-col">
-<span class="font-headline-sm text-headline-sm text-on-surface">Export Formats</span>
-<span class="font-body-sm text-body-sm text-on-surface-variant">Compiles in local device sandbox</span>
-</div>
-<span class="material-symbols-outlined text-primary text-[20px]">verified_user</span>
-</div>
-<!-- Export Item List -->
-<div class="flex flex-col gap-space-xs">
-<!-- Complete Bundle (Highlighted ZIP) -->
-<div class="flex items-center justify-between p-space-sm rounded-xl bg-primary-fixed text-on-primary-fixed shadow-sm">
-<div class="flex items-center gap-space-sm min-w-0">
-<div class="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center font-code-sm text-code-sm font-semibold flex-shrink-0">
-              ZIP
-            </div>
-<div class="flex flex-col min-w-0">
-<span class="font-label-md text-label-md font-semibold truncate">Complete Bundle (.zip)</span>
-<span class="font-body-sm text-body-sm text-on-primary-fixed-variant truncate">Source evidence + reconstructed markdown</span>
-</div>
-</div>
-<button aria-label="Export Full ZIP Bundle" class="w-8 h-8 rounded-lg bg-primary text-on-primary flex items-center justify-center active:scale-90 transition-transform ml-2 flex-shrink-0 shadow-sm" type="button">
-<span class="material-symbols-outlined text-[18px]">file_download</span>
-</button>
-</div>
-<!-- Markdown MD -->
-<div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
-<div class="flex items-center gap-space-sm min-w-0">
-<div class="w-8 h-8 rounded-md bg-surface-container-highest text-on-surface flex items-center justify-center font-code-sm text-code-sm font-medium flex-shrink-0">
-              MD
-            </div>
-<div class="flex flex-col min-w-0">
-<span class="font-label-md text-label-md text-on-surface truncate">Markdown (.md)</span>
-<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Semantic source structure</span>
-</div>
-</div>
-<button aria-label="Export Markdown" class="w-8 h-8 rounded-lg text-on-surface-variant flex items-center justify-center hover:bg-surface-container-highest active:scale-90 transition-transform ml-2 flex-shrink-0" type="button">
-<span class="material-symbols-outlined text-[18px]">download</span>
-</button>
-</div>
-<!-- Word Document DOCX -->
-<div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
-<div class="flex items-center gap-space-sm min-w-0">
-<div class="w-8 h-8 rounded-md bg-secondary-container text-on-secondary-container flex items-center justify-center font-code-sm text-code-sm font-medium flex-shrink-0">
-              DOC
-            </div>
-<div class="flex flex-col min-w-0">
-<span class="font-label-md text-label-md text-on-surface truncate">Word Document (.docx)</span>
-<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Formatted tables &amp; math</span>
-</div>
-</div>
-<button aria-label="Export DOCX" class="w-8 h-8 rounded-lg text-on-surface-variant flex items-center justify-center hover:bg-surface-container-highest active:scale-90 transition-transform ml-2 flex-shrink-0" type="button">
-<span class="material-symbols-outlined text-[18px]">download</span>
-</button>
-</div>
-<!-- Plain Text TXT -->
-<div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
-<div class="flex items-center gap-space-sm min-w-0">
-<div class="w-8 h-8 rounded-md bg-surface-container-highest text-on-surface flex items-center justify-center font-code-sm text-code-sm font-medium flex-shrink-0">
-              TXT
-            </div>
-<div class="flex flex-col min-w-0">
-<span class="font-label-md text-label-md text-on-surface truncate">Plain Text (.txt)</span>
-<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Clean raw text</span>
-</div>
-</div>
-<button aria-label="Export Plain Text" class="w-8 h-8 rounded-lg text-on-surface-variant flex items-center justify-center hover:bg-surface-container-highest active:scale-90 transition-transform ml-2 flex-shrink-0" type="button">
-<span class="material-symbols-outlined text-[18px]">download</span>
-</button>
-</div>
-<!-- Quality Audit JSON -->
-<div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors">
-<div class="flex items-center gap-space-sm min-w-0">
-<div class="w-8 h-8 rounded-md bg-surface-container-highest text-on-surface flex items-center justify-center font-code-sm text-code-sm font-medium flex-shrink-0">
-              JSON
-            </div>
-<div class="flex flex-col min-w-0">
-<span class="font-label-md text-label-md text-on-surface truncate">Quality Audit (.json)</span>
-<span class="font-body-sm text-body-sm text-on-surface-variant truncate">Provenance &amp; telemetry</span>
-</div>
-</div>
-<button aria-label="Export Audit Telemetry" class="w-8 h-8 rounded-lg text-on-surface-variant flex items-center justify-center hover:bg-surface-container-highest active:scale-90 transition-transform ml-2 flex-shrink-0" type="button">
-<span class="material-symbols-outlined text-[18px]">download</span>
-</button>
-</div>
-</div>
-</div>
+
 <!-- Micro Privacy Footnote -->
 <div class="px-space-lg pb-space-lg pt-space-xs flex items-center justify-center gap-1 text-on-surface-variant font-label-sm text-label-sm opacity-80">
-<span class="material-symbols-outlined text-[13px] text-tertiary">check_circle</span>
-      Sandbox encrypted • 0 KB network transmission
-    </div>
-</div>
-</div></main></body></html>
+  <span class="material-symbols-outlined text-[13px] text-tertiary">check_circle</span>
+  Sandbox encrypted • 0 KB network transmission
+</div></div>
+</div></main>
+
+</body></html>
