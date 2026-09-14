@@ -99,7 +99,6 @@
   <input id="pdfInput" class="visually-hidden" type="file" accept="application/pdf,.pdf">
   <header class="topbar liquid-glass liquid-glass-regular">
     <div class="brand-lockup" aria-label="GlyphMend" data-brand-aria-label><span class="brand-mark" aria-hidden="true"><img data-brand-logo src="./brand/glyphmend-mark.svg" alt="" width="22" height="22"></span><a class="brand" href="#" data-brand-name>GlyphMend</a></div>
-    <div class="topbar-area-label" aria-label="Current workspace">Workspace</div>
     <div id="topDocumentContext" class="top-document-context" aria-live="polite"><strong id="topFileName">Document workspace</strong><span id="topFileMeta">Private, local document processing</span></div>
     <div class="topbar-actions" role="group" aria-label="Application controls">
       <div class="privacy"><i aria-hidden="true"></i><span>Local processing</span></div>
@@ -109,41 +108,23 @@
     </div>
   </header>
   <main>
-    <section id="welcome" class="welcome content-panel" aria-label="Private document workspace">
-      <div class="welcome-layout">
-        <div class="welcome-copy">
-          <p class="eyebrow"><span aria-hidden="true"></span>Private document workspace</p>
-          <h1>Turn a PDF into useful, editable content.</h1>
-          <p class="lede" data-brand-slogan>Faithful document reconstruction from PDF to structured Markdown with native typography and table detection.</p>
-          <div class="welcome-trust"><span aria-hidden="true">✓</span><span>Everything stays on your device. Zero external telemetry.</span></div>
-          <div class="welcome-engine-card" aria-label="Local extraction engine status">
-            <div class="welcome-engine-heading"><span>Sandboxed WASM engine</span><strong>Ready <span aria-hidden="true">•</span> <code>0ms lat</code></strong></div>
-            <div class="welcome-engine-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          </div>
+    <section id="welcome" class="welcome content-panel">
+      <div class="welcome-copy"><p class="eyebrow"><span aria-hidden="true"></span>Private document workspace</p><h1>Turn a PDF into useful, editable content.</h1><p class="lede" data-brand-slogan>Faithful document reconstruction from PDF to structured Markdown with native typography and table detection.</p></div>
+      <div class="welcome-features" aria-label="Local processing capabilities">
+        <div class="welcome-feature"><span class="feature-glyph" aria-hidden="true">▣</span><span><strong>Sandboxed WASM engine</strong><small>Local runtime</small></span></div>
+        <div class="welcome-feature"><span class="feature-glyph" aria-hidden="true">▤</span><span><strong>Table geometry</strong><small>Preserves headers and cells</small></span></div>
+      </div>
+      <div class="welcome-import-card">
+        <label id="dropZone" class="drop-zone" for="pdfInput"><span class="drop-icon" aria-hidden="true"><svg class="icon"><use href="#icon-arrow-down"></use></svg></span><strong>Drop a PDF here</strong><span>or <span class="drop-affordance">Choose PDF</span></span><small>PDF files up to your configured limit · nothing is uploaded</small></label>
+        <div class="welcome-actions" aria-label="Workspace options">
+          <button id="restoreButton" class="quiet" type="button">Resume saved workspace</button>
+          <label class="quiet file-button">Import workspace<input id="workspaceInput" type="file" accept="application/json,.json"></label>
+          <label class="quiet file-button">Open Markdown<input id="markdownInput" type="file" accept="text/markdown,.md,.markdown"></label>
         </div>
-        <div class="welcome-import-card">
-          <div class="welcome-drop-card">
-            <label id="dropZone" class="drop-zone" for="pdfInput">
-              <span class="drop-icon" aria-hidden="true"><svg class="icon"><use href="#icon-arrow-down"></use></svg></span>
-              <strong>Drop a PDF here</strong>
-              <span class="drop-or"><span aria-hidden="true"></span>or<span aria-hidden="true"></span></span>
-              <span class="drop-affordance"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>Choose PDF</span>
-              <small><span aria-hidden="true">▣</span> Nothing is uploaded. Processing stays on this device.</small>
-              <small>Supports standard PDF, scanned papers, and multi-column documents up to your configured limit</small>
-            </label>
-          </div>
-          <div class="welcome-recovery-heading"><span>Quick recovery</span><span>Local store</span></div>
-          <div class="welcome-recovery">
-            <button id="restoreButton" class="recovery-card" type="button"><span class="recovery-icon" aria-hidden="true">↶</span><span><strong>Resume saved</strong><small>Auto-snapshot</small></span></button>
-            <label class="recovery-card file-button"><span class="recovery-icon" aria-hidden="true">▣</span><span><strong>Import workspace</strong><small>.glyphbundle bundle</small></span><input id="workspaceInput" type="file" accept="application/json,.json"></label>
-            <label class="recovery-card file-button"><span class="recovery-icon" aria-hidden="true">▤</span><span><strong>Open Markdown</strong><small>View &amp; re-export</small></span><input id="markdownInput" type="file" accept="text/markdown,.md,.markdown"></label>
-          </div>
-          <div class="welcome-storage"><span><i aria-hidden="true"></i> Local store ready</span><button id="resetClientStorageButton" class="text-button danger-text" type="button">Reset local data</button></div>
-        </div>
+        <div class="welcome-storage"><span><i aria-hidden="true"></i> Local store ready</span><button id="resetClientStorageButton" class="text-button danger-text" type="button">Reset local data</button></div>
       </div>
       <div class="welcome-footer">
-        <p class="welcome-footnote"><span aria-hidden="true">✓</span> Offline-first <span aria-hidden="true">·</span> Checkpointed <span aria-hidden="true">·</span> Export-ready</p>
-        <div class="welcome-links"><a href="https://github.com/tahamoeini/glyph-mend" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a><a href="https://www.producthunt.com/products/glyphmend" target="_blank" rel="noopener noreferrer">Product Hunt <span aria-hidden="true">↗</span></a></div>
+        <p class="welcome-footnote"><span aria-hidden="true">✓</span> Offline-first <span aria-hidden="true">·</span> Checkpointed <span aria-hidden="true">·</span> Export-ready <span aria-hidden="true">·</span> <a href="https://github.com/tahamoeini/glyph-mend" target="_blank" rel="noopener noreferrer">GitHub</a> <span aria-hidden="true">·</span> <a href="https://www.producthunt.com/products/glyphmend" target="_blank" rel="noopener noreferrer">Product Hunt</a></p>
         <div class="product-hunt-badge" aria-label="GlyphMend on Product Hunt">
           <a href="https://www.producthunt.com/products/glyphmend?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-glyphmend" target="_blank" rel="noopener noreferrer">
             <img class="product-hunt-neutral" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=neutral&amp;t=1789071060239" loading="lazy">
@@ -154,15 +135,6 @@
       </div>
     </section>
     <section id="workspace" class="workspace hidden" aria-label="Document workspace" aria-busy="false">
-      <nav class="workspace-rail" aria-label="Workspace navigation">
-        <div class="rail-heading"><span>Navigation &amp; source</span><svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg></div>
-        <div class="rail-links">
-          <button class="rail-link active" type="button" data-workspace-nav="settings"><span class="rail-link-icon" aria-hidden="true">✦</span><span>Extraction settings</span></button>
-          <button class="rail-link" type="button" data-workspace-nav="editor"><span class="rail-link-icon" aria-hidden="true">▤</span><span>Document views</span></button>
-          <button class="rail-link" type="button" data-workspace-nav="inspector"><span class="rail-link-icon" aria-hidden="true">◈</span><span>Quality &amp; export</span></button>
-        </div>
-        <div class="rail-engine-card"><span>Document engine</span><strong>MuPDF WebAssembly</strong><i aria-hidden="true">✓</i></div>
-      </nav>
       <aside id="settingsSidebar" class="sidebar liquid-glass liquid-glass-regular" aria-label="Document and extraction settings">
         <div class="sidebar-header"><div class="file-summary"><div class="pdf-badge" aria-hidden="true">PDF</div><div><strong id="fileName"></strong><span id="fileMeta"></span></div></div><label class="change-file" for="pdfInput">Choose another PDF</label></div>
         <div class="sidebar-scroll">
@@ -204,17 +176,14 @@
           <details class="workspace-tools control-section"><summary><span>Workspace data</span><small>Checkpoint controls</small><span class="summary-icon" aria-hidden="true"><svg class="icon"><use href="#icon-chevron-down"></use></svg></span></summary><div class="inline-actions"><button id="exportWorkspaceButton" class="text-button" type="button">Export checkpoint</button><button id="clearWorkspaceButton" class="text-button danger-text" type="button">Forget saved data</button><small>To clear the app’s full local cache, use Reset local data on the welcome screen.</small></div></details>
         </div>
         <div class="action-dock">
+          <div class="progress-card" aria-live="polite"><div class="progress-heading"><span id="progressStage">Ready to extract</span><strong id="progressText">0%</strong></div><strong id="statusText">Ready</strong><span id="progressPage" class="progress-page">Configure the document, then start extraction.</span><progress id="progress" max="100" value="0">0%</progress><span id="progressAnnouncement" class="visually-hidden" aria-live="polite" aria-atomic="true"></span></div>
           <button id="extractButton" class="primary" type="button"><span id="extractButtonLabel">Extract document</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow-right"></use></svg></button>
           <div class="running-actions"><button id="pauseButton" class="quiet hidden" type="button">Pause</button><button id="cancelButton" class="danger hidden" type="button">Cancel</button></div>
         </div>
       </aside>
       <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="Close settings"></button><button id="inspectorBackdrop" class="inspector-backdrop" type="button" aria-label="Close quality and export"></button>
-            <section class="editor content-panel" aria-label="Document editor">
-        <div class="editor-header">
-          <div class="editor-title"><p class="eyebrow">Document output</p><span id="documentStats" class="document-stats" aria-live="polite"></span></div>
-          <div class="tabs" role="tablist" aria-label="Document views"><div class="liquid-glass-selected-overlay" aria-hidden="true"></div><button id="markdownTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="markdownEditor" data-tab="markdown" tabindex="0">Markdown</button><button id="previewTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="renderedPreview" data-tab="preview" tabindex="-1">Preview</button><button id="sourceTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="sourcePreview" data-tab="source" tabindex="-1">Source PDF</button><button id="logTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="activityLog" data-tab="log" tabindex="-1">Technical log</button></div>
-        </div>
-        <div class="workspace-status-strip" aria-label="Extraction status"><div class="progress-card" aria-live="polite"><div class="progress-heading"><span id="progressStage">Ready to extract</span><strong id="progressText">0%</strong></div><strong id="statusText">Ready</strong><span id="progressPage" class="progress-page">Configure the document, then start extraction.</span><progress id="progress" max="100" value="0">0%</progress><span id="progressAnnouncement" class="visually-hidden" aria-live="polite" aria-atomic="true"></span></div></div>
+      <section class="editor content-panel" aria-label="Document editor">
+        <div class="editor-header"><div class="tabs" role="tablist" aria-label="Document views"><div class="liquid-glass-selected-overlay" aria-hidden="true"></div><button id="markdownTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="markdownEditor" data-tab="markdown" tabindex="0">Markdown</button><button id="previewTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="renderedPreview" data-tab="preview" tabindex="-1">Preview</button><button id="sourceTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="sourcePreview" data-tab="source" tabindex="-1">Source</button><button id="logTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="activityLog" data-tab="log" tabindex="-1">Technical log</button></div><span id="documentStats" class="document-stats" aria-live="polite"></span></div>
         <div class="toolbar"><label class="search" for="searchInput"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg><input id="searchInput" type="search" placeholder="Find in output"><kbd>⌘ F</kbd></label><span class="editor-hint">Changes save automatically</span></div>
         <textarea id="markdownEditor" class="tab-view" role="tabpanel" aria-labelledby="markdownTab" spellcheck="false" aria-label="Extracted Markdown"></textarea>
         <article id="renderedPreview" class="tab-view prose hidden" role="tabpanel" aria-labelledby="previewTab"></article>
@@ -246,7 +215,8 @@
           <button id="downloadBundle" class="bundle-button" type="button" disabled><span class="export-icon" aria-hidden="true">ZIP</span><span><strong>Reconstructable bundle</strong><small>DOCX, source evidence, provenance, and semantic assets</small></span><i aria-hidden="true"><svg class="icon"><use href="#icon-download"></use></svg></i></button>
         </div>
       </aside>
-    </section>    <nav id="compactActionDock" class="compact-action-dock hidden" aria-label="Workspace actions"><button id="compactSettingsButton" class="quiet" type="button">Settings</button><button id="compactInspectorButton" class="quiet" type="button">Quality &amp; export</button></nav>
+    </section>
+    <nav id="compactActionDock" class="compact-action-dock hidden" aria-label="Workspace actions"><button id="compactSettingsButton" class="quiet" type="button">Settings</button><button id="compactInspectorButton" class="quiet" type="button">Quality &amp; export</button></nav>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/src/brand-bootstrap.js"></script>
