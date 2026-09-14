@@ -97,7 +97,7 @@
     </symbol>
   </svg>
   <input id="pdfInput" class="visually-hidden" type="file" accept="application/pdf,.pdf">
-  <header class="topbar liquid-glass liquid-glass-regular">
+  <header class="topbar liquid-glass liquid-glass-regular" data-ui-region="app-chrome">
     <div class="brand-lockup" aria-label="GlyphMend" data-brand-aria-label><span class="brand-mark" aria-hidden="true"><img data-brand-logo src="./brand/glyphmend-mark.svg" alt="" width="22" height="22"></span><a class="brand" href="#" data-brand-name>GlyphMend</a></div>
     <div id="topDocumentContext" class="top-document-context" aria-live="polite"><strong id="topFileName">Document workspace</strong><span id="topFileMeta">Private, local document processing</span></div>
     <div class="topbar-actions" role="group" aria-label="Application controls">
@@ -108,15 +108,16 @@
     </div>
   </header>
   <main>
-    <section id="welcome" class="welcome content-panel">
-      <div class="welcome-copy"><p class="eyebrow"><span aria-hidden="true"></span>Private document workspace</p><h1>Turn a PDF into useful, editable content.</h1><p class="lede" data-brand-slogan>Faithful document reconstruction from PDF to structured Markdown with native typography and table detection.</p></div>
-      <div class="welcome-features" aria-label="Local processing capabilities">
+    <section id="welcome" class="welcome content-panel" data-ui-region="landing">
+      <div class="welcome-copy" data-ui-region="hero"><p class="eyebrow"><span aria-hidden="true"></span>Private document workspace</p><h1>Turn a PDF into useful, editable content.</h1><p class="lede" data-brand-slogan>Faithful document reconstruction from PDF to structured Markdown with native typography and table detection.</p><div class="welcome-trust"><span class="trust-mark" aria-hidden="true">✓</span><span><strong>Private by design</strong><small>Your PDF stays in this browser while you work.</small></span></div></div>
+      <div class="welcome-features" aria-label="Local processing capabilities" data-ui-region="capabilities">
         <div class="welcome-feature"><span class="feature-glyph" aria-hidden="true">▣</span><span><strong>Sandboxed WASM engine</strong><small>Local runtime</small></span></div>
         <div class="welcome-feature"><span class="feature-glyph" aria-hidden="true">▤</span><span><strong>Table geometry</strong><small>Preserves headers and cells</small></span></div>
+        <div class="welcome-engine-card"><span class="engine-dot" aria-hidden="true"></span><span><small>LOCAL ENGINE</small><strong>Ready in this browser</strong></span><em>WASM + OCR</em></div>
       </div>
-      <div class="welcome-import-card">
+      <div class="welcome-import-card" data-ui-region="intake"><div class="import-card-header"><div><p class="eyebrow">Start a workspace</p><h2>Bring in a document</h2></div><span class="local-pill">Local only</span></div>
         <label id="dropZone" class="drop-zone" for="pdfInput"><span class="drop-icon" aria-hidden="true"><svg class="icon"><use href="#icon-arrow-down"></use></svg></span><strong>Drop a PDF here</strong><span>or <span class="drop-affordance">Choose PDF</span></span><small>PDF files up to your configured limit · nothing is uploaded</small></label>
-        <div class="welcome-actions" aria-label="Workspace options">
+        <div class="welcome-actions" aria-label="Workspace options" data-ui-region="recovery">
           <button id="restoreButton" class="quiet" type="button">Resume saved workspace</button>
           <label class="quiet file-button">Import workspace<input id="workspaceInput" type="file" accept="application/json,.json"></label>
           <label class="quiet file-button">Open Markdown<input id="markdownInput" type="file" accept="text/markdown,.md,.markdown"></label>
@@ -134,8 +135,24 @@
         </div>
       </div>
     </section>
-    <section id="workspace" class="workspace hidden" aria-label="Document workspace" aria-busy="false">
-      <aside id="settingsSidebar" class="sidebar liquid-glass liquid-glass-regular" aria-label="Document and extraction settings">
+    <section id="workspace" class="workspace hidden" aria-label="Document workspace" aria-busy="false" data-ui-region="workspace-canvas">
+      <nav class="workspace-rail" data-ui-region="workspace-navigation" aria-label="Workspace navigation">
+        <div class="rail-brand"><span class="brand-mark" aria-hidden="true"><img src="./brand/glyphmend-mark.svg" alt="" width="22" height="22"></span><span class="rail-label">Workspace</span></div>
+        <div class="rail-section">
+          <span class="rail-heading">Views</span>
+          <button id="workspaceNavMarkdown" class="rail-button active" type="button" data-workspace-view="markdown" aria-controls="markdownEditor" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg><span>Markdown</span></button>
+          <button id="workspaceNavPreview" class="rail-button" type="button" data-workspace-view="preview" aria-controls="renderedPreview"><svg class="icon" aria-hidden="true"><use href="#icon-appearance"></use></svg><span>Preview</span></button>
+          <button id="workspaceNavSource" class="rail-button" type="button" data-workspace-view="source" aria-controls="sourcePreview"><svg class="icon" aria-hidden="true"><use href="#icon-arrow-down"></use></svg><span>Source PDF</span></button>
+          <button id="workspaceNavLog" class="rail-button" type="button" data-workspace-view="log" aria-controls="activityLog"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg><span>Technical log</span></button>
+        </div>
+        <div class="rail-section rail-section-bottom">
+          <span class="rail-heading">Workspace</span>
+          <button id="workspaceNavSettings" class="rail-button" type="button" data-workspace-action="settings" aria-controls="settingsSidebar"><svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg><span>Settings</span></button>
+          <button id="workspaceNavInspector" class="rail-button" type="button" data-workspace-action="inspector" aria-controls="resultsInspector"><svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg><span>Quality &amp; export</span></button>
+        </div>
+        <div class="rail-engine-status"><span class="engine-dot" aria-hidden="true"></span><span><strong>Local engine</strong><small>Ready in browser</small></span></div>
+      </nav>
+      <aside id="settingsSidebar" class="sidebar liquid-glass liquid-glass-regular" aria-label="Document and extraction settings" data-ui-region="extraction-settings">
         <div class="sidebar-header"><div class="file-summary"><div class="pdf-badge" aria-hidden="true">PDF</div><div><strong id="fileName"></strong><span id="fileMeta"></span></div></div><label class="change-file" for="pdfInput">Choose another PDF</label></div>
         <div class="sidebar-scroll">
           <fieldset class="control-section">
@@ -182,15 +199,16 @@
         </div>
       </aside>
       <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="Close settings"></button><button id="inspectorBackdrop" class="inspector-backdrop" type="button" aria-label="Close quality and export"></button>
-      <section class="editor content-panel" aria-label="Document editor">
+      <section class="editor content-panel" aria-label="Document editor" data-ui-region="document-editor">
         <div class="editor-header"><div class="tabs" role="tablist" aria-label="Document views"><div class="liquid-glass-selected-overlay" aria-hidden="true"></div><button id="markdownTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="markdownEditor" data-tab="markdown" tabindex="0">Markdown</button><button id="previewTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="renderedPreview" data-tab="preview" tabindex="-1">Preview</button><button id="sourceTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="sourcePreview" data-tab="source" tabindex="-1">Source</button><button id="logTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="activityLog" data-tab="log" tabindex="-1">Technical log</button></div><span id="documentStats" class="document-stats" aria-live="polite"></span></div>
+        <div class="workspace-contextbar" aria-label="Document workspace status"><div><span class="workspace-kicker">DOCUMENT WORKSPACE</span><strong>Review, refine, export</strong></div><span class="workspace-status"><i aria-hidden="true"></i> Local workspace</span></div>
         <div class="toolbar"><label class="search" for="searchInput"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg><input id="searchInput" type="search" placeholder="Find in output"><kbd>⌘ F</kbd></label><span class="editor-hint">Changes save automatically</span></div>
         <textarea id="markdownEditor" class="tab-view" role="tabpanel" aria-labelledby="markdownTab" spellcheck="false" aria-label="Extracted Markdown"></textarea>
         <article id="renderedPreview" class="tab-view prose hidden" role="tabpanel" aria-labelledby="previewTab"></article>
         <div id="sourcePreview" class="tab-view source-view hidden" role="tabpanel" aria-labelledby="sourceTab"><div class="page-controls liquid-glass liquid-glass-clear" aria-label="Source page controls"><button id="previousPage" class="icon-button" type="button" aria-label="Previous page"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"></use></svg></button><label class="page-field">Page <input id="previewPage" type="number" min="1" value="1"></label><button id="nextPage" class="icon-button" type="button" aria-label="Next page"><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"></use></svg></button><span class="control-divider" aria-hidden="true"></span><button id="zoomOut" class="icon-button" type="button" aria-label="Zoom out"><svg class="icon" aria-hidden="true"><use href="#icon-minus"></use></svg></button><button id="zoomIn" class="icon-button" type="button" aria-label="Zoom in"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg></button></div><div class="canvas-wrap" aria-label="Rendered source page"><canvas id="pdfCanvas" tabindex="0" aria-label="Source page preview" aria-describedby="sourcePreviewDescription"></canvas><p id="sourcePreviewDescription" class="visually-hidden">The source page preview is visual evidence. Use the Markdown and review descriptions for an accessible text representation.</p></div></div>
         <div id="activityLog" class="tab-view log-view hidden" role="tabpanel" aria-labelledby="logTab"><div class="log-tools"><label>Detail <select id="logLevel"><option value="info">Normal</option><option value="debug">Verbose</option></select></label><span></span><button id="downloadLog" type="button">Download log</button><button id="clearLog" type="button">Clear</button></div><pre id="logOutput" tabindex="0"></pre></div>
       </section>
-      <aside id="resultsInspector" class="exports content-panel" aria-label="Results and exports">
+      <aside id="resultsInspector" class="exports content-panel" aria-label="Results and exports" data-ui-region="quality-export">
         <div class="inspector-section results-heading"><div><p class="eyebrow">Results</p><h2>Quality overview</h2></div><span id="qualityBadge" class="status-badge neutral">Waiting</span></div>
         <div class="quality inspector-section"><dl id="qualityReport" class="metric-grid"><div class="metric-card"><dt>Pages processed</dt><dd>0</dd></div></dl></div>
         <section class="inspector-section review-queue-panel" id="reviewQueuePanel" aria-label="Review queue" aria-busy="false">
@@ -216,7 +234,7 @@
         </div>
       </aside>
     </section>
-    <nav id="compactActionDock" class="compact-action-dock hidden" aria-label="Workspace actions"><button id="compactSettingsButton" class="quiet" type="button">Settings</button><button id="compactInspectorButton" class="quiet" type="button">Quality &amp; export</button></nav>
+    <nav id="compactActionDock" class="compact-action-dock hidden" aria-label="Workspace actions" data-ui-region="mobile-actions"><button id="compactSettingsButton" class="quiet" type="button">Settings</button><button id="compactInspectorButton" class="quiet" type="button">Quality &amp; export</button></nav>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/src/brand-bootstrap.js"></script>
