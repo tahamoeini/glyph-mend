@@ -3453,3 +3453,317 @@ body:has(#welcome:not(.hidden)) .topbar {
     }
   }
 }
+
+
+/* Mobile dashboard surface refresh: presentation-only, preserving every existing control. */
+@media (max-width: 699px) {
+  body:has(#welcome:not(.hidden)) .top-document-context,
+  body:has(#welcome:not(.hidden)) .inspector-toggle,
+  body:has(#welcome:not(.hidden)) .sidebar-toggle {
+    display: none;
+  }
+
+  body:has(#workspace:not(.hidden)) .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: 64px;
+    margin: 0;
+    padding: 0 14px;
+    border-radius: 0;
+  }
+
+  body:has(#workspace:not(.hidden)) .top-document-context {
+    position: fixed;
+    z-index: 45;
+    top: 64px;
+    right: 12px;
+    left: 12px;
+    min-height: 48px;
+    padding: 7px 58px 7px 12px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    background: var(--surface-content-elevated);
+    box-shadow: var(--shadow-contact);
+    text-align: left;
+  }
+
+  body:has(#workspace:not(.hidden)) .top-document-context strong {
+    max-width: 100%;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.2;
+  }
+
+  body:has(#workspace:not(.hidden)) .top-document-context span {
+    max-width: 100%;
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  body:has(#workspace:not(.hidden)) .top-document-context::after {
+    content: "●  Local";
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: var(--success-soft);
+    color: var(--success);
+    font: 11px/1 var(--font-mono);
+  }
+
+  .brand-lockup {
+    gap: 9px;
+  }
+
+  .brand {
+    display: block;
+    position: relative;
+    padding-bottom: 12px;
+    color: var(--text-primary);
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .brand::after {
+    content: "Workspace Canvas";
+    position: absolute;
+    right: 0;
+    bottom: -2px;
+    left: 0;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .brand-mark img {
+    width: 23px;
+    height: 23px;
+  }
+
+  .privacy,
+  .inspector-toggle,
+  .sidebar-toggle {
+    display: none;
+  }
+
+  #themeButton {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    border-radius: 999px;
+    background: var(--surface-content-elevated);
+    border: 1px solid var(--border-subtle);
+  }
+
+  main:has(#workspace:not(.hidden)) {
+    padding: 0 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  #workspace.workspace:not(.hidden) {
+    width: 100%;
+    height: calc(100dvh - 64px);
+    min-height: 520px;
+    padding-top: 58px;
+    gap: 0;
+  }
+
+  #workspace .editor {
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    background: var(--surface-content-background);
+    box-shadow: var(--shadow-content);
+  }
+
+  #workspace .editor-header {
+    min-height: 52px;
+    padding: 9px 9px 6px;
+    gap: 6px;
+    background: transparent;
+  }
+
+  #workspace .tabs {
+    width: 100%;
+    min-height: 38px;
+    gap: 3px;
+    padding: 4px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    background: var(--surface-content-inset);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  #workspace .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  #workspace .tab {
+    min-width: max-content;
+    min-height: 30px;
+    padding: 7px 9px;
+    border-radius: 8px;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  #workspace .toolbar {
+    min-height: 42px;
+    padding: 0 10px 6px;
+    gap: 8px;
+  }
+
+  #workspace .search {
+    width: 100%;
+    min-height: 34px;
+    padding: 0 9px;
+    border-radius: 10px;
+    font-size: 11px;
+  }
+
+  #workspace .search input {
+    font-size: 11px;
+  }
+
+  #workspace .search kbd {
+    display: none;
+  }
+
+  #workspace .editor textarea,
+  #workspace .prose {
+    min-height: 0;
+    margin: 0 10px 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 15px;
+    background: var(--surface-content-background);
+    box-shadow: var(--shadow-content);
+  }
+
+  #workspace .editor textarea {
+    padding: 20px 14px 76px;
+    font: 12px/1.7 var(--font-mono);
+  }
+
+  #workspace .prose {
+    padding: 22px 14px 72px;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  #workspace .prose h1,
+  #workspace .prose h2,
+  #workspace .prose h3 {
+    font-size: 17px;
+    line-height: 1.25;
+  }
+
+  #workspace .prose table {
+    min-width: 440px;
+    font-size: 11px;
+  }
+
+  #workspace .source-view {
+    margin: 0 10px 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 15px;
+    background: var(--surface-content-inset);
+  }
+
+  #workspace .page-controls {
+    top: 10px;
+    min-height: 38px;
+    border-radius: 12px;
+  }
+
+  #workspace .canvas-wrap {
+    padding: 62px 12px 20px;
+  }
+
+  #workspace .log-view {
+    margin: 0 10px 10px;
+    border-radius: 15px;
+    overflow: hidden;
+  }
+
+  #workspace .compact-action-dock {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    z-index: 55;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 15px;
+    background: var(--surface-content-elevated);
+    box-shadow: var(--shadow-floating);
+  }
+
+  #workspace .compact-action-dock .quiet,
+  #compactActionDock .quiet {
+    min-height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--surface-content-inset);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  #workspace .compact-action-dock .quiet:last-child,
+  #compactActionDock .quiet:last-child {
+    background: var(--accent-fill);
+    color: #ffffff;
+  }
+
+  #workspace .sidebar,
+  #workspace .exports {
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 10px;
+    max-height: min(82dvh, 760px);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    box-shadow: var(--shadow-floating);
+  }
+
+  :root[data-theme="dark"] #workspace .top-document-context::after {
+    color: var(--success);
+  }
+}
+
+@media (max-width: 380px) {
+  #workspace .tab {
+    padding-right: 7px;
+    padding-left: 7px;
+    font-size: 10px;
+  }
+
+  #workspace .editor textarea,
+  #workspace .prose {
+    margin-right: 8px;
+    margin-left: 8px;
+  }
+
+  #workspace .compact-action-dock .quiet,
+  #compactActionDock .quiet {
+    font-size: 11px;
+  }
+}
