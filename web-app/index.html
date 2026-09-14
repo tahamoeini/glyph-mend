@@ -98,10 +98,10 @@
   </svg>
   <input id="pdfInput" class="visually-hidden" type="file" accept="application/pdf,.pdf">
   <header class="topbar liquid-glass liquid-glass-regular">
-    <div class="brand-lockup" aria-label="GlyphMend" data-brand-aria-label><span class="brand-mark" aria-hidden="true"><img data-brand-logo src="./brand/glyphmend-mark.svg" alt="" width="22" height="22" style="display:block;filter:brightness(0) invert(1)"></span><a class="brand" href="#" data-brand-name>GlyphMend</a></div>
+    <div class="brand-lockup" aria-label="GlyphMend" data-brand-aria-label><span class="brand-mark" aria-hidden="true"><img data-brand-logo src="./brand/glyphmend-mark.svg" alt="" width="22" height="22"></span><a class="brand" href="#" data-brand-name>GlyphMend</a></div>
     <div id="topDocumentContext" class="top-document-context" aria-live="polite"><strong id="topFileName">Document workspace</strong><span id="topFileMeta">Private, local document processing</span></div>
     <div class="topbar-actions" role="group" aria-label="Application controls">
-      <div class="privacy"><i aria-hidden="true"></i><span>Local processing only</span></div>
+      <div class="privacy"><i aria-hidden="true"></i><span>Local processing</span></div>
       <button id="installButton" class="topbar-button hidden" type="button">Install app</button>
       <button id="themeButton" class="icon-button topbar-button" type="button" aria-label="Switch to dark mode" title="Change appearance"><svg class="icon" aria-hidden="true"><use href="#icon-appearance"></use></svg></button>
       <button id="inspectorToggle" class="icon-button topbar-button inspector-toggle" type="button" aria-controls="resultsInspector" aria-expanded="false" aria-label="Toggle quality and export" title="Quality and export"><svg class="icon" aria-hidden="true"><use href="#icon-download"></use></svg></button><button id="sidebarToggle" class="icon-button topbar-button sidebar-toggle" type="button" aria-controls="settingsSidebar" aria-expanded="true" aria-label="Toggle settings sidebar" title="Toggle settings"><svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg></button>
@@ -109,21 +109,29 @@
   </header>
   <main>
     <section id="welcome" class="welcome content-panel">
-      <div class="welcome-copy"><p class="eyebrow">Private document workspace</p><h1>Turn a PDF into useful, editable content.</h1><p class="lede" data-brand-slogan>Faithful document reconstruction from PDF to structured Markdown.</p></div>
-      <label id="dropZone" class="drop-zone" for="pdfInput"><span class="drop-icon" aria-hidden="true"><svg class="icon"><use href="#icon-arrow-down"></use></svg></span><strong>Drop a PDF here</strong><span>or use <span class="drop-affordance">Choose PDF</span></span><small>PDF files up to your configured limit · nothing is uploaded</small></label>
-      <div class="welcome-actions" aria-label="Workspace options">
-        <button id="restoreButton" class="quiet" type="button">Resume saved workspace</button>
-        <label class="quiet file-button">Import workspace<input id="workspaceInput" type="file" accept="application/json,.json"></label>
-        <label class="quiet file-button">Open Markdown<input id="markdownInput" type="file" accept="text/markdown,.md,.markdown"></label>
-        <button id="resetClientStorageButton" class="quiet danger-text" type="button">Reset local data</button>
+      <div class="welcome-copy"><p class="eyebrow"><span aria-hidden="true"></span>Private document workspace</p><h1>Turn a PDF into useful, editable content.</h1><p class="lede" data-brand-slogan>Faithful document reconstruction from PDF to structured Markdown with native typography and table detection.</p></div>
+      <div class="welcome-features" aria-label="Local processing capabilities">
+        <div class="welcome-feature"><span class="feature-glyph" aria-hidden="true">▣</span><span><strong>Sandboxed WASM engine</strong><small>Local runtime</small></span></div>
+        <div class="welcome-feature"><span class="feature-glyph" aria-hidden="true">▤</span><span><strong>Table geometry</strong><small>Preserves headers and cells</small></span></div>
       </div>
-      <p class="welcome-footnote"><span aria-hidden="true">✓</span> Offline-first <span aria-hidden="true">·</span> Checkpointed <span aria-hidden="true">·</span> Export-ready <span aria-hidden="true">·</span> <a href="https://github.com/tahamoeini/glyph-mend" target="_blank" rel="noopener noreferrer">GitHub</a></p>
-      <div class="product-hunt-badge" aria-label="GlyphMend on Product Hunt">
-        <a href="https://www.producthunt.com/products/glyphmend?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-glyphmend" target="_blank" rel="noopener noreferrer">
-          <img class="product-hunt-neutral" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=neutral&amp;t=1789071060239" loading="lazy">
-          <img class="product-hunt-light" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=light&amp;t=1789071058947" loading="lazy">
-          <img class="product-hunt-dark" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=dark&amp;t=1789071061228" loading="lazy">
-        </a>
+      <div class="welcome-import-card">
+        <label id="dropZone" class="drop-zone" for="pdfInput"><span class="drop-icon" aria-hidden="true"><svg class="icon"><use href="#icon-arrow-down"></use></svg></span><strong>Drop a PDF here</strong><span>or <span class="drop-affordance">Choose PDF</span></span><small>PDF files up to your configured limit · nothing is uploaded</small></label>
+        <div class="welcome-actions" aria-label="Workspace options">
+          <button id="restoreButton" class="quiet" type="button">Resume saved workspace</button>
+          <label class="quiet file-button">Import workspace<input id="workspaceInput" type="file" accept="application/json,.json"></label>
+          <label class="quiet file-button">Open Markdown<input id="markdownInput" type="file" accept="text/markdown,.md,.markdown"></label>
+        </div>
+        <div class="welcome-storage"><span><i aria-hidden="true"></i> Local store ready</span><button id="resetClientStorageButton" class="text-button danger-text" type="button">Reset local data</button></div>
+      </div>
+      <div class="welcome-footer">
+        <p class="welcome-footnote"><span aria-hidden="true">✓</span> Offline-first <span aria-hidden="true">·</span> Checkpointed <span aria-hidden="true">·</span> Export-ready <span aria-hidden="true">·</span> <a href="https://github.com/tahamoeini/glyph-mend" target="_blank" rel="noopener noreferrer">GitHub</a> <span aria-hidden="true">·</span> <a href="https://www.producthunt.com/products/glyphmend" target="_blank" rel="noopener noreferrer">Product Hunt</a></p>
+        <div class="product-hunt-badge" aria-label="GlyphMend on Product Hunt">
+          <a href="https://www.producthunt.com/products/glyphmend?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-glyphmend" target="_blank" rel="noopener noreferrer">
+            <img class="product-hunt-neutral" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=neutral&amp;t=1789071060239" loading="lazy">
+            <img class="product-hunt-light" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=light&amp;t=1789071058947" loading="lazy">
+            <img class="product-hunt-dark" alt="GlyphMend - Faithful document reconstruction from PDF to Text. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1247011&amp;theme=dark&amp;t=1789071061228" loading="lazy">
+          </a>
+        </div>
       </div>
     </section>
     <section id="workspace" class="workspace hidden" aria-label="Document workspace" aria-busy="false">
