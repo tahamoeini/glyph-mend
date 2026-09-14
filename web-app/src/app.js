@@ -1199,6 +1199,17 @@ const tabViews = {
   log: "activityLog",
 };
 
+
+function syncWorkspaceRail(activeTab = document.querySelector(".tab.active")) {
+  const activeView = activeTab?.dataset.tab;
+  document.querySelectorAll("[data-workspace-view]").forEach((button) => {
+    const isActive = button.dataset.workspaceView === activeView;
+    button.classList.toggle("active", isActive);
+    if (isActive) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+}
+
 function activateTab(tab) {
   document.querySelectorAll(".tab").forEach((candidate) => {
     const isActive = candidate === tab;
@@ -1211,6 +1222,7 @@ function activateTab(tab) {
     .forEach((view) => view.classList.add("hidden"));
   $(tabViews[tab.dataset.tab]).classList.remove("hidden");
   tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+  syncWorkspaceRail(tab);
   requestAnimationFrame(() => syncTabIndicator(tab.closest(".tabs")));
   if (tab.dataset.tab === "source") renderSource($("previewPage").value);
 }
@@ -1491,6 +1503,21 @@ function bind() {
     renderLog();
   };
   $("logLevel").onchange = renderLog;
+  document.querySelectorAll("[data-workspace-view]").forEach((button) => {
+    button.onclick = () => {
+      document.querySelector(`.tab[data-tab="${button.dataset.workspaceView}"]`)?.click();
+    };
+  });
+  document.querySelectorAll("[data-workspace-action]").forEach((button) => {
+    button.onclick = () => {
+      const control = button.dataset.workspaceAction === "settings"
+        ? $("sidebarToggle")
+        : $("inspectorToggle");
+      control?.click();
+    };
+  });
+  syncWorkspaceRail();
+
   $("themeButton").onclick = () => {
     const theme =
       document.documentElement.dataset.theme === "dark" ? "light" : "dark";
