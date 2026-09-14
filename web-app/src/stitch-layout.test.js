@@ -22,7 +22,7 @@ describe('Stitch layout regression contract', () => {
     expect(html.querySelector('#settingsSidebar #closeSettingsButton')).not.toBeNull();
     expect(html.querySelector('#resultsInspector #closeInspectorButton')).not.toBeNull();
     expect(html.querySelector('.editor #compactActionDock')).not.toBeNull();
-    expect(html.querySelector('.drop-subtitle-desktop .drop-affordance').textContent).toBe('Choose PDF');
+    expect(html.querySelector('#dropZone > .drop-affordance').textContent).toBe('Choose PDF');
   });
   for (const [width, mode, closes] of [[360,'compact',0],[699,'compact',0],[700,'medium',0],[1024,'medium',0],[1199,'medium',0],[1200,'wide',2],[1440,'extra-wide',2]]) {
     it(`uses accessible sheet behavior at ${width}px`, () => {
