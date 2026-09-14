@@ -373,6 +373,10 @@ function activateWorkspace() {
   $("topFileMeta").textContent = state.pageCount
     ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
     : "Review and export imported Markdown";
+  $("workspaceDocumentName").textContent = state.fileName || "Review, refine, export";
+  $("workspaceDocumentMeta").textContent = state.pageCount
+    ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
+    : "Review and export imported Markdown";
   closeSettingsSheet();
   closeInspectorSheet();
   $("compactActionDock").classList.remove("hidden");
