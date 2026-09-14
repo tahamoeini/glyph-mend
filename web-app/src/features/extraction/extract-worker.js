@@ -2,7 +2,7 @@ import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 import { coalesceStructuredBlocks } from "./structured-lines.js";
-import { inlineMathMarkdown } from "./math-markdown.js";
+import { inlineMathMarkdown, splitEquationProse } from "./math-markdown.js";
 import { validateEquationCandidate } from "../recognition/math-validation.js";
 import {
   ACTIVE_FORMAT_LIMITS,
@@ -10,7 +10,8 @@ import {
 } from "../../shared/security-boundaries.js";
 
 const FORMULA_CUE =
-  /(?:equation|formula|expression|defined by|given by|satisfies|we have|becomes|therefore|hence|where)\s*:?[\s]*$/i;
+  /(?:equation|formula|expression|defined by|given by|satisfies|we have|becomes|therefore|hence|where|as follows|satisfying|express(?:ed)?|condition(?: reduces)? to|is the (?:largest|smallest)|at (?:a )?price|is given by|reduces to|is equal to)\s*:?\s*$/i;
+const DISPLAY_MATH = String.fromCharCode(36).repeat(2);
 const MAX_RASTER_PIXELS = 40_000_000;
 const MAX_RASTER_BYTES = 32 * 1024 * 1024;
 let ocrWorker;
@@ -367,21 +368,23 @@ export function isDiagramLike(text) {
 }
 
 export function isEquation(text, block, pageBounds, bodySize) {
-  if (!text || text.length > 240 || text.split(/\s+/).length > 28) return false;
-  if (/^(?:figure|fig\.|table|chapter|source|note|proof)\b/i.test(text)) return false;
+  const split = splitEquationProse(text);
+  const mathText = split?.equation || text;
+  if (!text || text.length > 240 || mathText.split(/\s+/).length > 28) return false;
+  if (/^(?:figure|fig\.|table|chapter|source|note|proof|theorem|lemma|proposition|corollary|example)\b/i.test(text)) return false;
   if (isDiagramLike(text)) return false;
   if (/^\s*[|>]/u.test(text)) return false;
   if (/\b(?:GET|POST|PUT|PATCH|DELETE|HTTP|HTTPS|JSON|API|URL|status|command(?:Id)?|type|version|endpoint|token|certificate|websocket|public\s+key)\b/i.test(text))
     return false;
   if (/[?]/u.test(text)) return false;
-  const score = mathScore(text);
-  const hasRelation = /[=<>≤≥≠≈]/u.test(text);
-  const hasMathCommand = /\\(?:frac|sqrt|sum|prod|int|sin|cos|tan|log|ln|exp)\b/u.test(text);
-  const hasScript = /(?:\b[A-Za-z]\s*_\s*[A-Za-z0-9({\[]|\^\s*[A-Za-z0-9({\[])/u.test(text);
-  const hasNumeric = /\d/u.test(text);
-  const hasOperator = /[+*/^_×÷∑∏∫√]/u.test(text) ||
-    /(?:^|\s)-(?=\s|[A-Za-z0-9({\[])/u.test(text);
-  const identifiers = text.match(/[A-Za-z]+/gu) || [];
+  const score = mathScore(mathText);
+  const hasRelation = /[=<>≤≥≠≈]/u.test(mathText);
+  const hasMathCommand = /\\(?:frac|sqrt|sum|prod|int|sin|cos|tan|log|ln|exp)\b/u.test(mathText);
+  const hasScript = /(?:\b[A-Za-z]\s*_\s*[A-Za-z0-9({\[]|\^\s*[A-Za-z0-9({\[])/u.test(mathText);
+  const hasNumeric = /\d/u.test(mathText);
+  const hasOperator = /[+*/^_×÷∑∏∫√]/u.test(mathText) ||
+    /(?:^|\s)-(?=\s|[A-Za-z0-9({\[])/u.test(mathText);
+  const identifiers = mathText.match(/[A-Za-z]+/gu) || [];
   const compactFormula = identifiers.length > 0 && identifiers.every((value) => value.length <= 3);
   if (!hasRelation && !hasMathCommand && !hasScript) return false;
   if (score < 2) return false;
@@ -396,7 +399,7 @@ export function isEquation(text, block, pageBounds, bodySize) {
     return false;
   const prose =
     /\b(?:the|and|that|this|with|from|where|which|then|than|for|are|was|were|have|has|into|when)\b/i.test(
-      text,
+      mathText,
     );
   if (prose && score < 7) return false;
   const width = block.bbox[2] - block.bbox[0];
@@ -1394,6 +1397,72 @@ async function tableMarkdownForVisual(rendered, caption, options, paths, pageNum
   }
 }
 
+export function equationImageCandidatesFor(images, blocks, pageBounds, bodySize) {
+  const [left, top, right, bottom] = pageBounds;
+  const pageArea = Math.max(1, (right - left) * (bottom - top));
+  const maxGap = Math.max(18, bodySize * 3.5);
+  const lines = blocks
+    .flatMap((block) => block.lines || [])
+    .filter(
+      (line) =>
+        line?.bbox?.length === 4 &&
+        line.bbox.every(Number.isFinite) &&
+        String(line.text || "").trim(),
+    )
+    .map((line) => ({ ...line, text: normalizeTextLine(line.text) }));
+  return images
+    .map((value, sourceImageIndex) => {
+      const bbox = value?.bbox;
+      if (
+        !bbox?.every(Number.isFinite) ||
+        bbox[2] <= bbox[0] ||
+        bbox[3] <= bbox[1]
+      )
+        return null;
+      const width = bbox[2] - bbox[0];
+      const height = bbox[3] - bbox[1];
+      const ratio = (width * height) / pageArea;
+      if (
+        ratio < 0.0004 ||
+        ratio > 0.12 ||
+        width < Math.max(18, bodySize * 3) ||
+        height > Math.max(28, bodySize * 7.5)
+      )
+        return null;
+      const cue = lines
+        .map((line) => {
+          const verticalGap =
+            line.bbox[3] <= bbox[1]
+              ? bbox[1] - line.bbox[3]
+              : line.bbox[1] >= bbox[3]
+                ? line.bbox[1] - bbox[3]
+                : 0;
+          return { line, verticalGap };
+        })
+        .filter(
+          ({ line, verticalGap }) =>
+            verticalGap <= maxGap &&
+            horizontalAffinity(line.bbox, bbox, bodySize) &&
+            FORMULA_CUE.test(line.text),
+        )
+        .sort((a, b) => a.verticalGap - b.verticalGap)[0];
+      if (!cue) return null;
+      const caption = captionFor(blocks, bbox, bodySize);
+      if (/^(?:figure|fig\.|table)\b/i.test(caption)) return null;
+      return {
+        ...value,
+        kind: "equation-image",
+        sourceImageIndex,
+        y: bbox[1],
+        cueText: cue.line.text,
+        reason: "nearby-formula-cue",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.y - b.y || a.sourceImageIndex - b.sourceImageIndex)
+    .slice(0, 4);
+}
+
 export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   const pageBounds = rect(page.getBounds());
   const { blocks, images, vectors } = readStructuredPage(page);
@@ -1503,6 +1572,64 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     }
   }
 
+  const imageEquationCandidates =
+    options.extractEquations && !ocrApplied
+      ? equationImageCandidatesFor(images, blocks, pageBounds, bodySize)
+      : [];
+  const recoveredEquationImageIndexes = new Set();
+  for (const candidate of imageEquationCandidates) {
+    try {
+      const bbox = paddedBbox(
+        candidate.bbox,
+        pageBounds,
+        Math.max(2, bodySize * 0.35),
+      );
+      const rendered = cropPage(page, bbox, 2.8);
+      const ocrData = await recognizeRaster(
+        rendered,
+        options,
+        ocrPaths,
+        pageNumber,
+      );
+      const recognizedText = joinWrapped(ocrLines(ocrData));
+      if (!looksLikeOcrEquation(recognizedText)) continue;
+      const equationText = latexMarkdown(recognizedText);
+      const reconstruction = validateEquationReconstruction(
+        pageNumber,
+        bbox,
+        equationText,
+        rendered,
+        "raster",
+      );
+      if (reconstruction.fallbackAsset) assets.push(reconstruction.fallbackAsset);
+      if (reconstruction.validation.accepted) {
+        entries.push({
+          y: candidate.y,
+          x: candidate.bbox[0],
+          markdown: DISPLAY_MATH + "\n" + reconstruction.validation.output.latex + "\n" + DISPLAY_MATH,
+          kind: "equation",
+        });
+      } else {
+        entries.push({
+          y: candidate.y,
+          x: candidate.bbox[0],
+          markdown: reconstruction.fallbackMarker,
+          kind: "equation-fallback",
+        });
+      }
+      reviewItems.push(
+        equationReviewItem(
+          reconstruction.candidate,
+          reconstruction.validation,
+          "tesseract-equation-image",
+        ),
+      );
+      recoveredEquationImageIndexes.add(candidate.sourceImageIndex);
+    } catch {
+      /* Preserve the image through the normal visual path if focused OCR fails. */
+    }
+  }
+
   for (const block of (ocrApplied ? [] : blocks).sort(
     (a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0],
   )) {
@@ -1535,7 +1662,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     let rawText = rawVisualText;
     if (table) markdown = markdownTable(table);
     else if (options.extractEquations && isEquation(text, block, pageBounds, bodySize)) {
-      const equationText = latexMarkdown(text);
+      const equationParts = splitEquationProse(text);
+      const equationText = latexMarkdown(equationParts?.equation || text);
       let crop = { data: new Uint8Array(), width: 0, height: 0 };
       try {
         crop = cropPage(page, block.bbox, 2.6);
@@ -1551,10 +1679,29 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       );
       if (reconstruction.fallbackAsset) assets.push(reconstruction.fallbackAsset);
       if (reconstruction.validation.accepted) {
-        markdown = `$$\n${reconstruction.validation.output.latex}\n$$`;
+        const equationMarkdown = DISPLAY_MATH + "\n" + reconstruction.validation.output.latex + "\n" + DISPLAY_MATH;
+        markdown = [
+          equationMarkdown,
+          equationParts?.prose
+            ? escapeMd(inlineMathMarkdown(equationParts.prose), {
+                protectBlockStart: false,
+              })
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
         entryKind = "equation";
       } else {
-        markdown = reconstruction.fallbackMarker;
+        markdown = [
+          reconstruction.fallbackMarker,
+          equationParts?.prose
+            ? escapeMd(inlineMathMarkdown(equationParts.prose), {
+                protectBlockStart: false,
+              })
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
         entryKind = "equation-fallback";
       }
       rawText = undefined;
@@ -1596,6 +1743,10 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   if (options.preserveVisuals !== false) {
     const pageArea = (pageBounds[2] - pageBounds[0]) * pageHeight;
     for (const [index, value] of images.entries()) {
+      if (recoveredEquationImageIndexes.has(index)) {
+        value.image.destroy?.();
+        continue;
+      }
       const area =
         (value.bbox[2] - value.bbox[0]) * (value.bbox[3] - value.bbox[1]);
       if (

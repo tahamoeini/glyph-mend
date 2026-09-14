@@ -18,6 +18,39 @@ const INLINE_EQUATION = new RegExp(
 );
 const INLINE_PAREN_EXPRESSION =
   /(?<![\w$])(?:[A-Za-z][A-Za-z0-9_]*)?\([^()\n]{1,70}[=<>≤≥≠≈+*/^][^()\n]{0,70}\)/gu;
+const DISPLAY_MATH_BOUNDARY = /[.!?](?=\s+[A-Z][a-z]{2,}\b)/gu;
+const EQUATION_RELATION = /[=<>≤≥≠≈≡]/u;
+const EQUATION_OPERATOR = /[=+\-−×÷*/^_]/u;
+
+function equationLikePrefix(value) {
+  const text = normalize(value);
+  if (
+    !text ||
+    text.length > 180 ||
+    !EQUATION_RELATION.test(text) ||
+    !EQUATION_OPERATOR.test(text)
+  )
+    return false;
+  const words = text.match(/[A-Za-zÀ-ÖØ-öø-ÿ]{2,}/g) || [];
+  return (
+    words.length <= 14 &&
+    !/^(?:the|this|that|these|those|whereas|because)\b/i.test(text)
+  );
+}
+
+export function splitEquationProse(value) {
+  const text = normalize(value);
+  if (!text || !EQUATION_RELATION.test(text)) return null;
+  const boundary = new RegExp(DISPLAY_MATH_BOUNDARY.source, "gu");
+  let match;
+  while ((match = boundary.exec(text))) {
+    const equation = text.slice(0, match.index).trim();
+    const prose = text.slice(match.index + 1).trim();
+    if (equationLikePrefix(equation) && prose.split(/\s+/).length >= 2)
+      return { equation, prose };
+  }
+  return null;
+}
 
 function normalize(value) {
   return String(value ?? "").normalize("NFC").replace(/\s+/g, " ").trim();

@@ -5,7 +5,7 @@ import { routeVisualOutput, sanitizeGeneratedSvgMarkup } from "./visual-renderin
 export const RECONSTRUCTABLE_BUNDLE_VERSION = 1;
 export const RECONSTRUCTABLE_BUNDLE_SCHEMA = "glyphmend.reconstructable-bundle";
 export const RECONSTRUCTABLE_BUNDLE_LIMITS = Object.freeze({
-  maxEntries: 512,
+  maxEntries: 4096,
   maxManifestBytes: 2 * 1024 * 1024,
   maxEntryBytes: 512 * 1024 * 1024,
   maxTotalBytes: 768 * 1024 * 1024,

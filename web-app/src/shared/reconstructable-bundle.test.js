@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { strFromU8, unzipSync } from "fflate";
 import {
+  RECONSTRUCTABLE_BUNDLE_LIMITS,
   RECONSTRUCTABLE_BUNDLE_SCHEMA,
   RECONSTRUCTABLE_BUNDLE_VERSION,
   buildReconstructableBundle,
@@ -90,6 +91,10 @@ function fixture() {
     qualityReport: { status: "pass", pages: 3 },
   };
 }
+
+it("supports the full visual-asset workload without tripping the entry guard", () => {
+  expect(RECONSTRUCTABLE_BUNDLE_LIMITS.maxEntries).toBeGreaterThanOrEqual(4096);
+});
 
 it("creates a deterministic bundle with source, semantic, and sidecar tiers", async () => {
   const first = await buildReconstructableBundle(fixture());
