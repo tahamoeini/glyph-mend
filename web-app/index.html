@@ -116,7 +116,7 @@
         <div class="welcome-engine-card"><span class="engine-dot" aria-hidden="true"></span><span><small>LOCAL ENGINE</small><strong>Ready in this browser</strong></span><em>WASM + OCR</em></div>
       </div>
       <div class="welcome-import-card" data-ui-region="intake"><div class="import-card-header"><div><p class="eyebrow">Start a workspace</p><h2>Bring in a document</h2></div><span class="local-pill">Local only</span></div>
-        <label id="dropZone" class="drop-zone" for="pdfInput"><span class="drop-icon" aria-hidden="true"><svg class="icon"><use href="#icon-arrow-down"></use></svg></span><strong><span class="drop-title-desktop">Drop a PDF here</span><span class="drop-title-mobile">Choose a PDF</span></strong><span class="drop-subtitle-desktop">or <span class="drop-affordance">Choose PDF</span></span><span class="drop-subtitle-mobile">or drop one here</span><small>PDF files up to your configured limit · nothing is uploaded</small></label>
+        <label id="dropZone" class="drop-zone" for="pdfInput"><span class="drop-icon" aria-hidden="true"><svg class="icon"><use href="#icon-arrow-down"></use></svg></span><strong><span class="drop-title-desktop">Drop a PDF here</span><span class="drop-title-mobile">Choose a PDF</span></strong><span class="drop-subtitle-desktop">or</span><span class="drop-subtitle-mobile">or drop one here</span><span class="drop-affordance">Choose PDF</span><small>PDF files up to your configured limit · nothing is uploaded</small></label>
         <div class="welcome-actions" aria-label="Workspace options" data-ui-region="recovery">
           <button id="restoreButton" class="quiet" type="button">Resume saved workspace</button>
           <label class="quiet file-button">Import workspace<input id="workspaceInput" type="file" accept="application/json,.json"></label>
@@ -153,6 +153,7 @@
         <div class="rail-engine-status"><span class="engine-dot" aria-hidden="true"></span><span><strong>Local engine</strong><small>Ready in browser</small></span></div>
       </nav>
       <aside id="settingsSidebar" class="sidebar liquid-glass liquid-glass-regular" aria-label="Document and extraction settings" data-ui-region="extraction-settings">
+        <div class="sheet-heading"><h2>Document Settings</h2><button id="closeSettingsButton" class="quiet" type="button" aria-label="Close document settings">✕</button></div>
         <div class="sidebar-header"><div class="file-summary"><div class="pdf-badge" aria-hidden="true">PDF</div><div><strong id="fileName"></strong><span id="fileMeta"></span></div></div><label class="change-file" for="pdfInput">Choose another PDF</label></div>
         <div class="sidebar-scroll">
           <fieldset class="control-section">
@@ -210,6 +211,7 @@
                 <nav id="compactActionDock" class="compact-action-dock hidden" aria-label="Workspace actions" data-ui-region="mobile-actions"><button id="compactSettingsButton" class="quiet" type="button">Settings</button><button id="compactInspectorButton" class="quiet" type="button">Export document</button></nav>
       </section>
       <aside id="resultsInspector" class="exports content-panel" aria-label="Results and exports" data-ui-region="quality-export">
+        <div class="sheet-heading"><h2>Export Document</h2><button id="closeInspectorButton" class="quiet" type="button" aria-label="Close export document">✕</button></div>
         <div class="inspector-section results-heading"><div><p class="eyebrow">Results</p><h2>Quality overview</h2></div><span id="qualityBadge" class="status-badge neutral">Waiting</span></div>
         <div class="quality inspector-section"><dl id="qualityReport" class="metric-grid"><div class="metric-card"><dt>Pages processed</dt><dd>0</dd></div></dl></div>
         <section class="inspector-section review-queue-panel" id="reviewQueuePanel" aria-label="Review queue" aria-busy="false">
