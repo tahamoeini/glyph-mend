@@ -72,3 +72,46 @@ service: do not fabricate them or replace Extract with a misleading Save label.
 - [ ] PR checked against latest main and required checks pass before merging.
 
 Unchecked items remain unverified; do not describe this repository as finalized.
+
+## Follow-up from main 7a8ca15 — visual completion work
+
+The previous merge did not complete the acceptance checklist above. Treat it as
+a baseline, not proof that the design matches Stitch.
+
+### Consolidated non-negotiables
+
+- Use the checked-in screen PNGs and HTML together. Do not reinterpret the
+  desktop dashboard as three columns: its navigation/source region is distinct
+  from settings, document, and results. Component mockups define the mobile
+  settings and export surfaces; mobile is not a compressed desktop dashboard.
+- Keep light/dark parity, readable text/background pairs, usable heights, widths,
+  gutters, scrolling, touch targets, and keyboard access. Controls can relocate,
+  but their effects, defaults, options, and formats must not change.
+- Preserve the current main's extraction fidelity work. Do not restore stale
+  app.js files, change extraction versions, or replace business handlers.
+- One new branch and one PR for this pass; review and merge only after actual
+  acceptance. Never repeat the earlier “CI green therefore visually complete”
+  conclusion. A blocked visual check remains blocked, not implicitly passed.
+
+### Findings and implementation sequence
+
+1. Live desktop landing inspection: composition is now present, but engine
+   status remains a contrasting technical black card in light mode. Correct
+   its semantic surface/text colors and the footer surface.
+2. Existing progress, pause, and cancel controls live inside settings. Move
+   those exact nodes to a document status surface so mobile users need not
+   open settings to see progress or stop a job. Keep IDs and handlers intact.
+3. At 1200px, the prior fixed columns leave only 380px for the document. Use a
+   bounded navigation width and 290px inspector, leaving 450px at that boundary.
+4. Preserve the complete export/settings sheets, and retain Word settings beside
+   the prioritized export formats. Remove unnecessary mobile hero decoration.
+5. Run lightweight contract tests/build, then test loaded PDF/Markdown, all tabs,
+   sheets, focus, running actions and exports on the branch preview. Compare
+   desktop/mobile/light/dark renders before merge.
+
+### Current evidence
+
+- Live production desktop landing inspected during this follow-up.
+- Loaded-workspace browser file selection stalled and the browser session lost
+  its state. No loaded-workspace visual pass is claimed from that attempt.
+- Follow-up branch changes remain pending full visual acceptance.
