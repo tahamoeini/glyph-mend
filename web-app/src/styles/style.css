@@ -3388,7 +3388,7 @@
   body:has(#workspace:not(.hidden)) { overflow: hidden; }
   body:has(#workspace:not(.hidden)) main { height: calc(100dvh - var(--topbar-height)); min-height: 0; overflow: hidden; }
   .workspace { width: 100%; max-width: none; height: 100%; min-height: 0; margin: 0; gap: 0; display: grid;
-    grid-template-columns: 240px 280px minmax(0, 1fr) 300px;
+    grid-template-columns: clamp(160px, 15vw, 240px) 280px minmax(0, 1fr) 290px;
     grid-template-rows: minmax(0, 1fr); grid-template-areas: "rail sidebar editor inspector"; overflow: hidden; }
   .workspace > :is(.workspace-rail, .sidebar, .editor, .exports) { min-width: 0; min-height: 0; height: auto; max-height: none; border-radius: 0; }
   .workspace-rail { grid-area: rail; display: flex; flex-direction: column; position: static; width: auto; overflow: auto; background: var(--surface-content-elevated); border-right: 1px solid var(--border-subtle); }
@@ -3409,7 +3409,14 @@
   .control-row strong { font-size: 13px; }
   .control-row small { font-size: 12px; line-height: 1.4; }
   .editor { grid-area: editor; display: flex; flex-direction: column; padding: 0; overflow: hidden; background: var(--surface-content-elevated); border: 0; }
-  .editor-header, .toolbar, .workspace-contextbar { flex: 0 0 auto; }
+  .editor-header, .toolbar, .workspace-contextbar, .document-progress { flex: 0 0 auto; }
+  .document-progress { margin: 0 12px 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-content-inset); }
+  .document-progress .progress-card { padding: 0; border: 0; background: transparent; box-shadow: none; }
+  .document-progress #statusText { font-size: 12px; overflow-wrap: anywhere; }
+  .document-progress .progress-page { font-size: 11px; overflow-wrap: anywhere; }
+  .document-progress .running-actions:has(button:not(.hidden)) { display: flex; gap: 8px; margin-top: 8px; }
+  .document-progress .running-actions:not(:has(button:not(.hidden))) { display: none; }
+  .document-progress .running-actions button { min-height: 44px; flex: 1; }
   .workspace-contextbar { order: -2; padding: 12px 16px; background: transparent; }
   .workspace-contextbar > div { min-width: 0; }
   .workspace-contextbar strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
@@ -3434,8 +3441,18 @@
   .metric-card { min-height: 64px; }
   .metric-card dt { font-size: 11px; }
   .compact-action-dock, .sheet-heading, .sidebar-backdrop, .inspector-backdrop { display: none; }
-  body.sidebar-collapsed .workspace { grid-template-columns: 240px 0 minmax(0, 1fr) 300px; }
+  body.sidebar-collapsed .workspace { grid-template-columns: clamp(160px, 15vw, 240px) 0 minmax(0, 1fr) 290px; }
   body.sidebar-collapsed .sidebar { visibility: hidden; padding: 0; border: 0; }
+
+  /* The engine is a quiet status surface, not a dark decorative module. */
+  .welcome-engine-card, :root[data-theme="dark"] .welcome-engine-card { background: var(--surface-content-background); border-color: var(--border-subtle); }
+  .welcome-engine-card strong { color: var(--text-primary); }
+  .welcome-engine-card small, .welcome-engine-card em { color: var(--text-secondary); }
+  .welcome-trust { background: var(--surface-content-background); border-color: var(--border-subtle); }
+  .welcome-footer { background: var(--surface-content-background); border: 1px solid var(--border-subtle); border-radius: 16px; padding: 16px; }
+  .workspace .rail-heading { text-align: left; }
+  .workspace .rail-engine-status strong { font-size: 12px; }
+  .workspace .rail-engine-status small { font-size: 11px; }
 
   /* Same threshold as layout-mode.js: tablet and mobile use complete sheets. */
   @media (max-width: 1199px) {
@@ -3454,6 +3471,8 @@
     #compactInspectorButton { color: var(--text-on-accent); background: var(--accent-fill); }
     .top-document-context { display: none; }
     .topbar[data-ui-region="app-chrome"] { grid-template-columns: minmax(0, 1fr) auto; }
+    .document-progress { padding: 8px 12px; }
+    .document-progress .progress-heading { margin-bottom: 4px; }
   }
   @media (max-width: 899px) {
     [data-ui-region="landing"] { max-width: 700px; display: flex; flex-direction: column; align-items: stretch; padding: 24px 16px 32px; gap: 24px; }
@@ -3477,6 +3496,7 @@
     .welcome-footer { display: block; text-align: center; margin: 0; padding: 16px 0; }
     .welcome-footnote { font-size: 12px; }
     .product-hunt-badge { display: none; }
+    .welcome-trust { display: none; }
   }
   @media (max-width: 699px) {
     .topbar[data-ui-region="app-chrome"] { padding: 0 12px; }
@@ -3503,6 +3523,14 @@
     .exports .results-heading { order: -2; }
     .downloads #downloadDocx { order: -1; }
     .downloads .section-title { order: -2; }
+    .exports .export-options { order: -1; }
+    .editor-header { flex-wrap: wrap; }
+    .editor .toolbar { flex-wrap: wrap; gap: 6px; }
+    .editor .editor-hint { display: none; }
+    .sheet-heading { min-height: 56px; }
+    .sidebar-header { padding: 10px 12px; }
+    .sidebar .action-dock { padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
+    .workspace-contextbar small { font-size: 11px; }
   }
   @media (prefers-reduced-motion: reduce) { .workspace, .sidebar, .exports { transition: none; } }
   @media (forced-colors: active) { .primary, .drop-affordance, #compactInspectorButton, .rail-button.active { background: ButtonFace; color: ButtonText; border: 1px solid ButtonText; } }
