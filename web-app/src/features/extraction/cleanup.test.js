@@ -305,4 +305,14 @@ describe("exports", () => {
     expect(issue).toEqual(expect.objectContaining({ pages: [1] }));
     expect(issue.message).not.toMatch(/renditions are retained/i);
   });
+
+  it("reports embedded PDF font encoding damage for source review", () => {
+    const audit = qualityAudit(
+      [{ page: 1, text: "nia�n", quality: { characters: 5, embeddedTextCorrupt: true } }],
+      "nia�n",
+    );
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "TEXT_ENCODING_DAMAGE", pages: [1] }),
+    );
+  });
 });

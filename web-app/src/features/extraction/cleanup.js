@@ -593,6 +593,13 @@ export function qualityAudit(pages, markdown, warnings = []) {
         )
       );
     }).length;
+  const encodingDamaged = pages
+    .filter(
+      (page) =>
+        page.quality?.embeddedTextCorrupt ||
+        String(page.text || "").includes("\uFFFD"),
+    )
+    .map((page) => page.page);
   if (empty.length)
     issues.push({
       code: "LOW_TEXT_PAGES",
@@ -663,6 +670,15 @@ export function qualityAudit(pages, markdown, warnings = []) {
       severity: "warning",
       count: leakedRunning,
       message: "Probable running headers or page labels remain.",
+    });
+  if (encodingDamaged.length)
+    issues.push({
+      code: "TEXT_ENCODING_DAMAGE",
+      severity: "warning",
+      count: encodingDamaged.length,
+      pages: encodingDamaged.slice(0, 50),
+      message:
+        "Embedded PDF text contained unmappable characters; OCR or source visual review was required.",
     });
   const ocrOnly = pages.filter(
     (page) =>

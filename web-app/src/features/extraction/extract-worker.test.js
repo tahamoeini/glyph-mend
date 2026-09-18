@@ -2,6 +2,8 @@ import { expect, it } from "vitest";
 import {
   buildEquationCandidate,
   captionFor,
+  dedupeNearbyEquationEntries,
+  embeddedTextNeedsOcr,
   equationImageCandidatesFor,
   isDiagramLike,
   isEquation,
@@ -16,6 +18,23 @@ import {
 
 it("reconstructs equation candidates as LaTeX instead of visual assets", () => {
   expect(latexMarkdown("p ≤ μ + ½")).toBe("p \\leq \\mu + \\frac{1}{2}");
+});
+
+it("routes replacement-character PDF text to OCR", () => {
+  expect(
+    embeddedTextNeedsOcr([{ lines: [{ text: "nia\uFFFDn" }] }]),
+  ).toBe(true);
+  expect(embeddedTextNeedsOcr([{ lines: [{ text: "normal text" }] }])).toBe(false);
+});
+
+it("removes only adjacent duplicate equation emissions", () => {
+  const entries = [
+    { kind: "equation", y: 100, markdown: "$$\\nx=1\\n$$" },
+    { kind: "equation", y: 104, markdown: "$$\\nx=1\\n$$" },
+    { kind: "equation", y: 300, markdown: "$$\\nx=1\\n$$" },
+  ];
+  expect(dedupeNearbyEquationEntries(entries, 10)).toHaveLength(2);
+  expect(dedupeNearbyEquationEntries(entries, 10).at(-1).y).toBe(300);
 });
 
 it("associates a nearby figure caption with its visual placeholder", () => {

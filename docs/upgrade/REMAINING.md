@@ -456,3 +456,19 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Recommended next action: Keep these commands required in CI and consider an explicit lint/type-system migration only as a separately scoped task.
 - Safe to continue unrelated work: yes
 - Resolution note: Resolved and verified locally with `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build`.
+
+## GM-UPG-028 — Supplied extraction references exposed encoding and duplicate-equation gaps
+- Detected in step: Production hardening master prompt — extraction output investigation
+- Date: 2026-09-18
+- Status: PARTIALLY RESOLVED
+- Severity: high
+- Area: browser / extraction fidelity / OCR / equations
+- Dependency: real multilingual and long-document fixture reruns
+- Description: The supplied Revenue Management export contains adjacent duplicate display-equation blocks and repeated book headers. The supplied Wushu Dictionary export contains replacement characters, split table rows, and repeated footer matter; its DOCX preserves the replacement glyphs and flattens much of the dictionary structure.
+- Evidence: `The-Theory-and-Practice-of-Revenue-Management(2).md`, `document(1).md`, `document(1).docx`, `quality-report(1).json`, and `manifest(1).json`.
+- Files / symbols involved: `pageMarkdown`, `embeddedTextNeedsOcr`, `dedupeNearbyEquationEntries`, `removeRunningMatter`, and `qualityAudit`.
+- What was attempted: Damaged embedded text now triggers local OCR, adjacent duplicate equation emissions are deduplicated, edge detection covers a wider header/footer geometry band, and encoding damage becomes an explicit quality warning.
+- Why it remains: The reference PDFs are not committed as fixtures because of size/licensing, and OCR quality for Chinese characters, multilingual tables, and all 745 pages still requires a manual rerun against the supplied sources.
+- Recommended next action: Re-extract both supplied PDFs with the branch, compare representative pages and DOCX rendering, and add a small permitted fixture for each regression pattern.
+- Safe to continue unrelated work: yes
+- Resolution note: Implementation and unit coverage are updated; end-to-end reference rerun remains open.

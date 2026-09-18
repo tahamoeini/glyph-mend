@@ -15,6 +15,10 @@ ledger remains at [`docs/upgrade/REMAINING.md`](./upgrade/REMAINING.md).
   without removing existing control IDs or capabilities.
 - `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build` are
   available as release checks.
+- Reference review now covers the supplied 745-page Revenue Management and
+  56-page Wushu Dictionary exports: damaged embedded font text routes to OCR,
+  adjacent duplicate equation emissions are suppressed, and edge detection
+  has a wider geometry band for repeated headers and footers.
 
 ## Open or manually gated
 
@@ -46,3 +50,10 @@ reviewed for licensing, size, offline behavior, and quality.
 The existing MuPDF/PyMuPDF licensing decision remains a product/legal gate and
 is tracked in the historical ledger. It is not silently resolved by this code
 change.
+
+### Reference fixture limitations
+
+The supplied PDFs remain external release fixtures rather than repository test
+assets. They should be rerun manually before release because the dictionary
+contains multilingual glyphs and 78 figures, while the Revenue Management
+book contains 745 pages, 24 tables, 23 equations, and 1,221 preserved visuals.

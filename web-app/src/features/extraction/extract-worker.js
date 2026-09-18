@@ -440,6 +440,17 @@ export function textFallbackBlocks(structured) {
   }
 }
 
+export function embeddedTextNeedsOcr(blocks = []) {
+  const text = blocks
+    .flatMap((block) => block?.lines || [])
+    .map((line) => String(line?.text || ""))
+    .join(" ");
+  // U+FFFD means the PDF font encoding could not be mapped to Unicode. OCR
+  // should replace that damaged text; emitting replacement glyphs into a
+  // Markdown/DOCX export permanently loses the source characters.
+  return (text.match(/\uFFFD/gu) || []).length > 0;
+}
+
 export function jsonFallbackBlocks(structured) {
   try {
     const data = JSON.parse(structured.asJSON());
@@ -833,6 +844,27 @@ function sourceMarker(pageNumber, asset) {
     ? ` caption="${asset.caption.replace(/["\\]/g, " ").replace(/\s+/g, " ").trim()}"`
     : "";
   return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"${caption}]`;
+}
+
+export function dedupeNearbyEquationEntries(entries = [], bodySize = 10) {
+  const result = [];
+  const seen = new Map();
+  const distanceLimit = Math.max(12, bodySize * 3.2);
+  for (const entry of entries) {
+    if (!/^equation(?:-fallback)?$/.test(entry?.kind || "") || !entry?.markdown) {
+      result.push(entry);
+      continue;
+    }
+    const previous = seen.get(entry.markdown);
+    if (
+      previous &&
+      Math.abs(Number(entry.y) - Number(previous.y)) <= distanceLimit
+    )
+      continue;
+    seen.set(entry.markdown, entry);
+    result.push(entry);
+  }
+  return result;
 }
 
 function headingLikeText(value) {
@@ -1477,6 +1509,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   const edges = { headers: [], footers: [] };
   let ocrCandidates = [];
   const reviewItems = [];
+  const embeddedTextCorrupt = embeddedTextNeedsOcr(blocks);
 
   const pageTable =
     !options.forceOcr && options.detectTables
@@ -1489,6 +1522,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   let ocrApplied = false;
   if (
     options.forceOcr ||
+    (options.useOcr &&
+      embeddedTextCorrupt) ||
     (options.useOcr &&
       blocks.reduce(
         (count, value) => count + joinWrapped(value.lines).length,
@@ -1567,8 +1602,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       }),
     );
     for (const item of lines) {
-      if (item.y0 <= rawHeight * 0.09) edges.headers.push(item.text);
-      if (item.y1 >= rawHeight * 0.92) edges.footers.push(item.text);
+      if (item.y0 <= rawHeight * 0.12) edges.headers.push(item.text);
+      if (item.y1 >= rawHeight * 0.88) edges.footers.push(item.text);
     }
   }
 
@@ -1637,8 +1672,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     if (!remainingLines.length) continue;
     const text = joinWrapped(remainingLines);
     if (!text) continue;
-    const topEdge = block.bbox[1] <= pageBounds[1] + pageHeight * 0.09;
-    const bottomEdge = block.bbox[3] >= pageBounds[3] - pageHeight * 0.08;
+    const topEdge = block.bbox[1] <= pageBounds[1] + pageHeight * 0.12;
+    const bottomEdge = block.bbox[3] >= pageBounds[3] - pageHeight * 0.12;
     if (topEdge) edges.headers.push(text);
     if (bottomEdge) edges.footers.push(text);
     if (
@@ -1904,13 +1939,13 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   }
 
   entries.sort((a, b) => a.y - b.y || (a.x || 0) - (b.x || 0));
-  const textEntries = mergeCodeEntries(
+  const textEntries = dedupeNearbyEquationEntries(mergeCodeEntries(
     mergeDiagramEntries(
       mergeWrappedHeadingEntries(entries, bodySize),
       bodySize,
     ),
     bodySize,
-  );
+  ), bodySize);
   const text = textEntries.map((entry) => entry.markdown).join("\n\n");
   const quality = {
     characters: text.length,
@@ -1924,8 +1959,16 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     ).length,
     suspiciousGaps: 0,
     ocrApplied,
+    embeddedTextCorrupt,
   };
-  return { text, bodySize, assets, edges, quality, reviewItems };
+  return {
+    text,
+    bodySize,
+    assets,
+    edges,
+    quality,
+    reviewItems: [...new Map(reviewItems.map((item) => [item.id, item])).values()],
+  };
 }
 
 function geometryYFromRaw(rawY, pageBounds, rawHeight) {
