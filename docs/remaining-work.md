@@ -49,6 +49,15 @@ ledger remains at [`docs/upgrade/REMAINING.md`](./upgrade/REMAINING.md).
   report without failing the rest of the document.
 - Quality reports now include text/table/equation confidence, figure
   preservation counts, and OCR page usage.
+- The reconstruction seam now has an explicit schema-2 DocumentIR/PageIR/
+  BlockIR contract, source-page/bbox/method/confidence provenance, child and
+  caption relationships, footnotes, and normalized table span metadata.
+- Layout summaries now record the geometry method and confidence, and the
+  running-matter classifier records auditable REMOVE/KEEP/MERGE decisions
+  before cleanup mutates semantic blocks.
+- Five deterministic semantic fixtures now cover textbook, research paper,
+  table-heavy, equation-heavy, and scanned-document paths without bundling
+  user PDFs.
 
 ## Open or manually gated
 
@@ -94,6 +103,9 @@ The supplied PDFs remain external release fixtures rather than repository test
 assets. They should be rerun manually before release because the dictionary
 contains multilingual glyphs and 78 figures, while the Revenue Management
 book contains 745 pages, 24 tables, 23 equations, and 1,221 preserved visuals.
+
+The implementation audit and staged reconstruction plan are recorded in
+[`docs/extraction-reconstruction-roadmap.md`](./extraction-reconstruction-roadmap.md).
 
 ### Known fidelity boundary
 

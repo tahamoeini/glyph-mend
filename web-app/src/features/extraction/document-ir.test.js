@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import {
+  DOCUMENT_BLOCK_TYPES,
   DOCUMENT_IR_SCHEMA_VERSION,
   documentIRFromPages,
   documentIRMetrics,
@@ -32,7 +33,75 @@ it("normalizes ordered page blocks into semantic DocumentIR without losing prove
   ]);
   expect(ir.blocks[0].source).toMatchObject({ page: 2, bbox: [1, 2, 3, 4] });
   expect(ir.blocks[1].confidence).toBe(0.91);
+  expect(ir.blocks.every((block) =>
+    DOCUMENT_BLOCK_TYPES.includes(block.type) &&
+    block.sourcePage === 2 &&
+    (block.bbox === null || Array.isArray(block.bbox)) &&
+    typeof block.confidence === "number" &&
+    typeof block.extractionMethod === "string" &&
+    Array.isArray(block.children),
+  )).toBe(true);
+  expect(ir.layout).toBeUndefined();
   expect(ir.assets[0]).toMatchObject({ id: "p2-figure-1", page: 2 });
+});
+
+it("links captions to nearby figures and preserves table spans and footnotes", () => {
+  const ir = pageDocumentIR(
+    { page: 3 },
+    {
+      blocks: [
+        {
+          id: "figure-1",
+          type: "figure",
+          markdown: '[SOURCE_VISUAL page=3 id="figure-1"]',
+          bbox: [40, 100, 300, 220],
+          confidence: 0.84,
+        },
+        {
+          id: "caption-1",
+          type: "caption",
+          markdown: "Figure 1. Demand by fare class",
+          bbox: [45, 225, 300, 242],
+        },
+        {
+          id: "table-1",
+          type: "table",
+          markdown: "| A | B |\n| --- | --- |\n| 1 | 2 |",
+          tableIR: {
+            rows: [[
+              { text: "A", colSpan: 2 },
+            ], [
+              { text: "1", rowSpan: 2 },
+              { text: "2" },
+            ]],
+            columns: 2,
+            spans: [{ row: 0, column: 0, rowSpan: 1, colSpan: 2 }],
+            confidence: 0.88,
+            multiPageKey: "table-1",
+          },
+        },
+        { id: "footnote-1", type: "footnote", markdown: "[^1]: Source note" },
+      ],
+    },
+  );
+
+  expect(ir.relationships).toContainEqual({
+    type: "caption-for",
+    from: "figure-1",
+    to: "caption-1",
+  });
+  expect(ir.blocks.find((block) => block.id === "figure-1").children).toEqual([
+    "caption-1",
+  ]);
+  expect(ir.blocks.find((block) => block.id === "caption-1").parentId).toBe(
+    "figure-1",
+  );
+  expect(ir.blocks.find((block) => block.id === "table-1").table).toMatchObject({
+    columns: 2,
+    multiPageKey: "table-1",
+    spans: [{ row: 0, column: 0, rowSpan: 1, colSpan: 2 }],
+  });
+  expect(documentIRMetrics({ pages: [ir] }).footnotes).toBe(1);
 });
 
 it("generates Markdown from semantic block order rather than coordinate sorting", () => {

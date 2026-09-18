@@ -41,8 +41,14 @@ export function parsePageRange(input, total) {
   return [...pages].sort((a, b) => a - b);
 }
 
+function edgeText(value) {
+  if (value && typeof value === "object")
+    return String(value.text ?? value.value ?? value.label ?? "");
+  return String(value ?? "");
+}
+
 function plainMarkdownLine(line) {
-  return String(line || "")
+  return edgeText(line)
     .replace(/^\s*#{1,6}\s+/, "")
     .replace(/^\s*>\s?/, "")
     .replace(/\*\*|__|~~|`/g, "")
@@ -190,6 +196,116 @@ function commonEdgeTokens(pages, fromStart, headers, footers) {
   return null;
 }
 
+export const RUNNING_MATTER_ACTIONS = Object.freeze({
+  REMOVE: "REMOVE",
+  KEEP: "KEEP",
+  MERGE: "MERGE",
+});
+
+function structuralEdge(value) {
+  const text = plainMarkdownLine(edgeText(value));
+  return (
+    /^(?:chapter|part|appendix|section|contents|table of contents|list of (?:figures|tables)|preface|acknowledg(?:e)?ments|references|bibliography|index)\b/i.test(
+      text,
+    ) ||
+    /^\d+(?:\.\d+){0,5}\.?\s+[A-Z]/u.test(text)
+  );
+}
+
+function edgeCommonMatch(value, fragment, fromStart) {
+  if (!fragment?.sample) return false;
+  const tokens = plainMarkdownLine(edgeText(value)).split(/\s+/).filter(Boolean);
+  const expected = fragment.sample.split(/\s+/).filter(Boolean);
+  if (tokens.length < expected.length) return false;
+  const candidate = fromStart
+    ? tokens.slice(0, expected.length)
+    : tokens.slice(-expected.length);
+  return candidate.every(
+    (token, index) =>
+      normalizeEdgeToken(token) === normalizeEdgeToken(expected[index]),
+  );
+}
+
+function classifyEdge(value, position, repeated, common) {
+  const text = edgeText(value).trim();
+  const key = signature(text);
+  const pageLabel = isPageLabel(text);
+  const structural = structuralEdge(text);
+  const commonFragment = edgeCommonMatch(value, common, position === "header");
+  const repeatedEdge = repeated.has(key);
+  let action = RUNNING_MATTER_ACTIONS.KEEP;
+  if (structural) action = RUNNING_MATTER_ACTIONS.KEEP;
+  else if (pageLabel || repeatedEdge) action = RUNNING_MATTER_ACTIONS.REMOVE;
+  else if (commonFragment) action = RUNNING_MATTER_ACTIONS.MERGE;
+  const metadata = value && typeof value === "object" ? value : {};
+  const fontSize = Number(metadata.fontSize ?? metadata.size);
+  const fontWeight = metadata.fontWeight ?? metadata.weight;
+  const bbox = Array.isArray(metadata.bbox) ? metadata.bbox.slice(0, 4) : null;
+  const confidence = structural
+    ? 0.93
+    : action === RUNNING_MATTER_ACTIONS.REMOVE
+      ? 0.9
+      : action === RUNNING_MATTER_ACTIONS.MERGE
+        ? 0.82
+        : 0.62;
+  return {
+    position,
+    text,
+    key,
+    action,
+    confidence,
+    signals: {
+      repeated: repeatedEdge,
+      commonFragment,
+      pageLabel,
+      structural,
+      ...(Number.isFinite(fontSize) ? { fontSize } : {}),
+      ...(fontWeight !== undefined ? { fontWeight } : {}),
+      ...(bbox ? { bbox } : {}),
+    },
+  };
+}
+
+/**
+ * Classifies edge candidates before any text is changed. The decision is
+ * intentionally serializable so a quality report can explain why an edge was
+ * removed, kept, or merged. Repetition is evidence, not a blanket deletion
+ * rule: chapter/section edges remain structural content.
+ */
+export function classifyRunningMatter(
+  pages = [],
+  { headers = true, footers = true } = {},
+) {
+  const repeated = repeatedEdgeSignatures(pages, headers, footers);
+  const commonHeader = headers ? commonEdgeTokens(pages, true, headers, footers) : null;
+  const commonFooter = footers ? commonEdgeTokens(pages, false, headers, footers) : null;
+  return pages.map((page) => {
+    const edges = selectedEdges(page, headers, footers);
+    const decisions = [];
+    for (const [position, values, common] of [
+      ["header", edges.headers, commonHeader],
+      ["footer", edges.footers, commonFooter],
+    ]) {
+      const seen = new Set();
+      for (const value of values) {
+        const decision = classifyEdge(value, position, repeated, common);
+        if (!decision.text || seen.has(`${position}:${decision.key}`)) continue;
+        seen.add(`${position}:${decision.key}`);
+        decisions.push(decision);
+      }
+    }
+    return {
+      page: Number(page.page),
+      decisions,
+      summary: {
+        remove: decisions.filter((item) => item.action === RUNNING_MATTER_ACTIONS.REMOVE).length,
+        keep: decisions.filter((item) => item.action === RUNNING_MATTER_ACTIONS.KEEP).length,
+        merge: decisions.filter((item) => item.action === RUNNING_MATTER_ACTIONS.MERGE).length,
+      },
+    };
+  });
+}
+
 function stripCommonEdgeTokens(text, fragment, fromStart) {
   if (!fragment) return text;
   const lines = String(text || "").split("\n");
@@ -247,6 +363,77 @@ function stripEdgeFragment(line, candidates, repeated, fromStart) {
     if (/^\s*(?:#{1,6}|>)?\s*$/.test(result)) return "";
   }
   return result;
+}
+
+function cleanBlockRunningMatter(markdown, decisions) {
+  let lines = String(markdown || "").split("\n");
+  for (const decision of decisions) {
+    if (decision.action === RUNNING_MATTER_ACTIONS.KEEP) continue;
+    const indexes = lines
+      .map((line, index) => (line.trim() ? index : -1))
+      .filter((index) => index >= 0);
+    if (!indexes.length) break;
+    const candidates =
+      decision.position === "header"
+        ? indexes.slice(0, Math.min(3, indexes.length))
+        : indexes.slice(-Math.min(3, indexes.length));
+    for (const index of candidates) {
+      const line = lines[index];
+      if (structuralEdge(line)) continue;
+      const exact = signature(line) === decision.key;
+      const pageLabel = decision.signals.pageLabel && isPageLabel(line);
+      if (decision.action === RUNNING_MATTER_ACTIONS.REMOVE && (exact || pageLabel)) {
+        lines[index] = "";
+        continue;
+      }
+      const cleaned = stripEdgeFragment(
+        line,
+        [decision.text],
+        new Set([decision.key]),
+        decision.position === "header",
+      );
+      if (cleaned !== line) lines[index] = cleaned;
+    }
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Applies previously classified edge decisions to semantic blocks. */
+export function applyRunningMatterToDocumentIR(documentIR, classifications = []) {
+  if (!documentIR || !Array.isArray(documentIR.pages)) return documentIR;
+  const byPage = new Map(
+    classifications.map((value) => [Number(value.page), value]),
+  );
+  return {
+    ...documentIR,
+    pages: documentIR.pages.map((page) => {
+      const classification = byPage.get(Number(page.page));
+      const decisions = classification?.decisions || [];
+      if (!decisions.length) return page;
+      const blocks = (page.blocks || [])
+        .map((block) => {
+          // Running-matter classification must never edit a fenced block. A
+          // diagram or code sample may intentionally contain the same words
+          // as a page header or footer.
+          if (/^\s*(?:```|~~~)/u.test(String(block.markdown || ""))) return block;
+          const markdown = cleanBlockRunningMatter(block.markdown, decisions);
+          return markdown ? { ...block, markdown } : null;
+        })
+        .filter(Boolean);
+      const ids = new Set(blocks.map((block) => block.id));
+      return {
+        ...page,
+        blocks,
+        relationships: (page.relationships || []).filter(
+          (relation) => ids.has(relation.from) && ids.has(relation.to),
+        ),
+        runningMatter: {
+          decisions,
+          summary: classification.summary,
+        },
+      };
+    }),
+  };
 }
 
 export function removeRunningMatter(
@@ -514,21 +701,20 @@ export function joinPageParagraphs(markdown, { preserveMarkers = false } = {}) {
 export function cleanupDocument(rawPages, options = {}) {
   let pages = rawPages.map((p) => ({ ...p, text: normalizeText(p.text) }));
   let documentIR = documentIRFromPages(pages);
-  if (options.removeHeaders || options.removeFooters)
-    pages = removeRunningMatter(
-      pages.map((page) => ({
-        ...page,
-        text: documentIRToMarkdown(
-          documentIRFromPages([page]),
-        ),
-      })),
-      {
-        headers: !!options.removeHeaders,
-        footers: !!options.removeFooters,
-      },
-    ).map((page) => ({ ...page, documentIR: undefined }));
-  if (options.removeHeaders || options.removeFooters)
-    documentIR = documentIRFromPages(pages);
+  if (options.removeHeaders || options.removeFooters) {
+    const classifications = classifyRunningMatter(pages, {
+      headers: !!options.removeHeaders,
+      footers: !!options.removeFooters,
+    });
+    documentIR = applyRunningMatterToDocumentIR(documentIR, classifications);
+    const originalPages = new Map(pages.map((page) => [Number(page.page), page]));
+    pages = documentIR.pages.map((pageIR) => ({
+      ...(originalPages.get(Number(pageIR.page)) || {}),
+      page: pageIR.page,
+      text: documentIRToMarkdown({ pages: [pageIR] }),
+      documentIR: pageIR,
+    }));
+  }
   let markdown = documentIRToMarkdown(documentIR, {
     preserveMarkers: !!options.preserveMarkers,
   });
@@ -753,7 +939,24 @@ export function qualityAudit(pages, markdown, warnings = [], selection = {}) {
     text: averageConfidence(pages.map((page) => page.quality?.textConfidence)),
     table: averageConfidence(pages.map((page) => page.quality?.tableConfidence)),
     equation: averageConfidence(pages.map((page) => page.quality?.equationConfidence)),
+    layout: averageConfidence(pages.map((page) => page.quality?.layoutConfidence)),
   };
+  const lowLayoutPages = pages
+    .filter(
+      (page) =>
+        Number.isFinite(Number(page.quality?.layoutConfidence)) &&
+        Number(page.quality.layoutConfidence) < 0.6,
+    )
+    .map((page) => page.page);
+  if (lowLayoutPages.length)
+    issues.push({
+      code: "LOW_LAYOUT_CONFIDENCE",
+      severity: "warning",
+      count: lowLayoutPages.length,
+      pages: lowLayoutPages.slice(0, 50),
+      message:
+        "Reading order geometry was ambiguous on these pages; compare columns, tables, and figures with the source PDF.",
+    });
   const figurePreservation = pages.reduce(
     (summary, page) => {
       const value = page.quality?.figurePreservation || {};

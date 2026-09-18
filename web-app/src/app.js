@@ -61,7 +61,7 @@ if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location
 const $ = (id) => document.getElementById(id);
 // OCR runtime cache and structural recovery changed in this release. Existing
 // checkpoints must not be presented as results from the current pipeline.
-const EXTRACTION_VERSION = 13;
+const EXTRACTION_VERSION = 14;
 const state = {
   fileName: "",
   fileSize: 0,

@@ -12,6 +12,7 @@ import {
   looksLikeOcrEquation,
   normalizeBackground,
   orderPageEntries,
+  pageLayoutSummary,
   ocrProgressMessage,
   ocrTableMarkdown,
   paddedBbox,
@@ -99,7 +100,15 @@ it("returns table confidence and refuses inconsistent block rows", () => {
     10,
     [0, 0, 300, 500],
   );
-  expect(stable).toMatchObject({ confidence: expect.any(Number), rows: 3, columns: 2 });
+  expect(stable).toMatchObject({
+    confidence: expect.any(Number),
+    rows: 3,
+    columns: 2,
+    tableIR: {
+      columns: 2,
+      rows: expect.arrayContaining([["Class", "Demand"]]),
+    },
+  });
   expect(stable.confidence).toBeGreaterThanOrEqual(0.82);
 
   const unstable = pageTableFromBlocks(
@@ -192,6 +201,11 @@ it("reads stable text columns top-to-bottom before moving to the next column", (
     "right one",
     "right two",
   ]);
+  expect(pageLayoutSummary(entries, [0, 0, 612, 792], 10)).toMatchObject({
+    orderMethod: "two-column-geometry",
+    columns: 2,
+    confidence: 0.9,
+  });
 });
 
 it("finds compact equation images next to a formula cue", () => {

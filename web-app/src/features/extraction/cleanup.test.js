@@ -11,6 +11,7 @@ import {
   parsePageRange,
   plainText,
   qualityAudit,
+  classifyRunningMatter,
   removeRunningMatter,
 } from "./cleanup.js";
 describe("page ranges", () => {
@@ -34,6 +35,40 @@ describe("cleanup", () => {
       "Body 2",
       "Body 3",
     ]);
+  });
+  it("classifies repeated edges while keeping structural chapter headings", () => {
+    const pages = [1, 2, 3].map((page) => ({
+      page,
+      text: `BOOK TITLE ${page}\nChapter ${page}\nBody ${page}\n${page}`,
+      edges: {
+        headers: [
+          { text: `BOOK TITLE ${page}`, position: "header", fontSize: 8 },
+          { text: `Chapter ${page}`, position: "header", fontSize: 14 },
+        ],
+        footers: [{ text: `${page}`, position: "footer" }],
+      },
+    }));
+    const decisions = classifyRunningMatter(pages, { headers: true, footers: true });
+    expect(decisions[0].decisions).toContainEqual(
+      expect.objectContaining({ action: "REMOVE", position: "header" }),
+    );
+    expect(decisions[0].decisions).toContainEqual(
+      expect.objectContaining({ action: "REMOVE", position: "footer" }),
+    );
+    expect(decisions[0].decisions).toContainEqual(
+      expect.objectContaining({ text: "Chapter 1", action: "KEEP" }),
+    );
+    const merged = classifyRunningMatter(
+      [1, 2, 3].map((page) => ({
+        page,
+        text: `BOOK TITLE ${page} CHAPTER\nBody ${page}`,
+        edges: { headers: [`BOOK TITLE ${page} CHAPTER`], footers: [] },
+      })),
+      { headers: true, footers: false },
+    );
+    expect(merged[0].decisions).toContainEqual(
+      expect.objectContaining({ action: "MERGE", position: "header" }),
+    );
   });
   it("uses geometry candidates even when a header is not the first text block", () => {
     const pages = [1, 2, 3].map((page) => ({
@@ -392,7 +427,7 @@ describe("exports", () => {
       ],
       "Native page\n\nOCR page",
     );
-    expect(audit.confidence).toEqual({ text: 0.84, table: 0.87, equation: 0.75 });
+    expect(audit.confidence).toEqual({ text: 0.84, table: 0.87, equation: 0.75, layout: null });
     expect(audit.figurePreservation).toEqual({ detected: 3, preserved: 3, sourceEvidence: 2 });
     expect(audit.ocrUsage).toMatchObject({ pages: 1, pageNumbers: [2], ratio: 0.5 });
   });

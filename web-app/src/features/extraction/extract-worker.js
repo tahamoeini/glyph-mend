@@ -258,6 +258,12 @@ export function pageTableFromBlocks(blocks, bodySize, pageBounds) {
     confidence,
     rows: values.length,
     columns: best[0].items.length,
+    tableIR: {
+      rows: values,
+      columns: best[0].items.length,
+      spans: [],
+      confidence,
+    },
     bbox: [
       Math.min(...best.flatMap((row) => row.items.map((item) => item.bbox[0]))),
       Math.min(...best.flatMap((row) => row.items.map((item) => item.bbox[1]))),
@@ -329,7 +335,7 @@ function ocrWordRows(data) {
   return result.sort((a, b) => a.y0 - b.y0);
 }
 
-export function ocrTableMarkdown(data) {
+function ocrTableModel(data) {
   const rows = ocrWordRows(data);
   if (rows.length < 3) return null;
   const frequencies = new Map();
@@ -370,7 +376,16 @@ export function ocrTableMarkdown(data) {
   if (sentenceLike / textCells.length > 0.28 && numericCells / textCells.length < 0.15)
     return null;
 
-  return markdownTable(aligned.map((row) => row.cells.map((cell) => cell.text)));
+  const values = aligned.map((row) => row.cells.map((cell) => cell.text));
+  const confidence = Number(
+    Math.min(0.96, 0.68 + (aligned.length / Math.max(1, rows.length)) * 0.2).toFixed(3),
+  );
+  return { rows: values, columns, confidence };
+}
+
+export function ocrTableMarkdown(data) {
+  const model = ocrTableModel(data);
+  return model ? markdownTable(model.rows) : null;
 }
 
 function mathScore(text) {
@@ -1222,6 +1237,76 @@ export function orderPageEntries(entries = [], pageBounds = [0, 0, 612, 792], bo
   });
 }
 
+function twoColumnSignature(
+  entries = [],
+  pageBounds = [0, 0, 612, 792],
+  bodySize = 10,
+) {
+  const textEntries = entries.filter(
+    (entry) => entry?.kind === "text" && Number.isFinite(Number(entry.x)),
+  );
+  const pageWidth = Math.max(1, Number(pageBounds[2]) - Number(pageBounds[0]));
+  if (textEntries.length < 4) return null;
+  if (textEntries.filter((entry) => isDiagramLike(entry.rawText)).length >= 2)
+    return null;
+  if (
+    entries.some(
+      (entry) =>
+        Array.isArray(entry?.bbox) &&
+        Number(entry.bbox[2]) - Number(entry.bbox[0]) > pageWidth * 0.72,
+    )
+  )
+    return null;
+
+  const xValues = [...new Set(textEntries.map((entry) => Number(entry.x)))].sort(
+    (a, b) => a - b,
+  );
+  let splitAt = -1;
+  let largestGap = 0;
+  for (let index = 1; index < xValues.length; index += 1) {
+    const gap = xValues[index] - xValues[index - 1];
+    if (gap > largestGap) {
+      largestGap = gap;
+      splitAt = index;
+    }
+  }
+  const minimumColumnGap = Math.max(bodySize * 8, pageWidth * 0.14);
+  if (splitAt < 0 || largestGap < minimumColumnGap) return null;
+  const pivot = (xValues[splitAt - 1] + xValues[splitAt]) / 2;
+  const leftCount = textEntries.filter((entry) => Number(entry.x) < pivot).length;
+  const rightCount = textEntries.length - leftCount;
+  if (leftCount < 2 || rightCount < 2) return null;
+  return { pivot, leftCount, rightCount, gap: largestGap };
+}
+
+export function pageLayoutSummary(
+  entries = [],
+  pageBounds = [0, 0, 612, 792],
+  bodySize = 10,
+  { flows = true } = {},
+) {
+  const usable = entries.filter((entry) => Array.isArray(entry?.bbox));
+  const columns = flows
+    ? twoColumnSignature(entries, pageBounds, bodySize)
+    : null;
+  return {
+    orderMethod: !flows
+      ? "y-x-geometry"
+      : columns
+        ? "two-column-geometry"
+        : "vertical-geometry",
+    columns: columns ? 2 : 1,
+    confidence: columns
+      ? 0.9
+      : usable.length >= 2
+        ? 0.78
+        : entries.length
+          ? 0.55
+          : 0.35,
+    direction: "top-to-bottom",
+  };
+}
+
 function horizontalAffinity(a, b, bodySize) {
   const overlap = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
   if (overlap > 0) return true;
@@ -1527,7 +1612,18 @@ async function tableMarkdownForVisual(rendered, caption, options, paths, pageNum
       paths,
       pageNumber,
     );
-    return ocrTableMarkdown(data);
+    const model = ocrTableModel(data);
+    if (!model) return null;
+    return {
+      markdown: markdownTable(model.rows),
+      confidence: model.confidence,
+      tableIR: {
+        rows: model.rows,
+        columns: model.columns,
+        spans: [],
+        confidence: model.confidence,
+      },
+    };
   } catch {
     return null;
   }
@@ -1631,6 +1727,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       markdown: pageTable.markdown,
       kind: "table",
       confidence: { overall: pageTable.confidence, structure: pageTable.confidence },
+      tableIR: pageTable.tableIR,
+      extractionMethod: "validated-table-geometry",
       provenance: {
         source: "pdf-geometry-table",
         rows: pageTable.rows,
@@ -1718,7 +1816,10 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         rawHeight: ocrData._rasterHeight,
         excludeRanges: detected.excludeRanges,
         equationRanges: validatedEquationRanges,
-      }),
+      }).map((entry) => ({
+        ...entry,
+        extractionMethod: entry.extractionMethod || "tesseract-ocr",
+      })),
     );
     for (const item of lines) {
       if (item.y0 <= rawHeight * 0.12) edges.headers.push(item.text);
@@ -1763,6 +1864,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           bbox: candidate.bbox,
           markdown: DISPLAY_MATH + "\n" + reconstruction.validation.output.latex + "\n" + DISPLAY_MATH,
           kind: "equation",
+          extractionMethod: "tesseract-equation-image",
         });
       } else {
         entries.push({
@@ -1771,6 +1873,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           bbox: candidate.bbox,
           markdown: reconstruction.fallbackMarker,
           kind: "equation-fallback",
+          extractionMethod: "source-preservation",
         });
       }
       reviewItems.push(
@@ -1897,8 +2000,22 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         markdown,
         kind: entryKind,
         rawText,
+        extractionMethod:
+          entryKind === "table"
+            ? "validated-table-geometry"
+            : entryKind === "equation"
+              ? "mupdf-equation-reconstruction"
+              : entryKind === "equation-fallback"
+                ? "source-preservation"
+                : "mupdf-structured-text",
         ...(table
           ? {
+              tableIR: {
+                rows: table.rows,
+                columns: table.rows[0]?.length || 0,
+                spans: [],
+                confidence: table.confidence,
+              },
               confidence: {
                 overall: table.confidence,
                 structure: table.confidence,
@@ -1954,8 +2071,14 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
             y: bbox[1],
             x: bbox[0],
             bbox,
-            markdown: recoveredTable,
+            markdown: recoveredTable.markdown,
             kind: "table",
+            extractionMethod: "validated-table-ocr",
+            tableIR: recoveredTable.tableIR,
+            confidence: {
+              overall: recoveredTable.confidence,
+              structure: recoveredTable.confidence,
+            },
           });
         } else {
           const asset = {
@@ -1972,6 +2095,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
             bbox,
             markdown: sourceMarker(pageNumber, asset),
             kind: "visual",
+            extractionMethod: "source-preservation",
           });
         }
       } catch {
@@ -2016,8 +2140,14 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
               y: candidate.y,
               x: candidate.bbox[0],
               bbox: candidate.bbox,
-              markdown: recoveredTable,
+              markdown: recoveredTable.markdown,
               kind: "table",
+              extractionMethod: "validated-table-ocr",
+              tableIR: recoveredTable.tableIR,
+              confidence: {
+                overall: recoveredTable.confidence,
+                structure: recoveredTable.confidence,
+              },
             });
             continue;
           }
@@ -2075,8 +2205,14 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
             y: candidate.y,
             x: candidate.bbox[0],
             bbox: candidate.bbox,
-            markdown: recoveredTable,
+            markdown: recoveredTable.markdown,
             kind: "table",
+            extractionMethod: "validated-table-ocr",
+            tableIR: recoveredTable.tableIR,
+            confidence: {
+              overall: recoveredTable.confidence,
+              structure: recoveredTable.confidence,
+            },
           });
           continue;
         }
@@ -2099,6 +2235,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           bbox,
           markdown: sourceMarker(pageNumber, asset),
           kind: "visual",
+          extractionMethod: "source-preservation",
         });
       } catch {
         /* OCR text remains available even if a local visual crop fails */
@@ -2132,6 +2269,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           bbox: [...pageBounds],
           markdown: sourceMarker(pageNumber, asset),
           kind: "source-page",
+          extractionMethod: "source-preservation",
         });
       } catch {
         sourcePageFallbackFailed = true;
@@ -2149,9 +2287,12 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     ),
     bodySize,
   ), bodySize);
+  const layout = pageLayoutSummary(textEntries, pageBounds, bodySize, {
+    flows: options.flows !== false,
+  });
   const documentIR = pageDocumentIR(
-    { page: pageNumber },
-    { blocks: textEntries, assets, quality: {} },
+    { page: pageNumber, bbox: pageBounds },
+    { blocks: textEntries, assets, layout, quality: {} },
   );
   const text = documentIRToMarkdown(documentIR);
   const quality = {
@@ -2169,6 +2310,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     embeddedTextCorrupt,
     sourcePagePreserved: assets.some((asset) => asset.kind === "source-page"),
     sourcePageFallbackFailed,
+    layoutConfidence: layout.confidence,
     textConfidence: embeddedTextCorrupt ? 0.55 : ocrApplied ? 0.72 : 0.96,
     tableConfidence: average(
       textEntries
@@ -2184,6 +2326,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       sourceEvidence: assets.filter((asset) => asset.kind === "source-page").length,
     },
   };
+  documentIR.quality = quality;
   return {
     text,
     documentIR,
