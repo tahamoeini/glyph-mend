@@ -89,6 +89,43 @@ it("adapts legacy extraction blocks without losing text or source references", (
   expect(document.pages[0].nodes[0].diagnostics[0].code).toBe("LEGACY_CONFIDENCE_DIMENSION");
 });
 
+it("validates each page independently while retaining large-document provenance", () => {
+  const legacy = {
+    pages: Array.from({ length: 120 }, (_, pageIndex) => ({
+      page: pageIndex + 1,
+      blocks: [{
+        id: `page-${pageIndex + 1}-paragraph`,
+        type: "paragraph",
+        markdown: `Page ${pageIndex + 1}`,
+        bbox: [10, 10, 180, 30],
+        sourceSpanIds: Array.from({ length: 1_000 }, (_, spanIndex) =>
+          `p${pageIndex + 1}-span-${spanIndex}`,
+        ),
+      }],
+    })),
+  };
+
+  const document = semanticDocumentFromLegacyDocumentIR(legacy);
+
+  expect(document.pages).toHaveLength(120);
+  expect(document.pages[0].nodes[0].source.spanIds).toHaveLength(1_000);
+  expect(document.pages[119].nodes[0].source.spanIds[999]).toBe("p120-span-999");
+});
+
+it("still rejects a single page that exceeds the structured-data budget", () => {
+  expect(() => semanticDocumentFromLegacyDocumentIR({
+    pages: [{
+      page: 1,
+      blocks: [{
+        type: "paragraph",
+        markdown: "Oversized page",
+        bbox: [10, 10, 180, 30],
+        sourceSpanIds: Array.from({ length: 101_000 }, (_, spanIndex) => `span-${spanIndex}`),
+      }],
+    }],
+  })).toThrow(/exceeds the .*node limit/);
+});
+
 it("rejects invalid external IR at the schema boundary", () => {
   expect(() => validateSemanticDocumentIR({ schemaVersion: 1, pages: [] })).toThrow(/schemaVersion/);
   expect(() => createSemanticDocumentIR({

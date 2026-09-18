@@ -2,7 +2,7 @@
 
 Status: live pre-implementation ledger. This file records concrete work needed after the audit; it is not a claim that extraction quality has improved.
 
-This branch implements the first contract slice: versioned Semantic Document IR v2, runtime validation, deterministic serialization, legacy adaptation, worker/app validation, a Markdown/DOCX compatibility adapter, separate quality dimensions, and a reconstructable-bundle sidecar. The open items below describe the remaining migration rather than work already completed here.
+This branch implements the first contract slice: versioned Semantic Document IR v2, runtime validation, deterministic serialization, legacy adaptation, worker/app validation, a Markdown/DOCX compatibility adapter, separate quality dimensions, and a reconstructable-bundle sidecar. It also fixes document-level validation so independently bounded pages can retain large provenance arrays without consuming one shared structured-node budget; the per-page safety limit remains active. The open items below describe the remaining migration rather than work already completed here.
 
 Audit baseline: `main` `85d4fa5`, PR #35 merge `305a59b`, PR #35 head `565f1ea`.
 
@@ -38,6 +38,7 @@ Status meanings:
 | GM-REM-019 | OPEN | P2 | Define browser memory, bundle/cache, output-size, and safety budgets by document class. | UI/file/page limits, crop caps, MathIR limits, ZIP/XML safety checks, and Workbox cache settings exist, but are not tied to measured classes. | Publish budgets for text-heavy, scanned, table-heavy, equation-heavy, and image-heavy documents; enforce them in benchmark CI. | Architecture and release acceptance |
 | GM-REM-020 | BLOCKED | P2 | Set release quality thresholds and fallback policy. | Current quality audit reports heuristics and review flags but has no independent structural correctness score. | Choose per-class thresholds for raw/layout/semantic/export metrics, acceptable source-preservation rate, and blocking review items. | Production release decision |
 | GM-REM-021 | BLOCKED | P2 | Complete MuPDF/PyMuPDF and optional companion license/redistribution review. | The build copies MuPDF/PDF.js/Tesseract assets and Python pins PyMuPDF; this audit did not make a legal determination. | Record approved licenses/notices, redistribution terms, asset provenance, and CI checks before changing runtime packaging. | Shipping and Rust companion |
+| GM-REM-022 | RESOLVED ON THIS BRANCH | P0 | Prevent valid large-document provenance from failing full-document Semantic IR validation. | Full-document validation used one shared structured-node counter; a 100-page extraction could fail at a path such as `pages[46].nodes[6].source.spanIds[30]` after earlier pages consumed the 100,000-node budget. | Validate the document envelope once and each page independently; regression coverage proves 120 pages × 1,000 span IDs succeeds while one oversized page is rejected. | Large-document extraction and export |
 
 ## Immediate implementation order
 
