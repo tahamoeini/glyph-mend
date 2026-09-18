@@ -1,3 +1,8 @@
+import {
+  semanticDocumentFromLegacyDocumentIR,
+  semanticDocumentToMarkdown,
+} from "../../shared/semantic-document-ir.js";
+
 /**
  * The page extractor speaks in coordinates; the rest of the product should
  * speak in document semantics. DocumentIR is the serializable seam between
@@ -347,18 +352,15 @@ export function documentIRFromPages(pages = [], metadata = {}) {
 
 export function documentIRToMarkdown(documentIR, { preserveMarkers = false } = {}) {
   if (!documentIR || !Array.isArray(documentIR.pages)) return "";
-  return documentIR.pages
-    .slice()
-    .sort((left, right) => Number(left.page) - Number(right.page))
-    .map((page) => {
-      const blocks = (page.blocks || [])
-        .map((block) => String(block?.markdown || "").trim())
-        .filter(Boolean);
-      const body = blocks.join("\n\n");
-      return `${preserveMarkers ? `<!-- page: ${page.page} -->\n\n` : ""}${body}`.trim();
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  return semanticDocumentToMarkdown(
+    semanticDocumentFromLegacyDocumentIR(documentIR),
+    { preserveMarkers },
+  );
+}
+
+/** Compatibility boundary for consumers migrating from block-oriented IR. */
+export function documentIRToSemanticDocumentIR(documentIR, metadata = {}) {
+  return semanticDocumentFromLegacyDocumentIR(documentIR, metadata);
 }
 
 export function documentIRMetrics(documentIR) {

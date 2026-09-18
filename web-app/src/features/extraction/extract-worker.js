@@ -5,6 +5,7 @@ import { coalesceStructuredBlocks } from "./structured-lines.js";
 import { inlineMathMarkdown, splitEquationProse } from "./math-markdown.js";
 import { validateEquationCandidate } from "../recognition/math-validation.js";
 import { documentIRToMarkdown, pageDocumentIR } from "./document-ir.js";
+import { semanticDocumentFromLegacyDocumentIR } from "../../shared/semantic-document-ir.js";
 import {
   ACTIVE_FORMAT_LIMITS,
   validateExtractionRequest,
@@ -2613,9 +2614,11 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     },
   };
   documentIR.quality = quality;
+  const semanticDocument = semanticDocumentFromLegacyDocumentIR({ pages: [documentIR] });
   return {
     text,
     documentIR,
+    semanticDocument,
     bodySize,
     assets,
     edges,

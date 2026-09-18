@@ -11,6 +11,7 @@ import {
   plainText,
   qualityAudit,
 } from "./features/extraction/cleanup.js";
+import { documentIRFromPages } from "./features/extraction/document-ir.js";
 import {
   appendStoredLog,
   clearWorkspace,
@@ -31,6 +32,11 @@ import {
 import { DEFAULT_BRAND } from "./shared/brand.js";
 import { download, stem } from "./shared/download.js";
 import { renderAccessibleMathMarkdown } from "./shared/math-accessibility.js";
+import {
+  createSemanticDocumentIR,
+  semanticDocumentFromLegacyDocumentIR,
+  validateSemanticDocumentIR,
+} from "./shared/semantic-document-ir.js";
 import { visualIRToAccessibleDescription } from "./shared/visual-accessibility.js";
 import { buildReconstructableBundle } from "./shared/reconstructable-bundle.js";
 import {
@@ -586,6 +592,8 @@ function runBatch(batch, wanted) {
       let data;
       try {
         data = validateExtractionWorkerMessage(rawData);
+        if (data.type === "page" && data.semanticDocument)
+          data.semanticDocument = validateSemanticDocumentIR(data.semanticDocument);
       } catch (error) {
         finish(new Error(`Rejected extraction worker message: ${error.message}`));
         return;
@@ -612,6 +620,7 @@ function runBatch(batch, wanted) {
           page: data.page,
           text: data.text,
           documentIR: data.documentIR || null,
+          semanticDocument: data.semanticDocument || null,
           bodySize: data.bodySize,
           assets: data.assets || [],
           edges: data.edges || {},
@@ -1114,6 +1123,21 @@ function assetMap() {
   );
 }
 
+function currentSemanticDocument() {
+  const pages = Object.values(state.pages || {}).filter(Boolean);
+  if (!pages.length) return null;
+  const semanticPages = pages.flatMap((page) => page.semanticDocument?.pages || []);
+  if (semanticPages.length === pages.length)
+    return createSemanticDocumentIR({
+      documentId: `workspace-${state.fileName || "document"}`,
+      metadata: { fileName: state.fileName },
+      pages: semanticPages,
+    });
+  return semanticDocumentFromLegacyDocumentIR(
+    documentIRFromPages(pages, { fileName: state.fileName }),
+  );
+}
+
 function announceReview(message) {
   const region = $("reviewQueueAnnouncement");
   if (region) region.textContent = message;
@@ -1286,10 +1310,15 @@ async function saveBundle(base) {
     $("downloadBundle").disabled = true;
     $("downloadBundle").querySelector("small").textContent = "Building reconstructable bundle…";
     const { markdownToDocx } = await import("./features/export/docx-export.js");
+    const semanticDocument = currentSemanticDocument();
     const docx = await markdownToDocx(
       state.markdown,
       $("docxTitle").value || stem(state.fileName),
-      { pageBreaks: $("docxPageBreaks").checked, assets: assetMap() },
+      {
+        pageBreaks: $("docxPageBreaks").checked,
+        assets: assetMap(),
+        semanticDocument,
+      },
     );
     const { blob } = await buildReconstructableBundle({
       baseName: base,
@@ -1299,6 +1328,7 @@ async function saveBundle(base) {
       assets: assetMap(),
       reviewItems: state.reviewQueue,
       qualityReport: report(),
+      semanticDocument,
     });
     download(blob, base + ".reconstructable.zip");
     toast("Reconstructable bundle created.");
@@ -1320,7 +1350,11 @@ async function saveDocx() {
       await markdownToDocx(
         state.markdown,
         $("docxTitle").value || stem(state.fileName),
-        { pageBreaks: $("docxPageBreaks").checked, assets: assetMap() },
+        {
+          pageBreaks: $("docxPageBreaks").checked,
+          assets: assetMap(),
+          semanticDocument: currentSemanticDocument(),
+        },
       ),
       `${stem(state.fileName || "document.pdf")}.docx`,
     );

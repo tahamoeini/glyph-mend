@@ -3,6 +3,11 @@ import {
   documentIRFromPages,
   documentIRToMarkdown,
 } from "./document-ir.js";
+import {
+  createSemanticDocumentIR,
+  semanticDocumentFromLegacyDocumentIR,
+  semanticDocumentQualityReport,
+} from "../../shared/semantic-document-ir.js";
 
 const PAGE = /^\s*<!--\s*page:\s*(\d+)\s*-->\s*$/;
 const STRUCTURAL =
@@ -1010,6 +1015,28 @@ export function qualityAudit(pages, markdown, warnings = [], selection = {}) {
       pages: pages.map((page) => page.page).slice(0, 50),
       message: `Only ${selectedPages} of ${sourcePages} source pages were selected; this export is intentionally partial.`,
     });
+  let semanticIR;
+  try {
+    const semanticPages = pages.flatMap((page) => page.semanticDocument?.pages || []);
+    const semanticDocument = semanticPages.length === pages.length && semanticPages.length
+      ? createSemanticDocumentIR({
+        documentId: "quality-audit",
+        pages: semanticPages,
+      })
+      : semanticDocumentFromLegacyDocumentIR(documentIRFromPages(pages));
+    semanticIR = semanticDocumentQualityReport(semanticDocument);
+  } catch (error) {
+    semanticIR = {
+      schema: "glyphmend.semantic-document-ir",
+      schemaVersion: 2,
+      status: "unavailable",
+      diagnostics: [{
+        code: "SEMANTIC_IR_VALIDATION_FAILED",
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
+      }],
+    };
+  }
   return {
     status: issues.some((issue) => issue.severity === "error")
       ? "needs-review"
@@ -1033,5 +1060,6 @@ export function qualityAudit(pages, markdown, warnings = [], selection = {}) {
       pageNumbers: ocrPageNumbers,
       ratio: pages.length ? Number((ocrPages / pages.length).toFixed(3)) : 0,
     },
+    semanticIR,
   };
 }

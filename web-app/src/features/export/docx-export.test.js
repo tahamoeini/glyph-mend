@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { strFromU8, unzipSync } from "fflate";
-import { markdownToDocx } from "./docx-export.js";
+import { markdownToDocx, semanticDocumentToDocx } from "./docx-export.js";
+import { SEMANTIC_DOCUMENT_IR_V2_FIXTURE } from "../../shared/semantic-document-ir.fixtures.js";
 import { shouldUseStreamingDocx } from "./streaming-docx.js";
 async function contents(blob) {
   const bytes = await new Promise((resolve, reject) => {
@@ -25,6 +26,16 @@ it("creates a DOCX with structural content and native math", async () => {
   expect(blob.type).toContain("officedocument");
   expect(strFromU8(files["word/document.xml"])).toContain("<m:oMath>");
   expect(strFromU8(files["word/document.xml"])).toContain('w:val="Heading1"');
+});
+
+it("accepts Semantic Document IR v2 through the DOCX compatibility adapter", async () => {
+  const files = await contents(
+    await semanticDocumentToDocx(SEMANTIC_DOCUMENT_IR_V2_FIXTURE, "Semantic v2"),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("Capacity Control");
+  expect(xml).toContain("Demand");
+  expect(xml).toContain("<m:oMath>");
 });
 
 it("keeps escaped Markdown table pipes inside their source cell", async () => {
