@@ -491,7 +491,7 @@ function listItemChildren(markdown, pageNumber, parentIdentity) {
 }
 
 function legacyNode(block, pageNumber, index) {
-  const legacyType = String(block?.type || block?.kind || "paragraph").toLowerCase();
+  const legacyType = String(block?.layoutType || block?.type || block?.kind || "paragraph").toLowerCase();
   const type = normalizeNodeType(legacyType, "legacy block type");
   const markdown = String(block?.markdown ?? block?.text ?? "");
   const sourceIds = sourceIdsForLegacy(block);
@@ -503,6 +503,7 @@ function legacyNode(block, pageNumber, index) {
     ...(markdown ? { markdown, text: String(block?.rawText ?? block?.text ?? markdown) } : {}),
     ...(block?.caption ? { caption: String(block.caption) } : {}),
     ...(block?.tableIR || block?.table ? { table: deepClone(block.tableIR || block.table) } : {}),
+    ...(block?.headingLevel ? { headingLevel: Number(block.headingLevel) } : {}),
     legacyType,
   };
   const node = {
@@ -515,10 +516,15 @@ function legacyNode(block, pageNumber, index) {
     coordinateSpace: block?.coordinateSpace || (block?.bbox ? "page-points" : "unknown"),
     sourceKind,
     source: sourceIds,
-    confidence: normalizeConfidence(confidenceInput),
+    confidence: normalizeConfidence({
+      ...(typeof confidenceInput === "object" ? confidenceInput : { legacyOverall: confidenceInput }),
+      ...(block?.structureConfidence !== undefined ? { structure: block.structureConfidence } : {}),
+      ...(block?.reconstructionConfidence !== undefined ? { reconstruction: block.reconstructionConfidence } : {}),
+      ...(block?.exportConfidence !== undefined ? { export: block.exportConfidence } : {}),
+    }),
     disposition: normalizeDisposition(block?.disposition, { type }, { kind: sourceKind }),
     reconstructionVersion: 2,
-    diagnostics: [],
+    diagnostics: normalizeDiagnostics(block?.diagnostics, `legacy block ${index} diagnostics`),
   };
   if (typeof confidenceInput === "number" || confidenceInput?.overall !== undefined)
     node.diagnostics.push({

@@ -2,6 +2,7 @@ import { createWorker as createOcrWorker } from "tesseract.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 import { coalesceStructuredBlocks } from "./structured-lines.js";
+import { analyzePageLayout, layoutEntries } from "./layout-layer.js";
 import { inlineMathMarkdown, splitEquationProse } from "./math-markdown.js";
 import { validateEquationCandidate } from "../recognition/math-validation.js";
 import { documentIRToMarkdown, pageDocumentIR } from "./document-ir.js";
@@ -820,7 +821,7 @@ export function jsonFallbackBlocks(structured) {
   }
 }
 
-function readStructuredPage(page) {
+function readStructuredPage(page, pageNumber = 1) {
   const blocks = [];
   const images = [];
   const vectors = [];
@@ -836,9 +837,13 @@ function readStructuredPage(page) {
     beginLine(bbox) {
       line = { bbox: rect(bbox), text: "", chars: [], sizes: [], font: null };
     },
-    onChar(value, _origin, font, size, quad) {
+    onChar(value, origin, font, size, quad) {
       const points = Array.isArray(quad) ? quad : [];
       const xs = points.filter((_, index) => index % 2 === 0);
+      const ys = points.filter((_, index) => index % 2 === 1);
+      const charBox = ys.length && xs.length
+        ? [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+        : line.bbox;
       line.text += value;
       line.font ||= font || null;
       block.font ||= font || null;
@@ -847,6 +852,10 @@ function readStructuredPage(page) {
         value,
         x0: xs.length ? Math.min(...xs) : line.bbox[0],
         x1: xs.length ? Math.max(...xs) : line.bbox[2],
+        bbox: charBox,
+        baseline: Array.isArray(origin) ? Number(origin[1]) : undefined,
+        font: font || null,
+        size,
       });
     },
     endLine() {
@@ -867,10 +876,18 @@ function readStructuredPage(page) {
       block = null;
     },
     onImageBlock(bbox, _transform, image) {
-      images.push({ bbox: rect(bbox), image });
+      images.push({
+        id: `p${pageNumber}-image-object-${images.length + 1}`,
+        bbox: rect(bbox),
+        image,
+      });
     },
     onVector(bbox, flags) {
-      vectors.push({ bbox: rect(bbox), flags });
+      vectors.push({
+        id: `p${pageNumber}-vector-object-${vectors.length + 1}`,
+        bbox: rect(bbox),
+        flags,
+      });
     },
   });
 
@@ -883,6 +900,7 @@ function readStructuredPage(page) {
     fillPath(path, _evenOdd, ctm) {
       try {
         vectors.push({
+          id: `p${pageNumber}-vector-path-${vectors.length + 1}`,
           bbox: rect(path.getBounds(null, ctm)),
           flags: { filled: true },
         });
@@ -893,6 +911,7 @@ function readStructuredPage(page) {
     strokePath(path, stroke, ctm) {
       try {
         vectors.push({
+          id: `p${pageNumber}-vector-stroke-${vectors.length + 1}`,
           bbox: rect(path.getBounds(stroke, ctm)),
           flags: { stroked: true },
         });
@@ -1469,68 +1488,15 @@ function mergeCodeEntries(entries, bodySize) {
 }
 
 export function orderPageEntries(entries = [], pageBounds = [0, 0, 612, 792], bodySize = 10) {
-  const fallback = [...entries].sort(
-    (a, b) => Number(a.y || 0) - Number(b.y || 0) || Number(a.x || 0) - Number(b.x || 0),
-  );
-  const columns = twoColumnSignature(entries, pageBounds, bodySize);
-  if (!columns) return fallback;
-  const { pivot } = columns;
-  const pageWidth = Math.max(1, Number(pageBounds[2]) - Number(pageBounds[0]));
-  const wideEntries = entries
-    .filter((entry) => {
-      const bbox = entry?.bbox;
-      return (
-        Array.isArray(bbox) &&
-        Number(bbox[2]) - Number(bbox[0]) > pageWidth * 0.72 &&
-        entry.kind !== "source-page"
+  const analysis = layoutEntries(entries, pageBounds, { bodySize, flows: true });
+  const ordered = analysis.orderedBlocks
+    .map((block) => entries[block.sourceIndex])
+    .filter(Boolean);
+  return ordered.length === entries.length
+    ? ordered
+    : [...entries].sort(
+        (a, b) => Number(a.y || 0) - Number(b.y || 0) || Number(a.x || 0) - Number(b.x || 0),
       );
-    })
-    .sort((a, b) => Number(a.y || 0) - Number(b.y || 0));
-  const sourcePages = entries.filter((entry) => entry?.kind === "source-page");
-  const columnEntries = entries.filter(
-    (entry) => !wideEntries.includes(entry) && entry?.kind !== "source-page",
-  );
-  const ordered = [];
-  const consumed = new Set();
-  let lowerBound = Number.NEGATIVE_INFINITY;
-  const emitColumnsBefore = (upperBound) => {
-    for (const column of [0, 1]) {
-      for (const entry of columnEntries
-        .filter((value) => {
-          if (consumed.has(value)) return false;
-          const x = Number.isFinite(Number(value?.x))
-            ? Number(value.x)
-            : Number(pageBounds[0]);
-          const entryColumn = x < pivot ? 0 : 1;
-          return (
-            entryColumn === column &&
-            Number(value.y || 0) >= lowerBound &&
-            Number(value.y || 0) < upperBound
-          );
-        })
-        .sort(
-          (a, b) =>
-            Number(a.y || 0) - Number(b.y || 0) ||
-            Number(a.x || 0) - Number(b.x || 0),
-        )) {
-        ordered.push(entry);
-        consumed.add(entry);
-      }
-    }
-  };
-  for (const wide of wideEntries) {
-    emitColumnsBefore(Number(wide.y || 0));
-    ordered.push(wide);
-    lowerBound = Math.max(lowerBound, Number(wide.bbox?.[3] ?? wide.y ?? 0));
-  }
-  emitColumnsBefore(Number.POSITIVE_INFINITY);
-  ordered.push(...sourcePages);
-
-  // A column-aware pass is only used when the page has a stable two-column
-  // signature. It prevents y-only sorting from interleaving left and right
-  // columns, while leaving diagrams and full-width content in their source
-  // order when the geometry is ambiguous.
-  return ordered;
 }
 
 function twoColumnSignature(
@@ -1571,11 +1537,14 @@ export function pageLayoutSummary(
   entries = [],
   pageBounds = [0, 0, 612, 792],
   bodySize = 10,
-  { flows = true } = {},
+  { flows = true, analysis = null } = {},
 ) {
   const usable = entries.filter((entry) => Array.isArray(entry?.bbox));
+  const layout = analysis || (flows ? layoutEntries(entries, pageBounds, { bodySize, flows }) : null);
   const columns = flows
-    ? twoColumnSignature(entries, pageBounds, bodySize)
+    ? layout?.columns?.count === 2
+      ? layout.columns
+      : twoColumnSignature(entries, pageBounds, bodySize)
     : null;
   return {
     orderMethod: !flows
@@ -1592,6 +1561,10 @@ export function pageLayoutSummary(
           ? 0.55
           : 0.35,
     direction: "top-to-bottom",
+    writingDirection: layout?.direction || "ltr",
+    layerVersion: layout?.version || "legacy",
+    diagnostics: layout?.diagnostics || [],
+    metrics: layout?.metrics || {},
   };
 }
 
@@ -1974,7 +1947,13 @@ export function equationImageCandidatesFor(images, blocks, pageBounds, bodySize)
 
 export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   const pageBounds = rect(page.getBounds());
-  const { blocks, images, vectors } = readStructuredPage(page);
+  const { blocks, images, vectors } = readStructuredPage(page, pageNumber);
+  const layoutAnalysis = analyzePageLayout({
+    blocks,
+    objects: [...images, ...vectors],
+    page: pageNumber,
+    pageBounds,
+  });
   const bodySize = median(
     blocks
       .flatMap((block) => block.sizes)
@@ -2167,9 +2146,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     }
   }
 
-  for (const block of (ocrApplied ? [] : blocks).sort(
-    (a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0],
-  )) {
+  for (const block of (ocrApplied ? [] : layoutAnalysis.orderedBlocks)) {
     const remainingLines = block.lines.filter((line) => !pageTableLines.has(line));
     if (!remainingLines.length) continue;
     const text = joinWrapped(remainingLines);
@@ -2188,7 +2165,9 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         ? tableFor({ ...block, lines: remainingLines }, bodySize)
         : null;
     const heading = options.detectHeadings
-      ? headingFor(text, block.maxSize, bodySize, block.font)
+      ? block.type === "heading"
+        ? block.headingLevel
+        : headingFor(text, block.maxSize, bodySize, block.font)
       : null;
     const rawVisualText =
       remainingLines.length === 1
@@ -2278,6 +2257,14 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         markdown,
         kind: entryKind,
         rawText,
+        layoutType: block.type,
+        headingLevel: block.headingLevel,
+        structureConfidence: block.structureConfidence,
+        disposition: block.structureConfidence < 0.6 ? "needs-review" : "reconstructed",
+        diagnostics: block.diagnostics,
+        sourceBlockIds: block.sourceBlockIds,
+        sourceSpanIds: block.sourceSpanIds,
+        sourceObjectIds: block.sourceObjectIds,
         extractionMethod:
           entryKind === "table"
             ? "validated-table-geometry"
@@ -2576,6 +2563,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   ), bodySize);
   const layout = pageLayoutSummary(textEntries, pageBounds, bodySize, {
     flows: options.flows !== false,
+    analysis: layoutAnalysis,
   });
   const documentIR = pageDocumentIR(
     { page: pageNumber, bbox: pageBounds },

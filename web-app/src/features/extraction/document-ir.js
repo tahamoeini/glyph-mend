@@ -46,6 +46,8 @@ function plainText(value) {
 
 function inferredType(block) {
   if (BLOCK_TYPES.has(block?.type)) return block.type;
+  if (BLOCK_TYPES.has(block?.layoutType)) return block.layoutType;
+  if (block?.layoutType === "list-item") return "list";
   const kind = String(block?.kind || "").toLowerCase();
   if (kind === "table") return "table";
   if (kind === "equation" || kind === "equation-fallback") return "equation";
@@ -152,6 +154,9 @@ function normalizeLayout(value) {
     columns: Math.max(1, Number(value.columns) || 1),
     confidence: finiteConfidence(value.confidence) ?? 0.5,
     ...(value.direction ? { direction: String(value.direction) } : {}),
+    ...(value.layerVersion ? { layerVersion: String(value.layerVersion) } : {}),
+    ...(Array.isArray(value.diagnostics) ? { diagnostics: value.diagnostics.map((item) => ({ ...item })) } : {}),
+    ...(value.metrics && typeof value.metrics === "object" ? { metrics: { ...value.metrics } } : {}),
   };
 }
 
@@ -164,6 +169,12 @@ function normalizeBlock(block, page, index) {
   const method = extractionMethod(block, type);
   const confidence = confidenceFor(block, type, method);
   const id = String(block.id || `p${page}-block-${index + 1}`);
+  const provenance = block.provenance && typeof block.provenance === "object"
+    ? block.provenance
+    : {};
+  const sourceSpanIds = block.sourceSpanIds ?? provenance.spanIds ?? provenance.spanId;
+  const sourceObjectIds = block.sourceObjectIds ?? provenance.objectIds ?? provenance.objectId;
+  const sourceCropIds = block.sourceCropIds ?? provenance.cropIds ?? provenance.cropId;
   const source = {
     page,
     sourcePage: page,
@@ -172,8 +183,10 @@ function normalizeBlock(block, page, index) {
   };
   if (block.assetId || block.sourceAssetId)
     source.assetId = String(block.assetId || block.sourceAssetId);
-  if (block.provenance && typeof block.provenance === "object")
-    source.provenance = block.provenance;
+  if (Object.keys(provenance).length) source.provenance = provenance;
+  if (sourceSpanIds) source.spanIds = sourceSpanIds;
+  if (sourceObjectIds) source.objectIds = sourceObjectIds;
+  if (sourceCropIds) source.cropIds = sourceCropIds;
 
   const table = normalizeTableIR(block.tableIR || block.table, confidence.value);
   return {
@@ -187,6 +200,19 @@ function normalizeBlock(block, page, index) {
     bbox: bbox || null,
     confidence: confidence.value,
     confidenceSource: confidence.source,
+    ...(block.structureConfidence !== undefined
+      ? { structureConfidence: finiteConfidence(block.structureConfidence) }
+      : {}),
+    ...(block.reconstructionConfidence !== undefined
+      ? { reconstructionConfidence: finiteConfidence(block.reconstructionConfidence) }
+      : {}),
+    ...(block.exportConfidence !== undefined
+      ? { exportConfidence: finiteConfidence(block.exportConfidence) }
+      : {}),
+    ...(Array.isArray(block.diagnostics) ? { diagnostics: block.diagnostics.map((item) => ({ ...item })) } : {}),
+    ...(sourceSpanIds ? { sourceSpanIds: Array.isArray(sourceSpanIds) ? [...sourceSpanIds] : [sourceSpanIds] } : {}),
+    ...(sourceObjectIds ? { sourceObjectIds: Array.isArray(sourceObjectIds) ? [...sourceObjectIds] : [sourceObjectIds] } : {}),
+    ...(sourceCropIds ? { sourceCropIds: Array.isArray(sourceCropIds) ? [...sourceCropIds] : [sourceCropIds] } : {}),
     extractionMethod: method,
     children: childIds(block),
     ...(block.parentId ? { parentId: String(block.parentId) } : {}),
