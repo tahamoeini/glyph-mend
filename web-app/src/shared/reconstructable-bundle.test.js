@@ -135,6 +135,26 @@ it("creates a deterministic bundle with source, semantic, and sidecar tiers", as
   });
 });
 
+it("includes a validated Semantic Document IR v2 provenance sidecar", async () => {
+  const built = await buildReconstructableBundle({
+    semanticDocument: {
+      schema: "glyphmend.semantic-document-ir",
+      schemaVersion: 2,
+      documentId: "bundle-ir",
+      metadata: { source: "test" },
+      pages: [],
+      diagnostics: [],
+    },
+  });
+  const files = unzipSync(built.bytes);
+  const semanticDocument = JSON.parse(strFromU8(files["semantic-document-ir.json"]));
+  expect(semanticDocument).toMatchObject({
+    schema: "glyphmend.semantic-document-ir",
+    schemaVersion: 2,
+    documentId: "bundle-ir",
+  });
+});
+
 it("rejects a tampered bundle file", async () => {
   const built = await buildReconstructableBundle(fixture());
   const files = unzipSync(built.bytes);

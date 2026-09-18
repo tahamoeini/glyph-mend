@@ -229,6 +229,8 @@ function validatePageWorkerMessage(value, limits) {
   assertSafeStructuredValue(reviewItems, "Worker review items", limits);
   assertSafeStructuredValue(value.edges || {}, "Worker page edges", limits);
   assertSafeStructuredValue(value.quality || {}, "Worker page quality", limits);
+  if (value.semanticDocument !== undefined)
+    assertSafeStructuredValue(value.semanticDocument, "Worker semantic document", limits);
   if (value.reviewCandidate !== undefined) assertSafeStructuredValue(value.reviewCandidate, "Worker review candidate", limits);
   return { ...value, page, text, reviewItems };
 }

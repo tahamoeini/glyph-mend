@@ -30,6 +30,7 @@ import {
 } from "docx";
 
 import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
+import { semanticDocumentToDocxMarkdown } from "../../shared/semantic-document-ir.js";
 import { repairDisplayMathProse } from "../extraction/cleanup.js";
 import { fencedVisualParagraph, visualParagraph } from "./visual-docx.js";
 import { markdownTableRows } from "./markdown-table.js";
@@ -664,6 +665,10 @@ export async function markdownToDocx(
   title = "Document",
   options = {},
 ) {
+  if (options.semanticDocument)
+    markdown = semanticDocumentToDocxMarkdown(options.semanticDocument, {
+      preserveMarkers: true,
+    });
   if (shouldUseStreamingDocx(markdown, options))
     return markdownToStreamingDocx(markdown, title, options);
 
@@ -848,4 +853,18 @@ export async function markdownToDocx(
     });
   }
   return Packer.toBlob(document);
+}
+
+/**
+ * Semantic IR entry point. The existing Markdown exporter remains the
+ * compatibility implementation underneath until native IR-to-OOXML mappings
+ * are expanded; this adapter makes the input contract explicit and keeps the
+ * legacy markdownToDocx API unchanged.
+ */
+export async function semanticDocumentToDocx(
+  semanticDocument,
+  title = "Document",
+  options = {},
+) {
+  return markdownToDocx("", title, { ...options, semanticDocument });
 }

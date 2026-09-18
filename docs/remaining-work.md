@@ -1,132 +1,59 @@
-# GlyphMend Browser Edition — remaining work
+# Remaining work: extraction reconstruction audit ledger
 
-This is the release-hardening summary. The historical append-only upgrade
-ledger remains at [`docs/upgrade/REMAINING.md`](./upgrade/REMAINING.md).
+Status: live pre-implementation ledger. This file records concrete work needed after the audit; it is not a claim that extraction quality has improved.
 
-## Resolved in this hardening branch
+This branch implements the first contract slice: versioned Semantic Document IR v2, runtime validation, deterministic serialization, legacy adaptation, worker/app validation, a Markdown/DOCX compatibility adapter, separate quality dimensions, and a reconstructable-bundle sidecar. The open items below describe the remaining migration rather than work already completed here.
 
-- MathIR no longer embeds recursive AST objects in every graph node.
-- MathIR has independent node, depth, and serialized-payload limits.
-- Oversized MathIR is preserved as source evidence in reconstructable bundles.
-- DOCX export now selects an incremental OOXML/ZIP writer for large Markdown
-  or asset-heavy documents. It emits `word/document.xml` in bounded chunks,
-  keeps media as referenced ZIP entries, preserves parseable equations as
-  editable OMML, and isolates bad visual/equation blocks.
-- The extraction workspace now presents document summary, Smart Extraction,
-  a collapsed Advanced Options section, and a dominant Start extraction action
-  without removing existing control IDs or capabilities.
-- `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build` are
-  available as release checks.
-- Reference review now covers the supplied 745-page Revenue Management and
-  56-page Wushu Dictionary exports: damaged embedded font text routes to OCR,
-  adjacent duplicate equation emissions are suppressed, and edge detection
-  has a wider geometry band for repeated headers and footers.
-- A new PDF now resets the document scope to **All pages**. Reports and the
-  quality panel expose source, selected, and processed coverage, and partial
-  custom ranges are explicitly marked instead of appearing complete.
-- Pages whose embedded font encoding contains replacement characters now keep
-  OCR text for search/editing while preserving a full-page local source
-  page as reversible evidence. If that fallback cannot be rendered, quality
-  audit reports an error rather than silently dropping the page layout.
-- Stable two-column pages are ordered column-by-column when geometry supports
-  it. Conservative equation classification no longer treats ordinary status,
-  version, or heartbeat thresholds as editable equations.
-- DOCX export accepts both labelled and legacy unlabelled diagram fences,
-  preserves their line breaks, and shares an escaped-pipe Markdown table
-  parser between the bounded and streaming writers.
-- Streaming OMML now preserves binary operands and distinguishes arithmetic
-  addition/multiplication from LaTeX summation/product operators; malformed
-  display blocks are kept as source text instead of swallowing later pages.
-- Page extraction now emits a serializable DocumentIR containing ordered
-  paragraphs, headings, lists, tables, figures, equations, and captions. The
-  cleanup pipeline and Markdown generator consume that IR, while PDF
-  coordinates remain provenance rather than presentation order.
-- Table candidates now require consistent row shapes, carry confidence and
-  source provenance, and refuse to emit a partial grid that would drop or
-  invent cells. Source visual captions remain visible in both DOCX writers.
-- Failed pages are retried once in an isolated worker batch. Successful retries
-  clear their transient warning; pages that still fail remain in the quality
-  report without failing the rest of the document.
-- Quality reports now include text/table/equation confidence, figure
-  preservation counts, and OCR page usage.
-- The reconstruction seam now has an explicit schema-2 DocumentIR/PageIR/
-  BlockIR contract, source-page/bbox/method/confidence provenance, child and
-  caption relationships, footnotes, and normalized table span metadata.
-- Layout summaries now record the geometry method and confidence, and the
-  running-matter classifier records auditable REMOVE/KEEP/MERGE decisions
-  before cleanup mutates semantic blocks.
-- MuPDF image recovery now keeps vertically stacked XObjects as separate
-  assets, while still joining adjacent same-line equation fragments. Labelled
-  vector figures are preserved even when their labels overlap extracted text.
-- Stable PDF rule grids now feed a conservative TableIR path with cell
-  geometry; sparse or merged rows fail closed to the source visual instead of
-  emitting invented Markdown cells. Heading classification also records bold
-  font metadata when MuPDF exposes it.
-- Five deterministic semantic fixtures now cover textbook, research paper,
-  table-heavy, equation-heavy, and scanned-document paths without bundling
-  user PDFs.
+Audit baseline: `main` `85d4fa5`, PR #35 merge `305a59b`, PR #35 head `565f1ea`.
 
-## Open or manually gated
+Status meanings:
 
-### Browser visual acceptance
+- **BLOCKED**: another decision, fixture, or contract is required before useful implementation can finish.
+- **OPEN**: implementation can begin after the stated acceptance test is defined.
+- **UNKNOWN**: the repository shows a risk or missing evidence, but runtime behavior is not verified.
+- **DEFERRED**: intentionally later, after the prerequisite architecture work.
 
-The repository has structural UI tests, but it does not contain a browser
-visual-regression suite. Desktop, tablet, mobile, light theme, dark theme,
-keyboard navigation, and source-PDF interaction still require a manual release
-pass against the Stitch references.
+## Priority ledger
 
-### Final DOCX download buffer
+| ID | Status | Priority | Concrete remaining item | Current evidence | Next action and acceptance test | Blocks |
+|---|---|---:|---|---|---|---|
+| GM-REM-001 | BLOCKED | P0 | Establish a real benchmark corpus and independent annotations for columns, headings, paragraphs, lists, captions, headers/footers, tables, equations, figures, OCR, and exports. | No committed PDF/DOCX corpus was found. Browser fixtures are hand-authored IR; Python has one generated integration PDF; the benchmark harness can receive expected structures directly. | Add corpus manifest/source hashes and at least one fixture per category; expected annotations must be authored independently of extractor output. | All quality claims and quality gates |
+| GM-REM-002 | OPEN | P0 | Complete adoption of the new versioned raw-evidence and semantic IR schemas across browser and Python. | `web-app/src/shared/semantic-document-ir.js` and `.d.ts` now define/validate v2; browser worker/app emit and validate it, while Python and some legacy browser paths remain Markdown-oriented. | Publish cross-edition schema fixtures with source IDs, bboxes, confidence dimensions, table spans, relationships, visual dispositions, and fallback reasons; run browser/Python conformance serialization. | Layout, reconstruction, exporter convergence |
+| GM-REM-003 | OPEN | P0 | Replace y/x plus one two-column signature with a layout/reading-order graph. | `layout-order.js` has a single two-column pivot heuristic; no general region graph or RTL/footnote/sidebar model. | Add labeled single-, multi-column, full-width interruption, sidebar, footnote, and RTL fixtures; measure pairwise order and region accuracy. | Paragraphs, headings, lists, captions, tables |
+| GM-REM-004 | OPEN | P0 | Retain lossless-enough raw MuPDF evidence before coalescing/reconstruction. | `extract-worker.js` coalesces structured blocks and stores selected chars/bboxes; original structured tree, path geometry, and complete image metadata are not the canonical evidence record. | Add versioned raw page records and prove that every derived block/asset can point to raw IDs and source coordinates. | Debuggability and all later layout work |
+| GM-REM-005 | OPEN | P0 | Make paragraphs, headings, lists, captions, and running matter typed layout candidates rather than early Markdown decisions. | `headingFor`, line joins, marker parsing, nearby captions, and running-matter cleanup are heuristic and partly destructive. | Add candidate/rejected records with evidence and reversible decisions; evaluate boundary/type/association metrics against annotations. | Reliable semantic IR |
+| GM-REM-006 | OPEN | P0 | Build a cell-level table model with spans, provenance, and multipage identity. | Vector grid rejects spans; block/OCR paths often return Markdown/raw rows; IR span fields are not consistently populated. | Add cell/row/column/span fixtures and a canonical table graph; accept only when cell metrics and source links meet thresholds, otherwise preserve a crop with explicit disposition. | Table reconstruction and editable DOCX |
+| GM-REM-007 | BLOCKED | P0 | Define independent equation ground truth and validation semantics. | Current worker can validate a candidate against the same candidate; no equation PDF ground truth is committed; MathIR is intentionally bounded. | Add source-aligned equation fixtures and compare token/AST/render/source-alignment metrics; self-comparison must not count as correctness. | Equation quality gates and native equation export |
+| GM-REM-008 | OPEN | P0 | Complete canonical reconstruction and move exporters off Markdown reparsing. | v2 now has a Markdown adapter and a DOCX entry point, but both still use the existing Markdown-first writers for compatibility; Python DOCX also reparses Markdown. | Migrate native Markdown/DOCX mappings from v2; prove that block IDs, source evidence, table spans, list nesting, equations, and visual dispositions survive. | Export fidelity and cross-edition consistency |
+| GM-REM-009 | OPEN | P1 | Separate raw extraction confidence, layout confidence, semantic confidence, export validity, and structural correctness. | Worker confidence values are mode/heuristic constants; `suspiciousGaps` is hard-coded to zero; no truth-based structural metric exists. | Add per-stage metrics and calibration reports; unknown ground truth must be reported as unknown, not as a high score. | Release gates and review routing |
+| GM-REM-010 | OPEN | P1 | Define the OCR policy for language packs, model selection, triggers, and native/OCR fusion. | Browser bundle uses local English Tesseract data; OCR triggers on force/short text/U+FFFD and uses y/x ordering. | Add language/scan fixtures, CER/WER and block metrics, explicit bundle opt-ins, and a non-U+FFFD wrong-encoding test. | Multilingual and scanned-document support |
+| GM-REM-011 | DEFERRED | P1 | Retain original images/vector paths and distinguish editable reconstruction from source-preserved crop. | Current worker commonly destroys image objects after crop creation and stores vector bounds/flags; `VisualIR` is not fully populated by extraction. | Define raw asset budget and disposition contract; add vector/path/image round-trip fixtures and crop provenance tests. | Editable figures and chart/diagram semantics |
+| GM-REM-012 | UNKNOWN | P1 | Measure full-PDF-per-batch memory, worker startup, OCR, rendering, IndexedDB, and DOCX costs. | `runBatch` sends `state.pdfBytes.slice(0)` to each worker; UI caps exist, but no large-file profile is committed. | Run representative size/page/object benchmarks; acceptance requires recorded p50/p95 latency, peak heap, and failure mode per class. | Large-file architecture and optional Rust decision |
+| GM-REM-013 | UNKNOWN | P1 | Prove pause/cancel/resume checkpoint durability under delayed writes and worker termination. | `stop` terminates the worker and persists state; the visible code does not establish an awaited write barrier; no race test exists. | Add delayed IndexedDB checkpoint test covering pause during page completion, retry, reload, and resume; define which pages are guaranteed durable. | Reliable batch/resume/cancel behavior |
+| GM-REM-014 | OPEN | P1 | Add source evidence review UI with page/region overlays and crop/block alignment. | PDF.js renders source pages, but no block/region overlay exists; technical log and source preview are separate views. | Add a fixture-driven review screen showing source bbox, derived asset, IR node, confidence, and decision; test navigation from review item to source. | Efficient human correction and triage |
+| GM-REM-015 | OPEN | P1 | Add live browser extraction/e2e and visual regression coverage. | CI runs lint/typecheck/unit/build when dependencies are installed; no Playwright dependency or live PDF extraction fixture is present; UI acceptance remains manual. | Add a small deterministic PDF fixture and browser test for open→extract→preview→export, plus a bounded visual smoke test. | UI/release confidence |
+| GM-REM-016 | OPEN | P1 | Define Markdown markers and reconstructable sidecar provenance contract. | Source marker syntax exists; reconstructable bundles retain metadata, but ordinary Markdown/DOCX output does not carry the full source graph. | Version marker/sidecar schema and test round-trip from source IDs/bboxes/assets to Markdown and DOCX bundle. | Auditability and downstream correction |
+| GM-REM-017 | OPEN | P2 | Reconcile Python and browser pipeline semantics or explicitly define their product differences. | `src/pdf_sanitizer/*` and browser extraction/renderer/export paths are separate implementations; no cross-edition output comparison exists. | Run both editions against shared fixtures and publish allowed differences; migrate shared semantics to the versioned IR. | Predictable supported behavior |
+| GM-REM-018 | BLOCKED | P2 | Decide whether a Rust companion is warranted and what libraries/licensing/platforms are acceptable. | No performance budget or companion implementation exists; MuPDF/PyMuPDF redistribution and approved Rust stack were not resolved by this audit. | Complete browser profiles first; then record a go/no-go decision with IPC, packaging, security, licensing, and conformance criteria. | Optional native acceleration |
+| GM-REM-019 | OPEN | P2 | Define browser memory, bundle/cache, output-size, and safety budgets by document class. | UI/file/page limits, crop caps, MathIR limits, ZIP/XML safety checks, and Workbox cache settings exist, but are not tied to measured classes. | Publish budgets for text-heavy, scanned, table-heavy, equation-heavy, and image-heavy documents; enforce them in benchmark CI. | Architecture and release acceptance |
+| GM-REM-020 | BLOCKED | P2 | Set release quality thresholds and fallback policy. | Current quality audit reports heuristics and review flags but has no independent structural correctness score. | Choose per-class thresholds for raw/layout/semantic/export metrics, acceptable source-preservation rate, and blocking review items. | Production release decision |
+| GM-REM-021 | BLOCKED | P2 | Complete MuPDF/PyMuPDF and optional companion license/redistribution review. | The build copies MuPDF/PDF.js/Tesseract assets and Python pins PyMuPDF; this audit did not make a legal determination. | Record approved licenses/notices, redistribution terms, asset provenance, and CI checks before changing runtime packaging. | Shipping and Rust companion |
 
-Large exports no longer build one complete `docx` object graph. The streaming
-writer bounds the working set while producing the ZIP package and yields during
-document emission. The browser still materializes the final downloadable Blob;
-that unavoidable delivery buffer is distinct from the old unbounded OOXML
-object graph and should be included in release memory measurements.
+## Immediate implementation order
 
-### Recognition dependencies
+1. GM-REM-001, GM-REM-002, and GM-REM-004: corpus, schemas, and raw evidence.
+2. GM-REM-003 and GM-REM-005: layout graph and typed structural candidates.
+3. GM-REM-006 and GM-REM-007: tables and independently validated equations.
+4. GM-REM-008 and GM-REM-009: canonical reconstruction/exporters and calibrated quality.
+5. GM-REM-010 through GM-REM-017: OCR, visual assets, durability, review UI, browser tests, and Python convergence.
+6. GM-REM-012, GM-REM-019, GM-REM-018, and GM-REM-021: measured performance, budgets, licensing, and only then the optional companion decision.
 
-No production-approved local mathematical OCR model, raster-CV runtime, or
-visual ML model is bundled. Ambiguous equations and figures must continue to
-fall back to preserved source assets until those dependencies are separately
-reviewed for licensing, size, offline behavior, and quality.
+## Explicit unknowns carried forward
 
-The Hugging Face review confirmed that common image-to-text candidates are not
-an automatic fit for the browser bundle: `microsoft/trocr-base-printed` is
-listed at roughly 333M parameters and its repository metadata did not expose a
-clear license in the review response; `naver-clova-ix/donut-base` is MIT but is
-also a large general image-to-text model. Neither is bundled or called
-remotely. The existing Tesseract path remains the approved local OCR fallback
-until a smaller multilingual/math model passes the same review.
+- No current repository evidence establishes extraction accuracy on real multi-column, multilingual, scanned, malformed, or image-heavy PDFs.
+- No current repository evidence establishes that asynchronous checkpoint writes are actually lost during pause/cancel; this requires a race test.
+- No current repository evidence establishes that full-PDF worker copies exceed acceptable browser memory on target devices; this requires profiling.
+- No current repository evidence establishes that the available MuPDF callbacks can provide every raw image/vector detail desired by the target IR; callback capability and retained-field audits must be separated.
+- Historical notes that refer to external PDFs or prior extraction outputs are not treated as current fixtures because those artifacts are absent from this checkout.
 
-### Distribution licensing
-
-The existing MuPDF/PyMuPDF licensing decision remains a product/legal gate and
-is tracked in the historical ledger. It is not silently resolved by this code
-change.
-
-### Reference fixture limitations
-
-The supplied PDFs remain external release fixtures rather than repository test
-assets. The previously supplied Wushu `document(1).md`/DOCX is a stale
-extraction-version-12 artifact: it processes all 56 pages but contains 2,888
-replacement glyphs and flattens the first five-column page into text. A second
-Wushu artifact processes only page 1, which is the stale custom-range failure
-now covered by the All-pages reset. The Revenue artifact processes all 745
-pages but is also version 12 and still reports running-matter/OCR warnings.
-The current version keeps damaged pages as local OCR plus source-page evidence,
-separates stacked assets, and preserves ambiguous tables/figures; it still
-requires a fresh browser rerun and rendered comparison before release. The
-dictionary contains multilingual glyphs and 78 figures, while the Revenue
-Management book contains 24 tables, 23 equations, and 1,221 preserved visuals.
-
-The implementation audit and staged reconstruction plan are recorded in
-[`docs/extraction-reconstruction-roadmap.md`](./extraction-reconstruction-roadmap.md).
-
-### Known fidelity boundary
-
-When a PDF's embedded font map is genuinely unmappable, the browser cannot
-recover the original CJK or symbol characters from the damaged text stream.
-The safe result is OCR plus an exact source-page image; editable table cells or
-equations are emitted only when their geometry and reconstruction pass the
-existing validators. A future release may add approved offline multilingual
-OCR/CV packs, but no cloud or unlicensed model is assumed here.
+The detailed architecture, loss-point ledger, target pipeline, benchmark plan, and unresolved decisions are in [`docs/extraction-reconstruction-roadmap.md`](extraction-reconstruction-roadmap.md).

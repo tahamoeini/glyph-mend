@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 import { chartIRExportSidecars } from "./chart-rendering.js";
 import { MATH_IR_LIMITS } from "./semantic-ir.js";
+import { serializeSemanticDocumentIR } from "./semantic-document-ir.js";
 import { routeVisualOutput, sanitizeGeneratedSvgMarkup } from "./visual-rendering.js";
 
 export const RECONSTRUCTABLE_BUNDLE_VERSION = 1;
@@ -326,6 +327,7 @@ export async function buildReconstructableBundle({
   assets = new Map(),
   reviewItems = [],
   qualityReport = {},
+  semanticDocument = null,
   baseName = "document",
   limits = RECONSTRUCTABLE_BUNDLE_LIMITS,
 } = {}) {
@@ -335,6 +337,8 @@ export async function buildReconstructableBundle({
   if (docxBytes) addFile(files, "document.docx", docxBytes, limits);
   if (pdfBytes) addFile(files, "assets/originals/source-document.pdf", pdfBytes, limits);
   addJson(files, "quality-report.json", qualityReport, limits);
+  if (semanticDocument)
+    addFile(files, "semantic-document-ir.json", serializeSemanticDocumentIR(semanticDocument), limits);
 
   const sourceAssets = new Map(
     semanticAssets(assets, []).filter((asset) => asset?.id).map((asset) => [String(asset.id), asset]),
