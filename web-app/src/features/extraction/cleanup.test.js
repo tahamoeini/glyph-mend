@@ -172,6 +172,10 @@ describe("cleanup", () => {
     expect(headingFor("This ordinary sentence fragment", 18, 10)).toBeNull();
     expect(headingFor("2.3 Capacity Control", 12, 10)).toBe(2);
   });
+  it("uses bold font metadata as heading evidence", () => {
+    expect(headingFor("Capacity Control", 10, 10, { weight: "bold" })).toBe(1);
+    expect(headingFor("ordinary sentence", 10, 10, { weight: "regular" })).toBeNull();
+  });
   it("recognizes conventional front/back matter headings conservatively", () => {
     expect(headingFor("Contents", 11, 10)).toBe(1);
     expect(headingFor("References", 11, 10)).toBe(1);

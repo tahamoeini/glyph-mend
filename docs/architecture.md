@@ -85,6 +85,13 @@ chapter content. Markdown and DOCX exporters consume the ordered block stream.
 Assets remain page-level references with local bytes and a source image is kept
 whenever semantic reconstruction is not validated.
 
+Image XObject recovery is conservative: adjacent same-line equation fragments
+may be coalesced, but vertically stacked source images remain separate assets.
+Stable PDF rule grids can produce a TableIR with cell bounding boxes; sparse or
+merged grids fail closed to a preserved source crop because Markdown cannot
+faithfully express those spans. Labelled vector figures remain source crops
+even when their text overlaps the extracted text region.
+
 The browser contract is versioned (`DocumentIR` schema 2). Changing the
 semantic block shape increments the extraction checkpoint version so old
 IndexedDB pages cannot be mistaken for results from the current pipeline.

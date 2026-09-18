@@ -55,6 +55,13 @@ ledger remains at [`docs/upgrade/REMAINING.md`](./upgrade/REMAINING.md).
 - Layout summaries now record the geometry method and confidence, and the
   running-matter classifier records auditable REMOVE/KEEP/MERGE decisions
   before cleanup mutates semantic blocks.
+- MuPDF image recovery now keeps vertically stacked XObjects as separate
+  assets, while still joining adjacent same-line equation fragments. Labelled
+  vector figures are preserved even when their labels overlap extracted text.
+- Stable PDF rule grids now feed a conservative TableIR path with cell
+  geometry; sparse or merged rows fail closed to the source visual instead of
+  emitting invented Markdown cells. Heading classification also records bold
+  font metadata when MuPDF exposes it.
 - Five deterministic semantic fixtures now cover textbook, research paper,
   table-heavy, equation-heavy, and scanned-document paths without bundling
   user PDFs.
@@ -100,9 +107,17 @@ change.
 ### Reference fixture limitations
 
 The supplied PDFs remain external release fixtures rather than repository test
-assets. They should be rerun manually before release because the dictionary
-contains multilingual glyphs and 78 figures, while the Revenue Management
-book contains 745 pages, 24 tables, 23 equations, and 1,221 preserved visuals.
+assets. The previously supplied Wushu `document(1).md`/DOCX is a stale
+extraction-version-12 artifact: it processes all 56 pages but contains 2,888
+replacement glyphs and flattens the first five-column page into text. A second
+Wushu artifact processes only page 1, which is the stale custom-range failure
+now covered by the All-pages reset. The Revenue artifact processes all 745
+pages but is also version 12 and still reports running-matter/OCR warnings.
+The current version keeps damaged pages as local OCR plus source-page evidence,
+separates stacked assets, and preserves ambiguous tables/figures; it still
+requires a fresh browser rerun and rendered comparison before release. The
+dictionary contains multilingual glyphs and 78 figures, while the Revenue
+Management book contains 24 tables, 23 equations, and 1,221 preserved visuals.
 
 The implementation audit and staged reconstruction plan are recorded in
 [`docs/extraction-reconstruction-roadmap.md`](./extraction-reconstruction-roadmap.md).

@@ -495,9 +495,11 @@ export function removeRunningMatter(
   });
 }
 
-export function headingFor(line, fontSize, bodySize) {
+export function headingFor(line, fontSize, bodySize, font = null) {
   const value = line.trim();
   const words = value.split(/\s+/);
+  const fontWeight = `${font?.weight || ""} ${font?.name || ""} ${font?.style || ""}`;
+  const bold = /bold|semibold|demi|black/i.test(fontWeight);
   if (
     !value ||
     value.length > 140 ||
@@ -522,7 +524,7 @@ export function headingFor(line, fontSize, bodySize) {
       );
     if (
       numberedTitle &&
-      (level > 1 || fontSize >= bodySize * 1.12 || uppercase > 0.72)
+      (level > 1 || fontSize >= bodySize * 1.12 || uppercase > 0.72 || bold)
     )
       return Math.min(6, level);
     return null;
@@ -533,17 +535,17 @@ export function headingFor(line, fontSize, bodySize) {
       value,
     )
   )
-    return fontSize >= bodySize * 1.05 || uppercase > 0.72 ? 1 : null;
+    return fontSize >= bodySize * 1.05 || uppercase > 0.72 || bold ? 1 : null;
   if (/^appendix(?:\s+[A-Z0-9]+)?(?:\s+.+)?$/i.test(value))
-    return fontSize >= bodySize * 1.05 || uppercase > 0.72 ? 1 : null;
+    return fontSize >= bodySize * 1.05 || uppercase > 0.72 || bold ? 1 : null;
   const titleLike =
     uppercase > 0.72 ||
     words.every((word) =>
       /^(?:[A-Z][\p{L}'’&-]*|(?:and|of|the|to|in|for|a|an))$/u.test(word),
     );
   if (!titleLike) return null;
-  if (fontSize >= bodySize * 1.45 && words.length <= 14) return 1;
-  if (fontSize >= bodySize * 1.22 && words.length <= 16) return 2;
+  if ((fontSize >= bodySize * 1.45 || bold) && words.length <= 14) return 1;
+  if ((fontSize >= bodySize * 1.22 || bold) && words.length <= 16) return 2;
   return null;
 }
 

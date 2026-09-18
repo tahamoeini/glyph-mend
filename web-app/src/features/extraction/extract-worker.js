@@ -273,6 +273,284 @@ export function pageTableFromBlocks(blocks, bodySize, pageBounds) {
   };
 }
 
+function clusterCoordinates(values, tolerance) {
+  const clusters = [];
+  for (const value of [...values].filter(Number.isFinite).sort((a, b) => a - b)) {
+    const current = clusters.at(-1);
+    if (!current || value - current.at(-1) > tolerance) clusters.push([value]);
+    else current.push(value);
+  }
+  return clusters.map(
+    (cluster) => cluster.reduce((sum, value) => sum + value, 0) / cluster.length,
+  );
+}
+
+function vectorRuleBox(value) {
+  const bbox = value?.bbox;
+  if (!Array.isArray(bbox) || bbox.length !== 4 || !bbox.every(Number.isFinite))
+    return null;
+  const [x0, y0, x1, y1] = bbox;
+  return x1 > x0 && y1 > y0 ? bbox : null;
+}
+
+function textLinesForTable(blocks) {
+  return blocks
+    .flatMap((block) => block.lines || [])
+    .map((line) => ({
+      line,
+      text: joinWrapped([line]),
+      bbox: line.bbox,
+    }))
+    .filter(
+      (item) =>
+        item.text &&
+        Array.isArray(item.bbox) &&
+        item.bbox.length === 4 &&
+        item.bbox.every(Number.isFinite) &&
+        item.bbox[2] > item.bbox[0] &&
+        item.bbox[3] > item.bbox[1] &&
+        !isDiagramLike(item.text),
+    );
+}
+
+function tableCellForLine(line, boundaries, rowBounds) {
+  const center = (line.bbox[0] + line.bbox[2]) / 2;
+  const tolerance = Number(rowBounds?.tolerance) || 0;
+  let column = boundaries.findIndex(
+    (boundary, index) =>
+      index < boundaries.length - 1 &&
+      center >= boundary &&
+      center <= boundaries[index + 1],
+  );
+  if (column < 0) column = center < boundaries[0] ? 0 : boundaries.length - 2;
+  const firstCrossed = boundaries.findIndex(
+    (boundary, index) =>
+      index > 0 &&
+      index < boundaries.length - 1 &&
+      line.bbox[0] < boundary - tolerance &&
+      line.bbox[2] > boundary + tolerance,
+  );
+  const lastCrossed = [...boundaries]
+    .map((boundary, index) => ({ boundary, index }))
+    .reverse()
+    .find(
+      ({ boundary, index }) =>
+        index > 0 &&
+        index < boundaries.length - 1 &&
+        line.bbox[0] < boundary - tolerance &&
+        line.bbox[2] > boundary + tolerance,
+    )?.index;
+  return {
+    column,
+    span:
+      firstCrossed >= 0 && lastCrossed >= firstCrossed
+        ? {
+            row: rowBounds.index,
+            column: Math.max(0, column),
+            rowSpan: 1,
+            colSpan: lastCrossed - firstCrossed + 2,
+            bbox: [...line.bbox],
+          }
+        : null,
+  };
+}
+
+/**
+ * Reconstructs a table only when the PDF itself supplies a stable rule grid.
+ * This intentionally rejects sparse/merged rows: Markdown has no native span
+ * model, and filling those gaps would fabricate cells. The vector graphic
+ * path then preserves the original region as an image instead.
+ */
+export function pageTableFromVectors(blocks, vectors, bodySize, pageBounds) {
+  const pageWidth = pageBounds[2] - pageBounds[0];
+  const pageHeight = pageBounds[3] - pageBounds[1];
+  if (pageWidth <= 0 || pageHeight <= 0) return null;
+  const ruleTolerance = Math.max(0.8, bodySize * 0.28);
+  const horizontal = vectors
+    .map(vectorRuleBox)
+    .filter(Boolean)
+    .filter((bbox) => {
+      const width = bbox[2] - bbox[0];
+      const height = bbox[3] - bbox[1];
+      return width >= pageWidth * 0.25 && height <= Math.max(2, bodySize * 0.45);
+    });
+  if (horizontal.length < 3) return null;
+
+  const horizontalY = clusterCoordinates(
+    horizontal.map((bbox) => (bbox[1] + bbox[3]) / 2),
+    ruleTolerance,
+  );
+  const horizontalRules = horizontalY
+    .map((y) => {
+      const members = horizontal.filter(
+        (bbox) => Math.abs((bbox[1] + bbox[3]) / 2 - y) <= ruleTolerance,
+      );
+      return {
+        y,
+        left: Math.min(...members.map((bbox) => bbox[0])),
+        right: Math.max(...members.map((bbox) => bbox[2])),
+      };
+    })
+    .filter((rule) => rule.right - rule.left >= pageWidth * 0.25);
+  if (horizontalRules.length < 3) return null;
+
+  // A table uses aligned broad rules. Keeping the largest aligned span makes
+  // decorative rules and unrelated chart axes fail closed instead of becoming
+  // invented tables.
+  const spanTolerance = Math.max(bodySize * 2, pageWidth * 0.035);
+  let bestRules = [];
+  for (const start of horizontalRules) {
+    const run = horizontalRules.filter(
+      (rule) =>
+        Math.abs(rule.left - start.left) <= spanTolerance &&
+        Math.abs(rule.right - start.right) <= spanTolerance,
+    );
+    if (run.length > bestRules.length) bestRules = run;
+  }
+  bestRules.sort((a, b) => a.y - b.y);
+  if (bestRules.length < 3) return null;
+
+  const left = Math.min(...bestRules.map((rule) => rule.left));
+  const right = Math.max(...bestRules.map((rule) => rule.right));
+  const firstRule = bestRules[0].y;
+  const lastRule = bestRules.at(-1).y;
+  const vertical = vectors
+    .map(vectorRuleBox)
+    .filter(Boolean)
+    .filter((bbox) => {
+      const width = bbox[2] - bbox[0];
+      const height = bbox[3] - bbox[1];
+      const center = (bbox[0] + bbox[2]) / 2;
+      return (
+        width <= Math.max(2, bodySize * 0.45) &&
+        height >= Math.max(2, bodySize * 0.7) &&
+        center > left + ruleTolerance &&
+        center < right - ruleTolerance &&
+        bbox[3] >= firstRule - bodySize * 4 &&
+        bbox[1] <= lastRule + bodySize * 4
+      );
+    });
+  const verticalX = clusterCoordinates(
+    vertical.map((bbox) => (bbox[0] + bbox[2]) / 2),
+    ruleTolerance,
+  ).filter((value) => {
+    const coverage = vertical
+      .filter(
+        (bbox) =>
+          Math.abs((bbox[0] + bbox[2]) / 2 - value) <= ruleTolerance,
+      )
+      .reduce((total, bbox) => total + bbox[3] - bbox[1], 0);
+    return coverage >= Math.max(bodySize * 2, (lastRule - firstRule) * 0.45);
+  });
+  const boundaries = [
+    left,
+    ...verticalX.filter((value) => value > left + ruleTolerance && value < right - ruleTolerance),
+    right,
+  ].sort((a, b) => a - b);
+  if (boundaries.length < 3) return null;
+
+  const alignedVertical = vertical.filter((bbox) =>
+    verticalX.some(
+      (value) => Math.abs((bbox[0] + bbox[2]) / 2 - value) <= ruleTolerance,
+    ),
+  );
+  const top = Math.min(
+    firstRule,
+    ...alignedVertical
+      .filter((bbox) => bbox[1] < firstRule && firstRule - bbox[1] <= bodySize * 4)
+      .map((bbox) => bbox[1]),
+  );
+  const bottom = Math.max(
+    lastRule,
+    ...alignedVertical
+      .filter((bbox) => bbox[3] > lastRule && bbox[3] - lastRule <= bodySize * 4)
+      .map((bbox) => bbox[3]),
+  );
+  const yBoundaries = clusterCoordinates(
+    [top, ...bestRules.map((rule) => rule.y), bottom],
+    ruleTolerance,
+  );
+  if (yBoundaries.length < 4) return null;
+
+  const textLines = textLinesForTable(blocks);
+  const rows = [];
+  const usedLines = new Set();
+  const spans = [];
+  for (let index = 0; index < yBoundaries.length - 1; index += 1) {
+    const rowTop = yBoundaries[index];
+    const rowBottom = yBoundaries[index + 1];
+    const rowLines = textLines
+      .filter((item) => {
+        const center = (item.bbox[1] + item.bbox[3]) / 2;
+        return center > rowTop + ruleTolerance && center < rowBottom - ruleTolerance;
+      })
+      .sort((a, b) => a.bbox[0] - b.bbox[0] || a.bbox[1] - b.bbox[1]);
+    const cells = Array.from({ length: boundaries.length - 1 }, () => ({
+      text: [],
+      bbox: null,
+      rowSpan: 1,
+      colSpan: 1,
+    }));
+    for (const item of rowLines) {
+      const placement = tableCellForLine(item, boundaries, {
+        index,
+        tolerance: ruleTolerance,
+      });
+      if (placement.span) spans.push(placement.span);
+      const cell = cells[placement.column];
+      cell.text.push(item.text);
+      cell.bbox = cell.bbox
+        ? [
+            Math.min(cell.bbox[0], item.bbox[0]),
+            Math.min(cell.bbox[1], item.bbox[1]),
+            Math.max(cell.bbox[2], item.bbox[2]),
+            Math.max(cell.bbox[3], item.bbox[3]),
+          ]
+        : [...item.bbox];
+      usedLines.add(item.line);
+    }
+    const occupied = cells.filter((cell) => cell.text.length);
+    // A row with only one occupied cell is usually a merged heading, section
+    // marker, or a figure row. Do not turn it into empty invented cells.
+    if (occupied.length < 2) return null;
+    rows.push(
+      cells.map((cell, column) => ({
+        ...cell,
+        text: cell.text.join(" ").trim(),
+        bbox:
+          cell.bbox ||
+          [boundaries[column], rowTop, boundaries[column + 1], rowBottom],
+      })),
+    );
+  }
+  if (rows.length < 3 || spans.length) return null;
+
+  const values = rows.map((row) => row.map((cell) => cell.text));
+  const filled = rows.flat().filter((cell) => cell.text).length;
+  const possible = rows.length * (boundaries.length - 1);
+  const coverage = filled / Math.max(1, possible);
+  if (coverage < 0.35) return null;
+  const confidence = Number(
+    Math.min(0.98, 0.72 + Math.min(0.18, coverage * 0.18)).toFixed(3),
+  );
+  return {
+    markdown: markdownTable(values),
+    lines: usedLines,
+    y: top,
+    confidence,
+    rows: rows.length,
+    columns: boundaries.length - 1,
+    bbox: [left, top, right, bottom],
+    tableIR: {
+      rows,
+      columns: boundaries.length - 1,
+      spans: [],
+      confidence,
+      method: "pdf-vector-grid",
+    },
+  };
+}
+
 function wordBox(word) {
   const box = word?.bbox || {};
   const x0 = Number(box.x0 ?? box.left);
@@ -530,6 +808,7 @@ export function jsonFallbackBlocks(structured) {
           bbox: rect(value.bbox),
           lines,
           sizes,
+          font: value.lines?.find((line) => line.font)?.font || null,
           maxSize: Math.max(...sizes, 10),
           size: median(sizes),
         };
@@ -551,15 +830,17 @@ function readStructuredPage(page) {
   );
   structured.walk({
     beginTextBlock(bbox) {
-      block = { bbox: rect(bbox), lines: [], sizes: [] };
+      block = { bbox: rect(bbox), lines: [], sizes: [], font: null };
     },
     beginLine(bbox) {
-      line = { bbox: rect(bbox), text: "", chars: [], sizes: [] };
+      line = { bbox: rect(bbox), text: "", chars: [], sizes: [], font: null };
     },
-    onChar(value, _origin, _font, size, quad) {
+    onChar(value, _origin, font, size, quad) {
       const points = Array.isArray(quad) ? quad : [];
       const xs = points.filter((_, index) => index % 2 === 0);
       line.text += value;
+      line.font ||= font || null;
+      block.font ||= font || null;
       line.sizes.push(size);
       line.chars.push({
         value,
@@ -845,16 +1126,20 @@ export function paddedBbox(bbox, pageBounds, padding = 0) {
 }
 
 function vectorGraphicCandidates(vectors, pageBounds, bodySize) {
+  const proximity = Math.max(
+    bodySize * 2.4,
+    Math.min(pageBounds[2] - pageBounds[0], pageBounds[3] - pageBounds[1]) * 0.018,
+  );
   const groups = [];
   for (const vector of vectors) {
     if (!vector.bbox.every(Number.isFinite)) continue;
     let group = groups.find(
       (item) =>
         !(
-          vector.bbox[2] < item.bbox[0] - bodySize ||
-          vector.bbox[0] > item.bbox[2] + bodySize ||
-          vector.bbox[3] < item.bbox[1] - bodySize ||
-          vector.bbox[1] > item.bbox[3] + bodySize
+          vector.bbox[2] < item.bbox[0] - proximity ||
+          vector.bbox[0] > item.bbox[2] + proximity ||
+          vector.bbox[3] < item.bbox[1] - proximity ||
+          vector.bbox[1] > item.bbox[3] + proximity
         ),
     );
     if (!group) {
@@ -1186,55 +1471,65 @@ export function orderPageEntries(entries = [], pageBounds = [0, 0, 612, 792], bo
   const fallback = [...entries].sort(
     (a, b) => Number(a.y || 0) - Number(b.y || 0) || Number(a.x || 0) - Number(b.x || 0),
   );
-  const textEntries = entries.filter(
-    (entry) => entry?.kind === "text" && Number.isFinite(Number(entry.x)),
-  );
+  const columns = twoColumnSignature(entries, pageBounds, bodySize);
+  if (!columns) return fallback;
+  const { pivot } = columns;
   const pageWidth = Math.max(1, Number(pageBounds[2]) - Number(pageBounds[0]));
-  if (textEntries.length < 4) return fallback;
-  if (textEntries.filter((entry) => isDiagramLike(entry.rawText)).length >= 2)
-    return fallback;
-  if (
-    entries.some(
-      (entry) =>
-        Array.isArray(entry?.bbox) &&
-        Number(entry.bbox[2]) - Number(entry.bbox[0]) > pageWidth * 0.72,
-    )
-  )
-    return fallback;
-
-  const xValues = [...new Set(textEntries.map((entry) => Number(entry.x)))].sort(
-    (a, b) => a - b,
+  const wideEntries = entries
+    .filter((entry) => {
+      const bbox = entry?.bbox;
+      return (
+        Array.isArray(bbox) &&
+        Number(bbox[2]) - Number(bbox[0]) > pageWidth * 0.72 &&
+        entry.kind !== "source-page"
+      );
+    })
+    .sort((a, b) => Number(a.y || 0) - Number(b.y || 0));
+  const sourcePages = entries.filter((entry) => entry?.kind === "source-page");
+  const columnEntries = entries.filter(
+    (entry) => !wideEntries.includes(entry) && entry?.kind !== "source-page",
   );
-  let splitAt = -1;
-  let largestGap = 0;
-  for (let index = 1; index < xValues.length; index += 1) {
-    const gap = xValues[index] - xValues[index - 1];
-    if (gap > largestGap) {
-      largestGap = gap;
-      splitAt = index;
+  const ordered = [];
+  const consumed = new Set();
+  let lowerBound = Number.NEGATIVE_INFINITY;
+  const emitColumnsBefore = (upperBound) => {
+    for (const column of [0, 1]) {
+      for (const entry of columnEntries
+        .filter((value) => {
+          if (consumed.has(value)) return false;
+          const x = Number.isFinite(Number(value?.x))
+            ? Number(value.x)
+            : Number(pageBounds[0]);
+          const entryColumn = x < pivot ? 0 : 1;
+          return (
+            entryColumn === column &&
+            Number(value.y || 0) >= lowerBound &&
+            Number(value.y || 0) < upperBound
+          );
+        })
+        .sort(
+          (a, b) =>
+            Number(a.y || 0) - Number(b.y || 0) ||
+            Number(a.x || 0) - Number(b.x || 0),
+        )) {
+        ordered.push(entry);
+        consumed.add(entry);
+      }
     }
+  };
+  for (const wide of wideEntries) {
+    emitColumnsBefore(Number(wide.y || 0));
+    ordered.push(wide);
+    lowerBound = Math.max(lowerBound, Number(wide.bbox?.[3] ?? wide.y ?? 0));
   }
-  const minimumColumnGap = Math.max(bodySize * 8, pageWidth * 0.14);
-  if (splitAt < 0 || largestGap < minimumColumnGap) return fallback;
-  const pivot = (xValues[splitAt - 1] + xValues[splitAt]) / 2;
-  const leftCount = textEntries.filter((entry) => Number(entry.x) < pivot).length;
-  const rightCount = textEntries.length - leftCount;
-  if (leftCount < 2 || rightCount < 2) return fallback;
+  emitColumnsBefore(Number.POSITIVE_INFINITY);
+  ordered.push(...sourcePages);
 
   // A column-aware pass is only used when the page has a stable two-column
   // signature. It prevents y-only sorting from interleaving left and right
   // columns, while leaving diagrams and full-width content in their source
   // order when the geometry is ambiguous.
-  return [...entries].sort((a, b) => {
-    const aSourcePage = a?.kind === "source-page" ? 1 : 0;
-    const bSourcePage = b?.kind === "source-page" ? 1 : 0;
-    if (aSourcePage !== bSourcePage) return aSourcePage - bSourcePage;
-    const aX = Number.isFinite(Number(a?.x)) ? Number(a.x) : Number(pageBounds[0]);
-    const bX = Number.isFinite(Number(b?.x)) ? Number(b.x) : Number(pageBounds[0]);
-    const aColumn = aX < pivot ? 0 : 1;
-    const bColumn = bX < pivot ? 0 : 1;
-    return aColumn - bColumn || Number(a.y || 0) - Number(b.y || 0) || aX - bX;
-  });
+  return ordered;
 }
 
 function twoColumnSignature(
@@ -1248,14 +1543,6 @@ function twoColumnSignature(
   const pageWidth = Math.max(1, Number(pageBounds[2]) - Number(pageBounds[0]));
   if (textEntries.length < 4) return null;
   if (textEntries.filter((entry) => isDiagramLike(entry.rawText)).length >= 2)
-    return null;
-  if (
-    entries.some(
-      (entry) =>
-        Array.isArray(entry?.bbox) &&
-        Number(entry.bbox[2]) - Number(entry.bbox[0]) > pageWidth * 0.72,
-    )
-  )
     return null;
 
   const xValues = [...new Set(textEntries.map((entry) => Number(entry.x)))].sort(
@@ -1338,17 +1625,6 @@ export function captionFor(blocks, bbox, bodySize) {
       )
       .sort((a, b) => a.score - b.score)[0]?.text || ""
   );
-}
-
-function textHeavyRegion(blocks, bbox) {
-  const lines = blocks
-    .flatMap((block) => block.lines)
-    .filter((line) => line.bbox[1] < bbox[3] && line.bbox[3] > bbox[1]);
-  const words = lines.reduce(
-    (count, line) => count + joinWrapped([line]).split(/\s+/).length,
-    0,
-  );
-  return lines.length >= 3 && words >= 24;
 }
 
 function ocrGeometry(data, lines, pageBounds) {
@@ -1716,7 +1992,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
 
   const pageTable =
     !options.forceOcr && !embeddedTextCorrupt && options.detectTables
-      ? pageTableFromBlocks(blocks, bodySize, pageBounds)
+      ? pageTableFromVectors(blocks, vectors, bodySize, pageBounds) ||
+        pageTableFromBlocks(blocks, bodySize, pageBounds)
       : null;
   const pageTableLines = pageTable?.lines || new Set();
   if (pageTable)
@@ -1910,7 +2187,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         ? tableFor({ ...block, lines: remainingLines }, bodySize)
         : null;
     const heading = options.detectHeadings
-      ? headingFor(text, block.maxSize, bodySize)
+      ? headingFor(text, block.maxSize, bodySize, block.font)
       : null;
     const rawVisualText =
       remainingLines.length === 1
@@ -2045,8 +2322,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         (value.bbox[2] - value.bbox[0]) * (value.bbox[3] - value.bbox[1]);
       if (
         area / pageArea < 0.0025 ||
-        (area / pageArea > 0.82 && blocks.length > 2) ||
-        textHeavyRegion(blocks, value.bbox)
+        (area / pageArea > 0.82 && blocks.length > 2)
       ) {
         value.image.destroy?.();
         continue;
@@ -2119,7 +2395,17 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           )
         )
           continue;
-        if (textHeavyRegion(blocks, candidate.bbox)) continue;
+        if (
+          entries.some(
+            (entry) =>
+              entry.kind === "table" &&
+              entry.bbox?.[1] < candidate.bbox[3] &&
+              entry.bbox?.[3] > candidate.bbox[1] &&
+              entry.bbox?.[0] < candidate.bbox[2] &&
+              entry.bbox?.[2] > candidate.bbox[0],
+          )
+        )
+          continue;
         try {
           const bbox = paddedBbox(
             candidate.bbox,

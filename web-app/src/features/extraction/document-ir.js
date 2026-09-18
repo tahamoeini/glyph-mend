@@ -103,23 +103,24 @@ function childIds(block) {
 
 function normalizeTableIR(value, fallbackConfidence = 0.5) {
   if (!value || typeof value !== "object") return undefined;
+  const normalizeCell = (cell) => {
+    const bbox = finiteBBox(cell?.bbox);
+    return {
+      text: String(cell?.text ?? cell ?? ""),
+      rowSpan: Math.max(1, Number(cell?.rowSpan) || 1),
+      colSpan: Math.max(1, Number(cell?.colSpan) || 1),
+      ...(bbox ? { bbox } : {}),
+    };
+  };
   const rows = Array.isArray(value.rows)
     ? value.rows.map((row) => {
         if (Array.isArray(row))
           return {
-            cells: row.map((cell) => ({
-              text: String(cell?.text ?? cell ?? ""),
-              rowSpan: Math.max(1, Number(cell?.rowSpan) || 1),
-              colSpan: Math.max(1, Number(cell?.colSpan) || 1),
-            })),
+            cells: row.map(normalizeCell),
           };
         return {
           cells: Array.isArray(row?.cells)
-            ? row.cells.map((cell) => ({
-                text: String(cell?.text ?? ""),
-                rowSpan: Math.max(1, Number(cell?.rowSpan) || 1),
-                colSpan: Math.max(1, Number(cell?.colSpan) || 1),
-              }))
+            ? row.cells.map(normalizeCell)
             : [],
         };
       })

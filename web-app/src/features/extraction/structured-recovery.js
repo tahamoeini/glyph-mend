@@ -196,29 +196,27 @@ export function coalesceImageRects(rects) {
     while (changed) {
       changed = false;
       const index = result.findIndex((existing) => {
-        const h = Math.max(
-          existing[3] - existing[1],
-          bbox[3] - bbox[1],
-          1,
-        );
-        const w = Math.max(
-          existing[2] - existing[0],
-          bbox[2] - bbox[0],
-          1,
-        );
+        const existingHeight = Math.max(1, existing[3] - existing[1]);
+        const bboxHeight = Math.max(1, bbox[3] - bbox[1]);
+        const heightRatio =
+          Math.min(existingHeight, bboxHeight) /
+          Math.max(existingHeight, bboxHeight);
         const horizontalGap = Math.max(
           0,
           Math.max(existing[0], bbox[0]) - Math.min(existing[2], bbox[2]),
         );
-        const verticalGap = Math.max(
-          0,
-          Math.max(existing[1], bbox[1]) - Math.min(existing[3], bbox[3]),
-        );
+
+        // MuPDF can expose a single equation as several adjacent image
+        // XObjects. Those fragments share a visual line and have nearly the
+        // same height, so coalescing them is safe. Do not bridge vertically
+        // stacked images: dictionaries, comics, tables, and charts commonly
+        // place separate source images on the same x coordinate. The previous
+        // vertical-gap rule merged those images into one crop and destroyed
+        // their ordering/provenance.
         return (
-          (verticalOverlap(existing, bbox) >= 0.45 &&
-            horizontalGap <= Math.max(10, h * 2.4)) ||
-          (horizontalOverlap(existing, bbox) >= 0.55 &&
-            verticalGap <= Math.max(3, Math.min(h, w) * 0.3))
+          verticalOverlap(existing, bbox) >= 0.65 &&
+          heightRatio >= 0.55 &&
+          horizontalGap <= Math.max(12, Math.min(existingHeight, bboxHeight) * 1.1)
         );
       });
       if (index >= 0) {

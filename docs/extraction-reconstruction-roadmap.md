@@ -51,6 +51,15 @@ implementation document, not a claim that every release gate is complete.
   image when the text mapping is not trustworthy.
 - Stable two-column pages, escaped table pipes, equation duplicates, diagram
   fences, and source visual captions have regression coverage.
+- Direct MuPDF inspection found that the dictionary page contains five
+  separate stacked image XObjects; broad vertical coalescing was merging them
+  into one crop. Recovery now joins only same-line, similarly sized fragments.
+- Vector table rules are now used as evidence for a regular TableIR grid. The
+  path rejects sparse/merged rows, so complex tables remain source-preserved;
+  it does not invent empty cells to make Markdown appear rectangular.
+- Vector graphics with labels are no longer discarded merely because their
+  bounding region contains many text lines. Validated tables suppress only
+  overlapping vector-table duplicates; other graphics remain reversible crops.
 
 ### Remaining structural problems addressed by this roadmap
 
