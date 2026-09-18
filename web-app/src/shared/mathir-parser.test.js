@@ -43,6 +43,24 @@ it("parses nested fraction structure and preserves semantic structure", () => {
   expect(ast.denominator.right.type).toBe("fraction");
 });
 
+it("stores graph references without embedding the recursive AST in every node", () => {
+  const ir = parseLatexToMathIR("\\frac{1}{1 + \\frac{1}{x}}");
+  const nestedObjects = ir.nodes.flatMap((node) =>
+    Object.values(node).filter((value) => value && typeof value === "object" && !Array.isArray(value)),
+  );
+
+  expect(nestedObjects).toHaveLength(0);
+  expect(ir.nodes.some((node) => node.denominatorId)).toBe(true);
+});
+
+it("keeps a long candidate bounded instead of expanding duplicate MathIR nodes", () => {
+  const source = Array.from({ length: 100 }, (_, index) => `x_${index}`).join(" + ");
+  const ir = parseLatexToMathIR(source);
+
+  expect(ir.nodes.length).toBeLessThan(8192);
+  expect(JSON.stringify(ir).length).toBeLessThan(256 * 1024);
+});
+
 it("parses a definite integral with limits and returns MathIR", () => {
   const ir = parseLatexToMathIR("\\int_0^1 x^2 \\mathrm{d}x");
   expect(ir.errors || []).toHaveLength(0);

@@ -89,6 +89,33 @@ it("supports explicit source-page breaks", async () => {
   });
   expect(paged.size).toBeGreaterThan(flowing.size);
 });
+
+it("flushes large Markdown exports in bounded document sections", async () => {
+  const progress = [];
+  const markdown = Array.from({ length: 1100 }, (_, index) => `Paragraph ${index}`).join("\n\n");
+  const blob = await markdownToDocx(markdown, "Large document", {
+    maxBlocksPerSection: 32,
+    onProgress: (event) => progress.push(event),
+  });
+
+  expect(blob.size).toBeGreaterThan(0);
+  expect(progress.length).toBeGreaterThan(1);
+  expect(progress.at(-1).blocks).toBeGreaterThan(0);
+});
+
+it("preserves an oversized equation as source text instead of crashing export", async () => {
+  const warnings = [];
+  const source = "x".repeat(256 * 1024 + 1);
+  const blob = await markdownToDocx(`$$\n${source}\n$$`, "Large equation", {
+    onWarning: (warning) => warnings.push(warning),
+  });
+
+  expect(blob.size).toBeGreaterThan(0);
+  expect(warnings).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: "equation" }),
+  ]));
+});
+
 it("never leaks inline provenance comments and joins Markdown soft lines", async () => {
   const files = await contents(
     await markdownToDocx(

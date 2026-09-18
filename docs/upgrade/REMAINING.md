@@ -392,3 +392,67 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Recommended next action: Keep CLI help smoke tests headless-safe.
 - Safe to continue unrelated work: yes
 - Resolution note: Resolved and verified against the rebuilt wheel.
+
+## GM-UPG-024 — MathIR recursive duplication caused large-equation export failure
+- Detected in step: Production hardening master prompt — MathIR/export diagnosis
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: critical
+- Area: browser / MathIR / DOCX and bundle export
+- Dependency: parser graph normalization and bounded semantic serialization
+- Description: Flattened MathIR nodes retained recursive AST objects in addition to graph references. Large equations therefore repeated descendants during structured validation and could fail with `MathIR.nodes[19328] exceeds the structured-data node limit`.
+- Evidence: `web-app/src/shared/mathir-parser.js`, `web-app/src/shared/semantic-ir.js`, and regression tests for graph references and MathIR limits.
+- Files / symbols involved: `flattenAst`, `parseMathIR`, `MATH_IR_LIMITS`, `serializeMathIR`.
+- What was attempted: Removed recursive object embedding, added independent node/depth/string limits, and kept source-preserving failure behavior for candidates that exceed those limits.
+- Why it remains: It does not remain in the parser path; oversized candidates are rejected before generic traversal and remain eligible for preserved source evidence.
+- Recommended next action: Keep the large-equation regression fixture and monitor real 700+ page documents during manual release QA.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved on the production-hardening branch; verified by browser unit tests and bundle regression coverage.
+
+## GM-UPG-025 — DOCX final OOXML object is not constant-memory
+- Detected in step: Production hardening master prompt — large-document DOCX export
+- Date: 2026-09-18
+- Status: OPEN
+- Severity: high
+- Area: browser / DOCX / memory
+- Dependency: reviewed streaming OOXML package writer or safe chunk-assembly layer
+- Description: Markdown parsing and block construction now flush bounded continuous sections and yield between sections, but `docx` still retains the complete final OOXML document before `Packer.toBlob()`.
+- Evidence: `web-app/src/features/export/docx-export.js`, `DOCX_EXPORT_LIMITS`, and the large Markdown export regression test.
+- Files / symbols involved: `markdownToDocx`, `flushBlocks`, `Packer.toBlob`.
+- What was attempted: Added bounded section flushing, progress callbacks, equation limits, and per-visual/per-equation failure isolation without introducing an unreviewed OOXML merger.
+- Why it remains: True constant-memory DOCX generation requires relationship, numbering, styles, media, and document XML assembly that is not safely provided by the current library API.
+- Recommended next action: Evaluate a browser-compatible streaming OOXML writer/assembler with image relationship, equation, numbering, and style regression fixtures before claiming constant-memory DOCX export.
+- Safe to continue unrelated work: yes
+- Resolution note: Partial hardening only; the MathIR crash is fixed, but the final library memory envelope remains open.
+
+## GM-UPG-026 — Extraction workspace flow made simple by default
+- Detected in step: Production hardening master prompt — UI architecture
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: medium
+- Area: browser / UI / responsive workspace
+- Dependency: existing Stitch shell and control-ID contract
+- Description: The workspace exposed too many extraction controls at the same visual level and did not make the document summary, profile, and primary extraction action sufficiently dominant.
+- Evidence: `web-app/index.html`, `web-app/src/styles/style.css`, `web-app/src/app.js`, and UI shell tests.
+- Files / symbols involved: `extraction-profile`, `advancedOptions`, `documentComplexity`, `extractButton`.
+- What was attempted: Added a document summary and complexity label, Smart Extraction profile, collapsed Advanced Options groups for Structure/Visuals/Math/OCR/Processing, and a centered Start extraction action while preserving all existing control IDs and defaults.
+- Why it remains: The structural contract is complete; visual acceptance against real browser viewport/theme combinations remains a manual release gate.
+- Recommended next action: Run the Stitch desktop/tablet/mobile visual acceptance matrix before release.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved in structure and automated regression coverage; manual visual acceptance remains documented separately.
+
+## GM-UPG-027 — Release quality commands were not declared in the browser package
+- Detected in step: Production hardening master prompt — verification
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: medium
+- Area: browser / CI / release verification
+- Dependency: dependency-free JavaScript source checks
+- Description: The browser package had test and build scripts but no `lint` or `typecheck` entry points, so the requested release commands could not be run consistently.
+- Evidence: `web-app/package.json`, `web-app/scripts/quality-check.mjs`, and successful command runs on this branch.
+- Files / symbols involved: `npm run lint`, `npm run typecheck`, `quality-check.mjs`.
+- What was attempted: Added a syntax/module-parse gate, duplicate HTML ID check, and heavy-browser-E2E policy check without claiming a TypeScript type system or adding Playwright.
+- Why it remains: It does not remain for this JavaScript-only package; deeper static typing would require a separate TypeScript migration and is not implied by this check.
+- Recommended next action: Keep these commands required in CI and consider an explicit lint/type-system migration only as a separately scoped task.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved and verified locally with `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build`.

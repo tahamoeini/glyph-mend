@@ -220,6 +220,25 @@ it("rejects invalid MathIR nodes", () => {
   ).toThrow(/MathIR.rootId/);
 });
 
+it("applies MathIR-specific node, depth, and payload limits before generic traversal", () => {
+  const nodes = Array.from({ length: 8193 }, (_, index) => ({
+    id: `n${index}`,
+    type: "identifier",
+    value: "x",
+  }));
+
+  expect(() => parseMathIR({
+    schemaVersion: MATH_IR_SCHEMA_VERSION,
+    id: "math-large",
+    kind: "equation",
+    rootId: "n0",
+    nodes,
+    provenance: { producer: "test", version: "1" },
+    confidence: { overall: 0.1 },
+    disposition: "preserved",
+  })).toThrow(/8192-node limit/);
+});
+
 it("round-trips VisualIR without depending on Mermaid or SVG emitters", () => {
   const visual = {
     schemaVersion: VISUAL_IR_SCHEMA_VERSION,

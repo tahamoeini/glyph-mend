@@ -274,7 +274,7 @@ function setWorking(value) {
   $("extractButton").disabled = value;
   $("extractButtonLabel").textContent = value
     ? "Extraction in progress"
-    : "Extract document";
+    : "Start extraction";
   $("pauseButton").classList.toggle("hidden", !value);
   $("cancelButton").classList.toggle("hidden", !value);
   $("workspace").setAttribute("aria-busy", String(value));
@@ -363,19 +363,40 @@ async function waitForCheckpointWrites() {
   await Promise.allSettled([...state.checkpointWrites]);
   if (state.checkpointError) throw state.checkpointError;
 }
+
+function documentComplexity() {
+  if (!state.pageCount) return "Markdown source";
+  if (state.pageCount >= 500 || state.fileSize >= 10 * 1048576) return "Complex document";
+  if (state.pageCount >= 100 || state.fileSize >= 5 * 1048576) return "Medium document";
+  return "Simple document";
+}
+
+function syncDocumentSummary() {
+  const pages = state.pageCount ? `${state.pageCount.toLocaleString()} pages` : "—";
+  const size = state.fileSize ? `${(state.fileSize / 1048576).toFixed(1)} MB` : "—";
+  const pageNode = $("documentPageCount");
+  const sizeNode = $("documentFileSize");
+  const complexityNode = $("documentComplexity");
+  if (pageNode) pageNode.textContent = state.pageCount ? state.pageCount.toLocaleString() : "—";
+  if (sizeNode) sizeNode.textContent = state.fileSize ? size : "—";
+  if (complexityNode) complexityNode.textContent = documentComplexity();
+  return { pages, size };
+}
+
 function activateWorkspace() {
+  const summary = syncDocumentSummary();
   $("welcome").classList.add("hidden");
   $("workspace").classList.remove("hidden");
   $("fileName").textContent = state.fileName;
   $("fileMeta").textContent =
-    `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`;
+    `${summary.pages} · ${summary.size}`;
   $("topFileName").textContent = state.fileName || "Markdown workspace";
   $("topFileMeta").textContent = state.pageCount
     ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
     : "Review and export imported Markdown";
   $("workspaceDocumentName").textContent = state.fileName || "Review, refine, export";
   $("workspaceDocumentMeta").textContent = state.pageCount
-    ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
+    ? `${summary.pages} · ${summary.size}`
     : "Review and export imported Markdown";
   closeSettingsSheet();
   closeInspectorSheet();
