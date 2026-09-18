@@ -31,6 +31,10 @@ import {
 
 import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
 import { fencedVisualParagraph, visualParagraph } from "./visual-docx.js";
+import {
+  markdownToStreamingDocx,
+  shouldUseStreamingDocx,
+} from "./streaming-docx.js";
 
 const headingMap = {
   1: HeadingLevel.HEADING_1,
@@ -660,6 +664,9 @@ export async function markdownToDocx(
   title = "Document",
   options = {},
 ) {
+  if (shouldUseStreamingDocx(markdown, options))
+    return markdownToStreamingDocx(markdown, title, options);
+
   const maxBlocksPerSection = Math.max(
     32,
     Number(options.maxBlocksPerSection) || DOCX_EXPORT_LIMITS.maxBlocksPerSection,

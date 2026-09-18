@@ -8,8 +8,10 @@ ledger remains at [`docs/upgrade/REMAINING.md`](./upgrade/REMAINING.md).
 - MathIR no longer embeds recursive AST objects in every graph node.
 - MathIR has independent node, depth, and serialized-payload limits.
 - Oversized MathIR is preserved as source evidence in reconstructable bundles.
-- DOCX parsing/export now flushes bounded sections and isolates equation and
-  visual block failures.
+- DOCX export now selects an incremental OOXML/ZIP writer for large Markdown
+  or asset-heavy documents. It emits `word/document.xml` in bounded chunks,
+  keeps media as referenced ZIP entries, preserves parseable equations as
+  editable OMML, and isolates bad visual/equation blocks.
 - The extraction workspace now presents document summary, Smart Extraction,
   a collapsed Advanced Options section, and a dominant Start extraction action
   without removing existing control IDs or capabilities.
@@ -29,14 +31,13 @@ visual-regression suite. Desktop, tablet, mobile, light theme, dark theme,
 keyboard navigation, and source-PDF interaction still require a manual release
 pass against the Stitch references.
 
-### Final DOCX memory envelope
+### Final DOCX download buffer
 
-DOCX block parsing is bounded and yields between sections, but the `docx`
-library still owns the complete final OOXML document before `Packer.toBlob()`.
-This is safer than the previous monolithic parser and fixes the MathIR crash,
-but a true constant-memory DOCX writer would require a reviewed OOXML package
-streaming/assembly layer. Do not describe the current implementation as
-constant-memory DOCX generation.
+Large exports no longer build one complete `docx` object graph. The streaming
+writer bounds the working set while producing the ZIP package and yields during
+document emission. The browser still materializes the final downloadable Blob;
+that unavoidable delivery buffer is distinct from the old unbounded OOXML
+object graph and should be included in release memory measurements.
 
 ### Recognition dependencies
 

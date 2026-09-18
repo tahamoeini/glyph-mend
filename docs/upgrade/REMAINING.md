@@ -412,18 +412,18 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 ## GM-UPG-025 — DOCX final OOXML object is not constant-memory
 - Detected in step: Production hardening master prompt — large-document DOCX export
 - Date: 2026-09-18
-- Status: OPEN
+- Status: RESOLVED
 - Severity: high
 - Area: browser / DOCX / memory
 - Dependency: reviewed streaming OOXML package writer or safe chunk-assembly layer
-- Description: Markdown parsing and block construction now flush bounded continuous sections and yield between sections, but `docx` still retains the complete final OOXML document before `Packer.toBlob()`.
-- Evidence: `web-app/src/features/export/docx-export.js`, `DOCX_EXPORT_LIMITS`, and the large Markdown export regression test.
-- Files / symbols involved: `markdownToDocx`, `flushBlocks`, `Packer.toBlob`.
-- What was attempted: Added bounded section flushing, progress callbacks, equation limits, and per-visual/per-equation failure isolation without introducing an unreviewed OOXML merger.
-- Why it remains: True constant-memory DOCX generation requires relationship, numbering, styles, media, and document XML assembly that is not safely provided by the current library API.
-- Recommended next action: Evaluate a browser-compatible streaming OOXML writer/assembler with image relationship, equation, numbering, and style regression fixtures before claiming constant-memory DOCX export.
+- Description: The previous large-document path retained the complete `docx` object graph before `Packer.toBlob()`, which was incompatible with bounded working memory for long exports.
+- Evidence: `web-app/src/features/export/streaming-docx.js`, `web-app/src/features/export/docx-export.js`, and the streaming DOCX regression plus LibreOffice smoke check.
+- Files / symbols involved: `markdownToStreamingDocx`, `shouldUseStreamingDocx`, `StreamingZip`, `Deflate`, `equationXml`.
+- What was attempted: Added a browser-compatible OOXML package writer that streams `word/document.xml` into a ZIP entry, adds media by relationship reference, emits styles/numbering/settings parts, preserves parseable equations as OMML, and falls back per block without dropping source text.
+- Why it remains: The browser API still requires a final downloadable Blob, so the package bytes themselves remain a delivery buffer. This is not the old unbounded in-memory OOXML object graph, but release profiling must include the final Blob size.
+- Recommended next action: Measure peak browser memory for the supplied 745-page fixture and record the final Blob envelope on supported release browsers.
 - Safe to continue unrelated work: yes
-- Resolution note: Partial hardening only; the MathIR crash is fixed, but the final library memory envelope remains open.
+- Resolution note: Resolved for bounded working-set generation. The legacy `docx` path remains available for small exports; large/asset-heavy exports use the incremental writer. Final Blob delivery remains an explicit measurement boundary.
 
 ## GM-UPG-026 — Extraction workspace flow made simple by default
 - Detected in step: Production hardening master prompt — UI architecture
@@ -472,3 +472,35 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Recommended next action: Re-extract both supplied PDFs with the branch, compare representative pages and DOCX rendering, and add a small permitted fixture for each regression pattern.
 - Safe to continue unrelated work: yes
 - Resolution note: Implementation and unit coverage are updated; end-to-end reference rerun remains open.
+
+## GM-UPG-029 — Large DOCX export needed an incremental package writer
+- Detected in step: Production hardening master prompt — streaming DOCX export
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: high
+- Area: browser / DOCX / bounded memory
+- Dependency: browser ZIP streaming primitives already shipped by `fflate`
+- Description: The legacy `docx` library API builds a complete document object before packaging, which is unsafe for long PDFs with many assets.
+- Evidence: `web-app/src/features/export/streaming-docx.js`, `web-app/src/features/export/docx-export.test.js`, and successful LibreOffice conversion of a generated streaming package.
+- Files / symbols involved: `markdownToStreamingDocx`, `StreamingZip`, `Deflate`, `word/document.xml`, `word/_rels/document.xml.rels`.
+- What was attempted: Added automatic selection for large Markdown or asset-heavy exports, incremental document XML emission, relationship-based media entries, bounded MathIR-to-OMML serialization, and source-preserving fallbacks.
+- Why it remains: It does not remain as an implementation gap; only final Blob memory measurement is still required for release capacity planning.
+- Recommended next action: Profile peak memory with real long-document fixtures on supported browsers.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved in the production-hardening branch and covered by focused tests plus an Office-compatible smoke conversion.
+
+## GM-UPG-030 — Corrupted embedded text could be table-parsed before OCR
+- Detected in step: Production hardening master prompt — extraction output investigation
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: medium
+- Area: browser / extraction / tables / OCR
+- Dependency: embedded-text corruption detection
+- Description: A page containing replacement-character damage could enter the structured table detector before the OCR branch, producing a malformed table and duplicated recovery text.
+- Evidence: `web-app/src/features/extraction/extract-worker.js` now gates `pageTableFromBlocks` on `!embeddedTextCorrupt`; OCR routing and encoding-damage tests remain green.
+- Files / symbols involved: `embeddedTextNeedsOcr`, `pageMarkdown`, `pageTableFromBlocks`.
+- What was attempted: Corrupted embedded text is now excluded from the pre-OCR table path so local OCR becomes the single text/table recovery source for that page.
+- Why it remains: It does not remain as a code defect; full multilingual table quality still requires the supplied dictionary PDF rerun.
+- Recommended next action: Re-extract the supplied dictionary and inspect representative Chinese/pinyin table pages.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved in code and covered by the existing OCR/quality regression suite; end-to-end fixture validation remains manual.

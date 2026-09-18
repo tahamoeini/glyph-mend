@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { strFromU8, unzipSync } from "fflate";
 import { markdownToDocx } from "./docx-export.js";
+import { shouldUseStreamingDocx } from "./streaming-docx.js";
 async function contents(blob) {
   const bytes = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -8,7 +9,12 @@ async function contents(blob) {
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(blob);
   });
-  return unzipSync(new Uint8Array(bytes));
+  return Object.fromEntries(
+    Object.entries(unzipSync(new Uint8Array(bytes))).map(([name, data]) => [
+      name,
+      Uint8Array.from(data),
+    ]),
+  );
 }
 it("creates a DOCX with structural content and native math", async () => {
   const blob = await markdownToDocx(
@@ -148,4 +154,73 @@ it("embeds preserved source visuals", async () => {
   expect(
     Object.keys(files).some((name) => name.startsWith("word/media/")),
   ).toBe(true);
+});
+
+it("streams large DOCX packages without retaining one document object model", async () => {
+  const progress = [];
+  const files = await contents(
+    await markdownToDocx(
+      "# Large export\n\n" +
+        Array.from({ length: 300 }, (_, index) => `Paragraph ${index}`).join("\n\n") +
+        "\n\n$$\nx_i^2 + \\frac{1}{2}\n$$",
+      "Streaming test",
+      { streaming: true, onProgress: (event) => progress.push(event) },
+    ),
+  );
+
+  expect(Object.keys(files)).toEqual(expect.arrayContaining([
+    "[Content_Types].xml",
+    "word/document.xml",
+    "word/_rels/document.xml.rels",
+  ]));
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("<m:oMath>");
+  expect(xml).toContain("Paragraph 299");
+  expect(progress.at(-1)).toEqual(expect.objectContaining({ streaming: true, complete: true }));
+});
+
+it("keeps streaming media in relationship-addressed package entries", async () => {
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ),
+    (character) => character.charCodeAt(0),
+  );
+  const files = await contents(
+    await markdownToDocx(
+      '[SOURCE_VISUAL page=7 id="streaming-image" kind="image" bbox="0,0,1,1"]',
+      "Streaming visual",
+      { streaming: true, assets: new Map([["streaming-image", { id: "streaming-image", data: png, width: 1, height: 1 }]]) },
+    ),
+  );
+  expect(Object.keys(files)).toContain("word/media/image-00001.png");
+  expect(strFromU8(files["word/document.xml"])).toContain('r:embed="rId8"');
+  expect(strFromU8(files["word/_rels/document.xml.rels"])).toContain('Id="rId8"');
+  expect(strFromU8(files["word/_rels/document.xml.rels"])).toContain('Target="media/image-00001.png"');
+});
+
+it("isolates unreadable streaming assets without dangling relationships", async () => {
+  const warnings = [];
+  const files = await contents(
+    await markdownToDocx(
+      '[SOURCE_VISUAL page=7 id="unreadable" kind="image" bbox="0,0,1,1"]',
+      "Streaming visual",
+      {
+        streaming: true,
+        assets: new Map([["unreadable", { data: { arrayBuffer: async () => { throw new Error("read failed"); } } }]]),
+        onWarning: (warning) => warnings.push(warning),
+      },
+    ),
+  );
+  expect(strFromU8(files["word/document.xml"])).toContain("Source image preserved on PDF page 7.");
+  expect(strFromU8(files["word/_rels/document.xml.rels"])).not.toContain('Id="rId8"');
+  expect(warnings).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: "visual", error: "read failed" }),
+  ]));
+});
+
+it("selects the streaming writer for large inputs and asset-heavy workspaces", () => {
+  expect(shouldUseStreamingDocx("x".repeat(512 * 1024))).toBe(true);
+  expect(shouldUseStreamingDocx("short", { assets: new Map(Array.from({ length: 512 }, (_, index) => [String(index), {}])) })).toBe(true);
+  expect(shouldUseStreamingDocx("short", { streaming: false, assets: new Map(Array.from({ length: 512 }, (_, index) => [String(index), {}])) })).toBe(false);
 });

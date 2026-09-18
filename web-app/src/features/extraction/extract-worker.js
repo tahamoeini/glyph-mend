@@ -1512,7 +1512,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
   const embeddedTextCorrupt = embeddedTextNeedsOcr(blocks);
 
   const pageTable =
-    !options.forceOcr && options.detectTables
+    !options.forceOcr && !embeddedTextCorrupt && options.detectTables
       ? pageTableFromBlocks(blocks, bodySize, pageBounds)
       : null;
   const pageTableLines = pageTable?.lines || new Set();
