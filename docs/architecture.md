@@ -59,6 +59,7 @@ web-app/src/
   shared/brand.js           Brand loading, caching, validation, and DOM application
   mupdf-vite.js             MuPDF static-asset adapter for Vite
   features/extraction/      OCR worker and Markdown reconstruction
+    document-ir.js          Versioned PageIR/BlockIR semantic representation
   features/export/          DOCX export
   storage/                  IndexedDB workspace persistence
   shared/                   Shared browser utilities
@@ -69,6 +70,36 @@ web-app/public/             PWA manifest, runtime branding JSON, logo, and nativ
 ```
 
 Runtime-only MuPDF, PDF.js, and Tesseract files are copied by `vite.config.js` into the production build. They remain static deployable assets because nested browser workers cannot safely depend on Vite's internal dependency URLs.
+
+### Browser extraction data flow
+
+PDF coordinates are retained as source provenance, not used as the final
+document order. Each page worker result is normalized into a bounded
+DocumentIR page with semantic blocks (paragraphs, headings, lists, tables,
+figures, equations, captions, and footnotes). Every BlockIR carries its source
+page, nullable bounding box, confidence, extraction method, and child IDs;
+caption relationships are explicit and table cells retain span metadata. The
+cleanup pipeline classifies running matter as REMOVE, KEEP, or MERGE before
+applying decisions to the IR, so repeated headers do not erase structural
+chapter content. Markdown and DOCX exporters consume the ordered block stream.
+Assets remain page-level references with local bytes and a source image is kept
+whenever semantic reconstruction is not validated.
+
+Image XObject recovery is conservative: adjacent same-line equation fragments
+may be coalesced, but vertically stacked source images remain separate assets.
+Stable PDF rule grids can produce a TableIR with cell bounding boxes; sparse or
+merged grids fail closed to a preserved source crop because Markdown cannot
+faithfully express those spans. Labelled vector figures remain source crops
+even when their text overlaps the extracted text region.
+
+The browser contract is versioned (`DocumentIR` schema 2). Changing the
+semantic block shape increments the extraction checkpoint version so old
+IndexedDB pages cannot be mistaken for results from the current pipeline.
+
+Extraction runs in bounded page batches. Each completed page is committed to
+IndexedDB before the next batch, and a page error is retried once in a fresh
+worker. A page that still fails is reported in the quality audit while other
+pages continue, preserving deterministic page order at finalization.
 
 The runtime brand JSON and brand assets are deliberately excluded from Workbox precaching. The browser loads the current configuration with `cache: no-store` and stores the last successful brand locally as an offline fallback. PWA install metadata is generated during brand synchronization and therefore requires a rebuild when the installed-app name or icon changes.
 

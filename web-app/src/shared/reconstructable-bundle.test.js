@@ -141,3 +141,41 @@ it("rejects a tampered bundle file", async () => {
   files["document.md"][0] ^= 1;
   await expect(validateReconstructableBundle(files)).rejects.toThrow(/checksum mismatch/i);
 });
+
+it("preserves an oversized MathIR candidate as metadata instead of aborting the bundle", async () => {
+  const largeMathIR = {
+    schemaVersion: 1,
+    id: "large-equation",
+    kind: "equation",
+    rootId: "n0",
+    nodes: Array.from({ length: 9000 }, (_, index) => ({
+      id: `n${index}`,
+      type: "identifier",
+      value: "x",
+    })),
+    provenance: { producer: "test", version: "1" },
+    confidence: { overall: 0.2 },
+    disposition: "preserved",
+  };
+  const built = await buildReconstructableBundle({
+    markdown: "[SOURCE_VISUAL page=1 id=large-equation kind=equation]",
+    assets: new Map([[
+      "large-equation",
+      {
+        id: "large-equation",
+        page: 1,
+        bbox: [0, 0, 10, 10],
+        kind: "equation",
+        parsed: { mathir: largeMathIR },
+        disposition: "preserved",
+      },
+    ]]),
+  });
+  const files = unzipSync(built.bytes);
+  const sidecar = JSON.parse(strFromU8(files["assets/reconstructed/large-equation.equation.json"]));
+
+  expect(sidecar.mathIR).toMatchObject({ omitted: "math-ir-limit", nodeCount: 9000 });
+  await expect(validateReconstructableBundle(files)).resolves.toMatchObject({
+    schema: RECONSTRUCTABLE_BUNDLE_SCHEMA,
+  });
+});

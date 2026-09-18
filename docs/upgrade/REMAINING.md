@@ -392,3 +392,115 @@ Never delete old entries. Mark resolved work as `RESOLVED` and add a resolution 
 - Recommended next action: Keep CLI help smoke tests headless-safe.
 - Safe to continue unrelated work: yes
 - Resolution note: Resolved and verified against the rebuilt wheel.
+
+## GM-UPG-024 — MathIR recursive duplication caused large-equation export failure
+- Detected in step: Production hardening master prompt — MathIR/export diagnosis
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: critical
+- Area: browser / MathIR / DOCX and bundle export
+- Dependency: parser graph normalization and bounded semantic serialization
+- Description: Flattened MathIR nodes retained recursive AST objects in addition to graph references. Large equations therefore repeated descendants during structured validation and could fail with `MathIR.nodes[19328] exceeds the structured-data node limit`.
+- Evidence: `web-app/src/shared/mathir-parser.js`, `web-app/src/shared/semantic-ir.js`, and regression tests for graph references and MathIR limits.
+- Files / symbols involved: `flattenAst`, `parseMathIR`, `MATH_IR_LIMITS`, `serializeMathIR`.
+- What was attempted: Removed recursive object embedding, added independent node/depth/string limits, and kept source-preserving failure behavior for candidates that exceed those limits.
+- Why it remains: It does not remain in the parser path; oversized candidates are rejected before generic traversal and remain eligible for preserved source evidence.
+- Recommended next action: Keep the large-equation regression fixture and monitor real 700+ page documents during manual release QA.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved on the production-hardening branch; verified by browser unit tests and bundle regression coverage.
+
+## GM-UPG-025 — DOCX final OOXML object is not constant-memory
+- Detected in step: Production hardening master prompt — large-document DOCX export
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: high
+- Area: browser / DOCX / memory
+- Dependency: reviewed streaming OOXML package writer or safe chunk-assembly layer
+- Description: The previous large-document path retained the complete `docx` object graph before `Packer.toBlob()`, which was incompatible with bounded working memory for long exports.
+- Evidence: `web-app/src/features/export/streaming-docx.js`, `web-app/src/features/export/docx-export.js`, and the streaming DOCX regression plus LibreOffice smoke check.
+- Files / symbols involved: `markdownToStreamingDocx`, `shouldUseStreamingDocx`, `StreamingZip`, `Deflate`, `equationXml`.
+- What was attempted: Added a browser-compatible OOXML package writer that streams `word/document.xml` into a ZIP entry, adds media by relationship reference, emits styles/numbering/settings parts, preserves parseable equations as OMML, and falls back per block without dropping source text.
+- Why it remains: The browser API still requires a final downloadable Blob, so the package bytes themselves remain a delivery buffer. This is not the old unbounded in-memory OOXML object graph, but release profiling must include the final Blob size.
+- Recommended next action: Measure peak browser memory for the supplied 745-page fixture and record the final Blob envelope on supported release browsers.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved for bounded working-set generation. The legacy `docx` path remains available for small exports; large/asset-heavy exports use the incremental writer. Final Blob delivery remains an explicit measurement boundary.
+
+## GM-UPG-026 — Extraction workspace flow made simple by default
+- Detected in step: Production hardening master prompt — UI architecture
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: medium
+- Area: browser / UI / responsive workspace
+- Dependency: existing Stitch shell and control-ID contract
+- Description: The workspace exposed too many extraction controls at the same visual level and did not make the document summary, profile, and primary extraction action sufficiently dominant.
+- Evidence: `web-app/index.html`, `web-app/src/styles/style.css`, `web-app/src/app.js`, and UI shell tests.
+- Files / symbols involved: `extraction-profile`, `advancedOptions`, `documentComplexity`, `extractButton`.
+- What was attempted: Added a document summary and complexity label, Smart Extraction profile, collapsed Advanced Options groups for Structure/Visuals/Math/OCR/Processing, and a centered Start extraction action while preserving all existing control IDs and defaults.
+- Why it remains: The structural contract is complete; visual acceptance against real browser viewport/theme combinations remains a manual release gate.
+- Recommended next action: Run the Stitch desktop/tablet/mobile visual acceptance matrix before release.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved in structure and automated regression coverage; manual visual acceptance remains documented separately.
+
+## GM-UPG-027 — Release quality commands were not declared in the browser package
+- Detected in step: Production hardening master prompt — verification
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: medium
+- Area: browser / CI / release verification
+- Dependency: dependency-free JavaScript source checks
+- Description: The browser package had test and build scripts but no `lint` or `typecheck` entry points, so the requested release commands could not be run consistently.
+- Evidence: `web-app/package.json`, `web-app/scripts/quality-check.mjs`, and successful command runs on this branch.
+- Files / symbols involved: `npm run lint`, `npm run typecheck`, `quality-check.mjs`.
+- What was attempted: Added a syntax/module-parse gate, duplicate HTML ID check, and heavy-browser-E2E policy check without claiming a TypeScript type system or adding Playwright.
+- Why it remains: It does not remain for this JavaScript-only package; deeper static typing would require a separate TypeScript migration and is not implied by this check.
+- Recommended next action: Keep these commands required in CI and consider an explicit lint/type-system migration only as a separately scoped task.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved and verified locally with `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build`.
+
+## GM-UPG-028 — Supplied extraction references exposed encoding and duplicate-equation gaps
+- Detected in step: Production hardening master prompt — extraction output investigation
+- Date: 2026-09-18
+- Status: PARTIALLY RESOLVED
+- Severity: high
+- Area: browser / extraction fidelity / OCR / equations
+- Dependency: real multilingual and long-document fixture reruns
+- Description: The supplied Revenue Management export contains adjacent duplicate display-equation blocks and repeated book headers. The supplied Wushu Dictionary export contains replacement characters, split table rows, and repeated footer matter; its DOCX preserves the replacement glyphs and flattens much of the dictionary structure.
+- Evidence: `The-Theory-and-Practice-of-Revenue-Management(2).md`, `document(1).md`, `document(1).docx`, `quality-report(1).json`, and `manifest(1).json`.
+- Files / symbols involved: `pageMarkdown`, `embeddedTextNeedsOcr`, `dedupeNearbyEquationEntries`, `removeRunningMatter`, and `qualityAudit`.
+- What was attempted: Damaged embedded text now triggers local OCR, adjacent duplicate equation emissions are deduplicated, edge detection covers a wider header/footer geometry band, and encoding damage becomes an explicit quality warning.
+- Why it remains: The reference PDFs are not committed as fixtures because of size/licensing, and OCR quality for Chinese characters, multilingual tables, and all 745 pages still requires a manual rerun against the supplied sources.
+- Recommended next action: Re-extract both supplied PDFs with the branch, compare representative pages and DOCX rendering, and add a small permitted fixture for each regression pattern.
+- Safe to continue unrelated work: yes
+- Resolution note: Implementation and unit coverage are updated; end-to-end reference rerun remains open.
+
+## GM-UPG-029 — Large DOCX export needed an incremental package writer
+- Detected in step: Production hardening master prompt — streaming DOCX export
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: high
+- Area: browser / DOCX / bounded memory
+- Dependency: browser ZIP streaming primitives already shipped by `fflate`
+- Description: The legacy `docx` library API builds a complete document object before packaging, which is unsafe for long PDFs with many assets.
+- Evidence: `web-app/src/features/export/streaming-docx.js`, `web-app/src/features/export/docx-export.test.js`, and successful LibreOffice conversion of a generated streaming package.
+- Files / symbols involved: `markdownToStreamingDocx`, `StreamingZip`, `Deflate`, `word/document.xml`, `word/_rels/document.xml.rels`.
+- What was attempted: Added automatic selection for large Markdown or asset-heavy exports, incremental document XML emission, relationship-based media entries, bounded MathIR-to-OMML serialization, and source-preserving fallbacks.
+- Why it remains: It does not remain as an implementation gap; only final Blob memory measurement is still required for release capacity planning.
+- Recommended next action: Profile peak memory with real long-document fixtures on supported browsers.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved in the production-hardening branch and covered by focused tests plus an Office-compatible smoke conversion.
+
+## GM-UPG-030 — Corrupted embedded text could be table-parsed before OCR
+- Detected in step: Production hardening master prompt — extraction output investigation
+- Date: 2026-09-18
+- Status: RESOLVED
+- Severity: medium
+- Area: browser / extraction / tables / OCR
+- Dependency: embedded-text corruption detection
+- Description: A page containing replacement-character damage could enter the structured table detector before the OCR branch, producing a malformed table and duplicated recovery text.
+- Evidence: `web-app/src/features/extraction/extract-worker.js` now gates `pageTableFromBlocks` on `!embeddedTextCorrupt`; OCR routing and encoding-damage tests remain green.
+- Files / symbols involved: `embeddedTextNeedsOcr`, `pageMarkdown`, `pageTableFromBlocks`.
+- What was attempted: Corrupted embedded text is now excluded from the pre-OCR table path so local OCR becomes the single text/table recovery source for that page.
+- Why it remains: It does not remain as a code defect; full multilingual table quality still requires the supplied dictionary PDF rerun.
+- Recommended next action: Re-extract the supplied dictionary and inspect representative Chinese/pinyin table pages.
+- Safe to continue unrelated work: yes
+- Resolution note: Resolved in code and covered by the existing OCR/quality regression suite; end-to-end fixture validation remains manual.

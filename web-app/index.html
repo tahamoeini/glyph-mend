@@ -153,48 +153,62 @@
         <div class="rail-engine-status"><span class="engine-dot" aria-hidden="true"></span><span><strong>Local engine</strong><small>Ready in browser</small></span></div>
       </nav>
       <aside id="settingsSidebar" class="sidebar liquid-glass liquid-glass-regular" aria-label="Document and extraction settings" data-ui-region="extraction-settings">
-        <div class="sheet-heading"><h2>Document Settings</h2><button id="closeSettingsButton" class="quiet" type="button" aria-label="Close document settings">✕</button></div>
-        <div class="sidebar-header"><div class="file-summary"><div class="pdf-badge" aria-hidden="true">PDF</div><div><strong id="fileName"></strong><span id="fileMeta"></span></div></div><label class="change-file" for="pdfInput">Choose another PDF</label></div>
+        <div class="sheet-heading"><h2>Extract document</h2><button id="closeSettingsButton" class="quiet" type="button" aria-label="Close document settings">✕</button></div>
+        <div class="sidebar-header"><div class="file-summary"><div class="pdf-badge" aria-hidden="true">PDF</div><div><strong id="fileName"></strong><span id="fileMeta"></span></div></div><div class="document-badges"><span id="documentComplexity" class="complexity-badge">Document ready</span><label class="change-file" for="pdfInput">Choose another PDF</label></div></div>
         <div class="sidebar-scroll">
-          <fieldset class="control-section">
-            <legend><span class="section-index">01</span> Document</legend>
+          <section class="extraction-profile" aria-label="Extraction profile">
+            <div class="profile-heading"><div><span class="section-kicker">Extraction profile</span><h3>Smart Extraction</h3></div><span class="profile-badge">Recommended</span></div>
+            <p>Reconstruct structure locally while keeping uncertain content and source evidence reversible.</p>
+            <dl class="profile-summary" aria-label="Document summary"><div><dt>Pages</dt><dd id="documentPageCount">—</dd></div><div><dt>Size</dt><dd id="documentFileSize">—</dd></div><div><dt>Mode</dt><dd>Local</dd></div></dl>
+          </section>
+          <fieldset class="control-section document-scope">
+            <legend><span class="section-index">01</span> Document scope</legend>
             <div class="segmented-control" role="radiogroup" aria-label="Pages to extract"><label><input type="radio" name="rangeMode" value="all" checked><span>All pages</span></label><label><input type="radio" name="rangeMode" value="custom"><span>Custom</span></label></div>
-            <label class="field-label" for="pageRange">Page range<input id="pageRange" placeholder="1–5, 8, 12–20" disabled><small>Use commas and ranges</small></label>
+            <label class="field-label" for="pageRange">Page range<input id="pageRange" type="text" inputmode="numeric" placeholder="1–5, 8, 12–20" disabled aria-describedby="documentScopeSummary"><small id="documentScopeSummary" aria-live="polite">All pages will be selected when a PDF is opened.</small></label>
           </fieldset>
-          <fieldset class="control-section">
-            <legend><span class="section-index">02</span> Extraction</legend>
-            <label class="control-row"><span><strong>Text tables</strong><small>Recover structured table content</small></span><span class="switch"><input id="detectTables" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row"><span><strong>Editable equations</strong><small>Detect mathematical expressions</small></span><span class="switch"><input id="extractEquations" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row"><span><strong>Preserve visual content</strong><small>Keep figures and formula fallbacks</small></span><span class="switch"><input id="preserveVisuals" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row"><span><strong>OCR when needed</strong><small>Read pages without usable text</small></span><span class="switch"><input id="useOcr" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-          </fieldset>
-          <fieldset class="control-section">
-            <legend><span class="section-index">03</span> Processing</legend>
-            <label class="control-row compact"><span><strong>Remove repeated headers</strong></span><span class="switch"><input id="removeHeaders" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row compact"><span><strong>Remove repeated footers</strong></span><span class="switch"><input id="removeFooters" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row compact"><span><strong>Join split paragraphs</strong></span><span class="switch"><input id="joinParagraphs" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row compact"><span><strong>Detect headings</strong></span><span class="switch"><input id="detectHeadings" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row compact"><span><strong>Normalize task lists</strong></span><span class="switch"><input id="taskLists" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row compact"><span><strong>Preserve flow notices</strong></span><span class="switch"><input id="flows" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row compact"><span><strong>Keep unresolved visuals</strong></span><span class="switch"><input id="placeholders" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-            <label class="control-row compact"><span><strong>Keep source page markers</strong></span><span class="switch"><input id="preserveMarkers" type="checkbox" checked><i aria-hidden="true"></i></span></label>
-          </fieldset>
-          <details class="advanced control-section">
-            <summary><span><span class="section-index">04</span> Advanced</span><small>OCR and technical limits</small><span class="summary-icon" aria-hidden="true"><svg class="icon"><use href="#icon-chevron-down"></use></svg></span></summary>
+          <details id="advancedOptions" class="advanced control-section">
+            <summary><span><span class="section-index">02</span> Advanced options</span><small>Structure, visuals, math, OCR, processing</small><span class="summary-icon" aria-hidden="true"><svg class="icon"><use href="#icon-chevron-down"></use></svg></span></summary>
             <div class="advanced-content">
-              <label class="control-row compact"><span><strong>Force OCR</strong><small>Apply OCR to every selected page</small></span><span class="switch"><input id="forceOcr" type="checkbox"><i aria-hidden="true"></i></span></label>
-              <div class="field-grid"><label class="field-label" for="ocrLanguage">OCR language<select id="ocrLanguage"><option value="eng">English (bundled)</option></select></label><label class="field-label" for="ocrDpi">Render DPI<input id="ocrDpi" type="number" min="72" max="600" value="300"></label></div>
-              <label class="field-label" for="pdfPassword">PDF password<input id="pdfPassword" type="password" autocomplete="off" placeholder="For encrypted PDFs"></label>
-              <div class="field-grid"><label class="field-label" for="maxFileMb">Max file (MB)<input id="maxFileMb" type="number" min="1" max="4096" value="512"></label><label class="field-label" for="maxPages">Max pages<input id="maxPages" type="number" min="1" max="10000" value="2000"></label></div>
-              <label class="field-label" for="checkpointPages">Checkpoint every<input id="checkpointPages" type="number" min="1" max="100" value="20"><small>Pages per processing batch</small></label>
-              <label class="control-row compact"><span><strong>Strict mode</strong><small>Stop on the first page error</small></span><span class="switch"><input id="strict" type="checkbox"><i aria-hidden="true"></i></span></label>
-              <p class="technical-note">MuPDF WebAssembly and the bundled English OCR model run locally. Bounded batches release memory between checkpoints.</p>
+              <fieldset class="advanced-group">
+                <legend>Structure</legend>
+                <label class="control-row compact"><span><strong>Detect headings</strong></span><span class="switch"><input id="detectHeadings" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Detect tables</strong><small>Recover structured table content</small></span><span class="switch"><input id="detectTables" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Join split paragraphs</strong></span><span class="switch"><input id="joinParagraphs" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Reading order analysis</strong><small>Use page geometry and text order</small></span><span class="switch"><input id="flows" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Remove repeated headers</strong></span><span class="switch"><input id="removeHeaders" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Remove repeated footers</strong></span><span class="switch"><input id="removeFooters" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Normalize task lists</strong></span><span class="switch"><input id="taskLists" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+              </fieldset>
+              <fieldset class="advanced-group">
+                <legend>Visuals</legend>
+                <label class="control-row compact"><span><strong>Preserve visual content</strong><small>Keep figures and formula fallbacks</small></span><span class="switch"><input id="preserveVisuals" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Keep unresolved visuals</strong></span><span class="switch"><input id="placeholders" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Keep source page markers</strong></span><span class="switch"><input id="preserveMarkers" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+              </fieldset>
+              <fieldset class="advanced-group">
+                <legend>Math</legend>
+                <label class="control-row compact"><span><strong>Extract equations</strong><small>Prefer editable math; preserve source when uncertain</small></span><span class="switch"><input id="extractEquations" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+              </fieldset>
+              <fieldset class="advanced-group">
+                <legend>OCR</legend>
+                <label class="control-row compact"><span><strong>Use OCR when needed</strong><small>Read pages without usable embedded text</small></span><span class="switch"><input id="useOcr" type="checkbox" checked><i aria-hidden="true"></i></span></label>
+                <label class="control-row compact"><span><strong>Force OCR</strong><small>Apply OCR to every selected page</small></span><span class="switch"><input id="forceOcr" type="checkbox"><i aria-hidden="true"></i></span></label>
+                <div class="field-grid"><label class="field-label" for="ocrLanguage">OCR language<select id="ocrLanguage"><option value="eng">English (bundled)</option></select></label><label class="field-label" for="ocrDpi">Render DPI<input id="ocrDpi" type="number" min="72" max="600" value="300"></label></div>
+              </fieldset>
+              <fieldset class="advanced-group">
+                <legend>Processing</legend>
+                <label class="field-label" for="pdfPassword">PDF password<input id="pdfPassword" type="password" autocomplete="off" placeholder="For encrypted PDFs"></label>
+                <div class="field-grid"><label class="field-label" for="maxFileMb">Max file (MB)<input id="maxFileMb" type="number" min="1" max="4096" value="512"></label><label class="field-label" for="maxPages">Max pages<input id="maxPages" type="number" min="1" max="10000" value="2000"></label></div>
+                <label class="field-label" for="checkpointPages">Checkpoint every<input id="checkpointPages" type="number" min="1" max="100" value="20"><small>Pages per processing batch</small></label>
+                <label class="control-row compact"><span><strong>Strict mode</strong><small>Stop on the first page error</small></span><span class="switch"><input id="strict" type="checkbox"><i aria-hidden="true"></i></span></label>
+                <p class="technical-note">MuPDF WebAssembly and the bundled English OCR model run locally. Bounded batches release memory between checkpoints.</p>
+              </fieldset>
             </div>
           </details>
           <details class="workspace-tools control-section"><summary><span>Workspace data</span><small>Checkpoint controls</small><span class="summary-icon" aria-hidden="true"><svg class="icon"><use href="#icon-chevron-down"></use></svg></span></summary><div class="inline-actions"><button id="exportWorkspaceButton" class="text-button" type="button">Export checkpoint</button><button id="clearWorkspaceButton" class="text-button danger-text" type="button">Forget saved data</button><small>To clear the app’s full local cache, use Reset local data on the welcome screen.</small></div></details>
         </div>
         <div class="action-dock">
-          <button id="extractButton" class="primary" type="button"><span id="extractButtonLabel">Extract document</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow-right"></use></svg></button>
+          <button id="extractButton" class="primary" type="button"><span id="extractButtonLabel">Start extraction</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow-right"></use></svg></button>
         </div>
       </aside>
       <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="Close settings"></button><button id="inspectorBackdrop" class="inspector-backdrop" type="button" aria-label="Close quality and export"></button>

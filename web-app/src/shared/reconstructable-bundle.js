@@ -1,5 +1,6 @@
 import { strToU8, zipSync } from "fflate";
 import { chartIRExportSidecars } from "./chart-rendering.js";
+import { MATH_IR_LIMITS } from "./semantic-ir.js";
 import { routeVisualOutput, sanitizeGeneratedSvgMarkup } from "./visual-rendering.js";
 
 export const RECONSTRUCTABLE_BUNDLE_VERSION = 1;
@@ -69,6 +70,62 @@ function bytes(value) {
   if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   if (typeof value === "string") return stringBytes(value);
   return new Uint8Array();
+}
+
+function binaryDescriptor(value) {
+  if (value instanceof ArrayBuffer) return { omitted: "binary", bytes: value.byteLength };
+  if (ArrayBuffer.isView(value)) return { omitted: "binary", bytes: value.byteLength };
+  return null;
+}
+
+function metadataOnly(value) {
+  const binary = binaryDescriptor(value);
+  if (binary) return binary;
+  if (Array.isArray(value)) return value.map((item) => metadataOnly(item));
+  if (!isPlainObject(value)) return value;
+  const output = {};
+  for (const [key, child] of Object.entries(value)) output[key] = metadataOnly(child);
+  return output;
+}
+
+function boundedMathMetadata(value) {
+  if (!isPlainObject(value)) return null;
+  const nodes = Array.isArray(value.nodes) ? value.nodes : [];
+  if (nodes.length > MATH_IR_LIMITS.maxNodes) {
+    return {
+      preserved: true,
+      omitted: "math-ir-limit",
+      nodeCount: nodes.length,
+      maxNodes: MATH_IR_LIMITS.maxNodes,
+    };
+  }
+  const serialized = JSON.stringify(value);
+  if (serialized.length > MATH_IR_LIMITS.maxStringLength) {
+    return {
+      preserved: true,
+      omitted: "math-ir-limit",
+      serializedCharacters: serialized.length,
+      maxStringLength: MATH_IR_LIMITS.maxStringLength,
+    };
+  }
+  return metadataOnly(value);
+}
+
+function semanticAssetSafetyRecord(asset) {
+  if (!isPlainObject(asset)) return asset;
+  const output = {};
+  for (const [key, value] of Object.entries(asset)) {
+    if (key === "candidate") {
+      output[key] = metadataOnly(value);
+    } else if (key === "parsed" && isPlainObject(value)) {
+      output[key] = { ...metadataOnly(value), mathir: boundedMathMetadata(value.mathir) };
+    } else if (key === "mathIR" || key === "mathir") {
+      output[key] = boundedMathMetadata(value);
+    } else {
+      output[key] = metadataOnly(value);
+    }
+  }
+  return output;
 }
 
 function sanitizedSvgBytes(value) {
@@ -256,8 +313,8 @@ function addSemanticFiles(files, entry, asset, sourceAssets, limits) {
   if (asset?.mathml) entry.reconstruction.paths.push(addFile(files, `equations/${token}.mathml`, asset.mathml, limits));
   if (asset?.candidate || asset?.parsed?.mathir) {
     entry.reconstruction.paths.push(addJson(files, `assets/reconstructed/${token}.equation.json`, {
-      candidate: asset.candidate || null,
-      mathIR: asset.parsed?.mathir || asset.mathIR || null,
+      candidate: metadataOnly(asset.candidate || null),
+      mathIR: boundedMathMetadata(asset.parsed?.mathir || asset.mathIR || null),
     }, limits));
   }
 }
@@ -285,7 +342,15 @@ export async function buildReconstructableBundle({
   const manifestAssets = [];
   const usedTokens = new Set();
   for (const asset of semanticAssets(assets, reviewItems)) {
-    assertSafeStructure(asset, `Bundle asset ${asset?.id || "unknown"}`, limits);
+    // Validate the metadata envelope, not recursive AST objects and binary
+    // payloads that already have dedicated asset paths. This keeps a malformed
+    // equation from aborting an otherwise valid document bundle while still
+    // enforcing the normal structured-data and binary resource ceilings.
+    assertSafeStructure(
+      semanticAssetSafetyRecord(asset),
+      `Bundle asset ${asset?.id || "unknown"}`,
+      limits,
+    );
     const baseToken = safeToken(asset.id);
     let token = baseToken;
     let suffix = 2;

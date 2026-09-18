@@ -12,10 +12,12 @@
         "dev": "vite",
         "prebuild": "npm run brand:sync && npm run native:deps",
         "build": "vite build",
+        "lint": "node ./scripts/quality-check.mjs lint",
         "prepreview": "npm run brand:sync && npm run native:deps",
         "preview": "vite preview",
         "pretest": "npm run brand:sync && npm run native:deps",
-        "test": "vitest run"
+        "test": "vitest run",
+        "typecheck": "node ./scripts/quality-check.mjs typecheck"
     },
     "dependencies": {
         "@tesseract.js-data/eng": "^1.0.0",

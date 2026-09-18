@@ -61,7 +61,7 @@ if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location
 const $ = (id) => document.getElementById(id);
 // OCR runtime cache and structural recovery changed in this release. Existing
 // checkpoints must not be presented as results from the current pipeline.
-const EXTRACTION_VERSION = 12;
+const EXTRACTION_VERSION = 14;
 const state = {
   fileName: "",
   fileSize: 0,
@@ -77,6 +77,7 @@ const state = {
   options: {},
   logs: [],
   warnings: [],
+  selection: { mode: "all", pages: [] },
   startedAt: null,
   audit: { status: "pass", issues: [] },
   engine: "mupdf-wasm",
@@ -274,7 +275,7 @@ function setWorking(value) {
   $("extractButton").disabled = value;
   $("extractButtonLabel").textContent = value
     ? "Extraction in progress"
-    : "Extract document";
+    : "Start extraction";
   $("pauseButton").classList.toggle("hidden", !value);
   $("cancelButton").classList.toggle("hidden", !value);
   $("workspace").setAttribute("aria-busy", String(value));
@@ -363,19 +364,85 @@ async function waitForCheckpointWrites() {
   await Promise.allSettled([...state.checkpointWrites]);
   if (state.checkpointError) throw state.checkpointError;
 }
+
+function documentComplexity() {
+  if (!state.pageCount) return "Markdown source";
+  if (state.pageCount >= 500 || state.fileSize >= 10 * 1048576) return "Complex document";
+  if (state.pageCount >= 100 || state.fileSize >= 5 * 1048576) return "Medium document";
+  return "Simple document";
+}
+
+function syncDocumentSummary() {
+  const pages = state.pageCount ? `${state.pageCount.toLocaleString()} pages` : "—";
+  const size = state.fileSize ? `${(state.fileSize / 1048576).toFixed(1)} MB` : "—";
+  const pageNode = $("documentPageCount");
+  const sizeNode = $("documentFileSize");
+  const complexityNode = $("documentComplexity");
+  if (pageNode) pageNode.textContent = state.pageCount ? state.pageCount.toLocaleString() : "—";
+  if (sizeNode) sizeNode.textContent = state.fileSize ? size : "—";
+  if (complexityNode) complexityNode.textContent = documentComplexity();
+  return { pages, size };
+}
+
+function selectedScopeMode() {
+  return (
+    document.querySelector("input[name=rangeMode]:checked")?.value || "all"
+  );
+}
+
+function syncDocumentScope() {
+  const pageRange = $("pageRange");
+  const summary = $("documentScopeSummary");
+  const custom = selectedScopeMode() === "custom";
+  if (pageRange) pageRange.disabled = !custom;
+  if (!summary) return;
+
+  if (!state.pageCount) {
+    summary.textContent = custom
+      ? "Open a PDF before entering a range."
+      : "All pages will be selected when a PDF is opened.";
+    return;
+  }
+  if (!custom) {
+    summary.textContent = `All ${state.pageCount.toLocaleString()} pages selected.`;
+    pageRange?.removeAttribute("aria-invalid");
+    return;
+  }
+  try {
+    const pages = parsePageRange(pageRange?.value || "", state.pageCount);
+    summary.textContent = `${pages.length.toLocaleString()} of ${state.pageCount.toLocaleString()} pages selected.`;
+    pageRange?.removeAttribute("aria-invalid");
+  } catch {
+    summary.textContent = "Enter a valid range, for example 1–5, 8, 12–20.";
+    pageRange?.setAttribute("aria-invalid", "true");
+  }
+}
+
+function resetDocumentScope() {
+  const all = document.querySelector('input[name="rangeMode"][value="all"]');
+  const custom = document.querySelector('input[name="rangeMode"][value="custom"]');
+  if (all) all.checked = true;
+  if (custom) custom.checked = false;
+  if ($("pageRange")) $("pageRange").value = "";
+  state.selection = { mode: "all", pages: [] };
+  syncDocumentScope();
+}
+
 function activateWorkspace() {
+  const summary = syncDocumentSummary();
+  syncDocumentScope();
   $("welcome").classList.add("hidden");
   $("workspace").classList.remove("hidden");
   $("fileName").textContent = state.fileName;
   $("fileMeta").textContent =
-    `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`;
+    `${summary.pages} · ${summary.size}`;
   $("topFileName").textContent = state.fileName || "Markdown workspace";
   $("topFileMeta").textContent = state.pageCount
     ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
     : "Review and export imported Markdown";
   $("workspaceDocumentName").textContent = state.fileName || "Review, refine, export";
   $("workspaceDocumentMeta").textContent = state.pageCount
-    ? `${state.pageCount} pages · ${(state.fileSize / 1048576).toFixed(1)} MB`
+    ? `${summary.pages} · ${summary.size}`
     : "Review and export imported Markdown";
   closeSettingsSheet();
   closeInspectorSheet();
@@ -424,10 +491,12 @@ async function openFile(file) {
       markdown: "",
       logs: [],
       warnings: [],
+      selection: { mode: "all", pages: [] },
       startedAt: new Date().toISOString(),
       audit: { status: "pass", issues: [] },
     });
     await preparePdf(bytes);
+    resetDocumentScope();
     const max = Number($("maxPages").value) || 2000;
     if (state.pageCount > max)
       throw new Error(
@@ -462,11 +531,25 @@ async function openFile(file) {
   }
 }
 function selectedPages() {
-  const custom =
-    document.querySelector("input[name=rangeMode]:checked").value === "custom";
-  return custom
+  if (!state.pageCount) throw new Error("Open a PDF before starting extraction.");
+  const custom = selectedScopeMode() === "custom";
+  const pages = custom
     ? parsePageRange($("pageRange").value, state.pageCount)
     : Array.from({ length: state.pageCount }, (_, i) => i + 1);
+  state.selection = { mode: custom ? "custom" : "all", pages: [...pages] };
+  syncDocumentScope();
+  return pages;
+}
+
+function selectedPageNumbers() {
+  if (state.selection?.mode === "all" && state.pageCount)
+    return Array.from({ length: state.pageCount }, (_, index) => index + 1);
+  if (Array.isArray(state.selection?.pages) && state.selection.pages.length)
+    return [...state.selection.pages];
+  return Object.keys(state.pages || {})
+    .map(Number)
+    .filter(Number.isInteger)
+    .sort((a, b) => a - b);
 }
 function runBatch(batch, wanted) {
   return new Promise((resolve, reject) => {
@@ -478,14 +561,15 @@ function runBatch(batch, wanted) {
     );
     state.worker = worker;
     let settled = false;
-    const finish = (error) => {
+    const failedPages = new Set();
+    const finish = (error, result = { failedPages: [...failedPages] }) => {
       if (settled) return;
       settled = true;
       clearTimeout(startupTimeout);
       worker.terminate();
       state.worker = null;
       state.abortBatch = null;
-      error ? reject(error) : resolve();
+      error ? reject(error) : resolve(result);
     };
     const startupTimeout = setTimeout(
       () =>
@@ -527,6 +611,7 @@ function runBatch(batch, wanted) {
         const checkpoint = {
           page: data.page,
           text: data.text,
+          documentIR: data.documentIR || null,
           bodySize: data.bodySize,
           assets: data.assets || [],
           edges: data.edges || {},
@@ -571,11 +656,15 @@ function runBatch(batch, wanted) {
         );
       }
       if (data.type === "page-error") {
-        state.warnings.push(data);
+        failedPages.add(data.page);
+        state.warnings = state.warnings.filter(
+          (warning) => !(warning?.type === "page-error" && warning.page === data.page),
+        );
+        state.warnings.push({ ...data, retryable: true });
         log(
           "page-error",
-          `Skipped page ${data.page}`,
-          { error: data.message },
+          `Page ${data.page} failed; it will be retried once`,
+          { error: data.message, retryable: true },
           "warning",
         );
       }
@@ -642,6 +731,7 @@ async function extract() {
     1,
     Math.min(100, Number($("checkpointPages").value) || 20),
   );
+  const retriedPages = new Set();
   log("extract-start", "Starting browser extraction", {
     selectedPages: wanted.length,
     resumedPages: wanted.length - remaining.length,
@@ -658,7 +748,30 @@ async function extract() {
         { firstPage: batch[0], lastPage: batch.at(-1), pages: batch.length },
         "debug",
       );
-      await runBatch(batch, wanted);
+      const result = await runBatch(batch, wanted);
+      const retryPages = result.failedPages.filter(
+        (page) => !retriedPages.has(page),
+      );
+      if (retryPages.length) {
+        retryPages.forEach((page) => retriedPages.add(page));
+        log(
+          "page-retry",
+          "Retrying failed pages in an isolated worker batch",
+          { pages: retryPages },
+          "warning",
+        );
+        const retryResult = await runBatch(retryPages, wanted);
+        const recovered = retryPages.filter(
+          (page) => !retryResult.failedPages.includes(page),
+        );
+        if (recovered.length) {
+          state.warnings = state.warnings.filter(
+            (warning) =>
+              !(warning?.type === "page-error" && recovered.includes(warning.page)),
+          );
+          log("page-retry", "Recovered failed pages", { pages: recovered });
+        }
+      }
       await waitForCheckpointWrites();
       log("checkpoint-write", "Extraction batch committed", {
         completedPages: wanted.filter((page) => state.pages[page]).length,
@@ -679,6 +792,8 @@ async function extract() {
     await persist();
     log("complete", "Extraction complete", {
       processed: Object.keys(state.pages).length,
+      selectedPages: wanted.length,
+      sourcePages: state.pageCount,
       warnings: state.warnings.length,
       quality: state.audit.status,
       seconds: (Date.now() - Date.parse(state.startedAt)) / 1000,
@@ -723,6 +838,7 @@ async function stop(cancel = false) {
         extractionVersion: EXTRACTION_VERSION,
         engine: state.engine,
         reviewQueue: [],
+        selection: state.selection,
       },
       state.pdfBytes,
     );
@@ -764,10 +880,18 @@ function updateOutput() {
     Object.values(state.pages),
     state.markdown,
     state.warnings,
+    {
+      sourcePages: state.pageCount,
+      selectedPages: selectedPageNumbers().length,
+      mode: state.selection?.mode || "unknown",
+    },
   );
+  const processedPages = Object.keys(state.pages).length;
+  const sourcePages = state.pageCount || processedPages;
+  const selectedPagesCount = selectedPageNumbers().length;
   const issueCount = state.warnings.length + state.audit.issues.length;
   $("documentStats").textContent = enabled
-    ? `${m.words.toLocaleString()} words · ${Object.keys(state.pages).length} pages · ${state.audit.status}`
+    ? `${m.words.toLocaleString()} words · ${processedPages.toLocaleString()} of ${sourcePages.toLocaleString()} pages · ${state.audit.status}`
     : "";
   const statusClass = String(state.audit.status)
     .toLowerCase()
@@ -775,7 +899,7 @@ function updateOutput() {
   $("qualityBadge").className = `status-badge ${enabled ? statusClass : "neutral"}`;
   $("qualityBadge").textContent = enabled ? state.audit.status : "Waiting";
   $("qualityReport").innerHTML =
-    `<div class="metric-card metric-status"><dt>Quality status</dt><dd>${state.audit.status}</dd></div><div class="metric-card"><dt>Pages</dt><dd>${Object.keys(state.pages).length}</dd></div><div class="metric-card"><dt>Words</dt><dd>${m.words.toLocaleString()}</dd></div><div class="metric-card${issueCount ? " quality-issue warning" : ""}"><dt>Issues</dt><dd>${issueCount}</dd></div><div class="metric-card"><dt>Headings</dt><dd>${m.headings}</dd></div><div class="metric-card"><dt>Tables</dt><dd>${m.tables}</dd></div><div class="metric-card"><dt>Equations</dt><dd>${m.equations}</dd></div><div class="metric-card"><dt>Visuals</dt><dd>${m.sourceVisuals}</dd></div>${state.audit.issues.map((issue) => `<div class="metric-card quality-issue ${issue.severity || "warning"}"><dt>${issue.code}</dt><dd>${issue.count}</dd></div>`).join("")}`;
+    `<div class="metric-card metric-status"><dt>Quality status</dt><dd>${state.audit.status}</dd></div><div class="metric-card"><dt>Pages</dt><dd>${processedPages.toLocaleString()} / ${sourcePages.toLocaleString()}</dd></div><div class="metric-card"><dt>Selected</dt><dd>${selectedPagesCount.toLocaleString()}</dd></div><div class="metric-card"><dt>Words</dt><dd>${m.words.toLocaleString()}</dd></div><div class="metric-card${issueCount ? " quality-issue warning" : ""}"><dt>Issues</dt><dd>${issueCount}</dd></div><div class="metric-card"><dt>Headings</dt><dd>${m.headings}</dd></div><div class="metric-card"><dt>Tables</dt><dd>${m.tables}</dd></div><div class="metric-card"><dt>Equations</dt><dd>${m.equations}</dd></div><div class="metric-card"><dt>Visuals</dt><dd>${m.sourceVisuals}</dd></div>${state.audit.issues.map((issue) => `<div class="metric-card quality-issue ${issue.severity || "warning"}"><dt>${issue.code}</dt><dd>${issue.count}</dd></div>`).join("")}`;
   renderReviewQueue();
   renderSelectedReviewItem();
   renderMarkdown();
@@ -870,6 +994,7 @@ async function persist() {
       options: state.options,
       warnings: state.warnings,
       reviewQueue: state.reviewQueue,
+      selection: state.selection,
     });
 }
 async function restore(value) {
@@ -878,6 +1003,10 @@ async function restore(value) {
   Object.assign(state, value);
   state.logs = value.logs || [];
   state.warnings = value.warnings || [];
+  state.selection = value.selection || {
+    mode: "unknown",
+    pages: Object.keys(state.pages || {}).map(Number),
+  };
   state.reviewQueue = Array.isArray(value.reviewQueue) ? value.reviewQueue.map(normalizeReviewItem) : [];
   if (value.extractionVersion !== EXTRACTION_VERSION) {
     state.pages = {};
@@ -889,6 +1018,13 @@ async function restore(value) {
     });
   }
   await preparePdf(state.pdfBytes);
+  const restoredSelection = state.selection;
+  const restoredMode = restoredSelection?.mode === "custom" ? "custom" : "all";
+  document.querySelector(`input[name="rangeMode"][value="${restoredMode}"]`).checked = true;
+  if (restoredMode === "custom") {
+    $("pageRange").value = (restoredSelection.pages || []).join(", ");
+  }
+  syncDocumentScope();
   if (value.exportedAt) {
     await startWorkspace(
       {
@@ -901,6 +1037,7 @@ async function restore(value) {
         extractionVersion: EXTRACTION_VERSION,
         engine: state.engine,
         reviewQueue: state.reviewQueue,
+        selection: state.selection,
       },
       state.pdfBytes,
     );
@@ -938,6 +1075,7 @@ function snapshot() {
     warnings: state.warnings,
     logs: state.logs,
     reviewQueue: state.reviewQueue,
+    selection: state.selection,
   };
 }
 function report() {
@@ -952,6 +1090,11 @@ function report() {
       pages: state.pageCount,
     },
     processedPages: Object.keys(state.pages).map(Number),
+    selection: {
+      mode: state.selection?.mode || "unknown",
+      selectedPages: selectedPageNumbers(),
+      sourcePages: state.pageCount,
+    },
     options: state.options,
     metrics: state.metrics,
     audit: state.audit,
@@ -1393,8 +1536,9 @@ function bind() {
     .querySelectorAll("input[name=rangeMode]")
     .forEach(
       (el) =>
-        (el.onchange = () => ($("pageRange").disabled = el.value !== "custom")),
+        (el.onchange = () => syncDocumentScope()),
     );
+  $("pageRange").oninput = () => syncDocumentScope();
   $("extractButton").onclick = extract;
   $("pauseButton").onclick = () => stop(false);
   $("cancelButton").onclick = () => stop(true);
@@ -1443,6 +1587,7 @@ function bind() {
       markdown: await file.text(),
       logs: [],
       warnings: [],
+      selection: { mode: "markdown", pages: [] },
     });
     activateWorkspace();
     log("markdown-open", "Markdown opened for review and DOCX export", {

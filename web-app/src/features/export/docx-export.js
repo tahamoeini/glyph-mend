@@ -21,6 +21,7 @@ import {
   Packer,
   PageBreak,
   Paragraph,
+  SectionType,
   Table,
   TableCell,
   TableRow,
@@ -29,7 +30,14 @@ import {
 } from "docx";
 
 import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
+import { repairDisplayMathProse } from "../extraction/cleanup.js";
 import { fencedVisualParagraph, visualParagraph } from "./visual-docx.js";
+import { markdownTableRows } from "./markdown-table.js";
+import { normalizeExportMarkdown } from "./markdown-normalize.js";
+import {
+  markdownToStreamingDocx,
+  shouldUseStreamingDocx,
+} from "./streaming-docx.js";
 
 const headingMap = {
   1: HeadingLevel.HEADING_1,
@@ -39,6 +47,39 @@ const headingMap = {
   5: HeadingLevel.HEADING_5,
   6: HeadingLevel.HEADING_6,
 };
+
+export const DOCX_EXPORT_LIMITS = Object.freeze({
+  maxBlocksPerSection: 512,
+  maxMathSourceCharacters: 256 * 1024,
+});
+
+function notifyExportWarning(options, warning) {
+  try {
+    options.onWarning?.(warning);
+  } catch {
+    // Export diagnostics must never turn a recoverable block failure into a
+    // document-level failure.
+  }
+}
+
+async function yieldToBrowser() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function safeVisualBlock(factory, source, options, kind) {
+  try {
+    return await factory();
+  } catch (error) {
+    notifyExportWarning(options, {
+      kind,
+      message: error instanceof Error ? error.message : String(error),
+      source: String(source || "").slice(0, 512),
+    });
+    return new Paragraph({
+      children: inlineRuns(source || `[GlyphMend preserved ${kind} block]`),
+    });
+  }
+}
 
 function inlineRuns(source) {
   const text = source
@@ -90,18 +131,15 @@ function sourceVisual(line) {
   return fields;
 }
 function parseTable(lines) {
+  const rows = markdownTableRows(lines);
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: lines
-      .filter((_, i) => i !== 1)
+    rows: rows
       .map(
         (line, i) =>
           new TableRow({
             tableHeader: i === 0,
-            children: line
-              .replace(/^\||\|$/g, "")
-              .split("|")
-              .map(
+            children: line.map(
                 (cell) =>
                   new TableCell({
                     children: [
@@ -589,35 +627,113 @@ function mathComponents(source) {
   if (sequence.length) return sequence;
   return legacyMathComponents(raw);
 }
+
+function equationParagraph(source, options) {
+  const raw = String(source || "").trim();
+  if (raw.length > DOCX_EXPORT_LIMITS.maxMathSourceCharacters) {
+    notifyExportWarning(options, {
+      kind: "equation",
+      message: `Equation source exceeds the ${DOCX_EXPORT_LIMITS.maxMathSourceCharacters}-character export limit; source text was preserved.`,
+    });
+    return new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: raw, italics: true })],
+    });
+  }
+  try {
+    return new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new WordMath({ children: mathComponents(raw) })],
+    });
+  } catch (error) {
+    notifyExportWarning(options, {
+      kind: "equation",
+      message: error instanceof Error ? error.message : String(error),
+      source: raw.slice(0, 512),
+      fallback: "source-text",
+    });
+    return new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: raw, italics: true })],
+    });
+  }
+}
+
 export async function markdownToDocx(
   markdown,
   title = "Document",
   options = {},
 ) {
-  const blocks = [];
-  const lines = markdown.split("\n");
+  if (shouldUseStreamingDocx(markdown, options))
+    return markdownToStreamingDocx(markdown, title, options);
+
+  const maxBlocksPerSection = Math.max(
+    32,
+    Number(options.maxBlocksPerSection) || DOCX_EXPORT_LIMITS.maxBlocksPerSection,
+  );
+  let blocks = [];
+  let sectionCount = 0;
+  let document = null;
+  const lines = normalizeExportMarkdown(repairDisplayMathProse(markdown), {
+    pageBreaks: !!options.pageBreaks,
+  }).split("\n");
   let inMath = false,
     math = [];
   const assets = options.assets || new Map();
+
+  async function pushBlock(block) {
+    if (!block) return;
+    blocks.push(block);
+    if (blocks.length < maxBlocksPerSection) return;
+    await flushBlocks();
+  }
+
+  async function flushBlocks() {
+    if (!blocks.length) return;
+    const children = blocks;
+    blocks = [];
+    const properties = sectionCount ? { type: SectionType.CONTINUOUS } : {};
+    if (!document) {
+      document = new Document({
+        title,
+        numbering: {
+          config: [
+            {
+              reference: "numbered",
+              levels: [
+                {
+                  level: 0,
+                  format: "decimal",
+                  text: "%1.",
+                  alignment: AlignmentType.START,
+                },
+              ],
+            },
+          ],
+        },
+        styles: { default: { document: { run: { font: "Aptos", size: 21 } } } },
+        sections: [{ properties, children }],
+      });
+    } else {
+      document.addSection({ properties, children });
+    }
+    sectionCount += 1;
+    await options.onProgress?.({ section: sectionCount, blocks: children.length });
+    await yieldToBrowser();
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i],
       trim = line.trim();
     if (/^<!--\s*page:/.test(trim)) {
-      if (options.pageBreaks && blocks.length)
-        blocks.push(new Paragraph({ children: [new PageBreak()] }));
+      if (options.pageBreaks && (blocks.length || sectionCount))
+        await pushBlock(new Paragraph({ children: [new PageBreak()] }));
       continue;
     }
     if (/^<!--/.test(trim)) continue;
     if (trim === "$$") {
       if (inMath) {
-        blocks.push(
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: [
-              new WordMath({ children: mathComponents(math.join(" ")) }),
-            ],
-          }),
-        );
+        await pushBlock(equationParagraph(math.join(" "), options));
         math = [];
       }
       inMath = !inMath;
@@ -627,12 +743,19 @@ export async function markdownToDocx(
       math.push(trim);
       continue;
     }
-    const fence = /^```([A-Za-z0-9_-]+)\s*$/.exec(trim);
+    const fence = /^(```|~~~)([A-Za-z0-9_-]+)?\s*$/.exec(trim);
     if (fence) {
+      const delimiter = fence[1];
+      const language = fence[2] || "text";
       const sourceLines = [];
-      while (i + 1 < lines.length && lines[i + 1].trim() !== "```") sourceLines.push(lines[++i]);
-      if (lines[i + 1]?.trim() === "```") i += 1;
-      blocks.push(await fencedVisualParagraph(fence[1], sourceLines.join("\n"), options));
+      while (i + 1 < lines.length && lines[i + 1].trim() !== delimiter) sourceLines.push(lines[++i]);
+      if (lines[i + 1]?.trim() === delimiter) i += 1;
+      await pushBlock(await safeVisualBlock(
+        () => fencedVisualParagraph(language, sourceLines.join("\n"), options),
+        sourceLines.join("\n"),
+        options,
+        `fenced-${language}`,
+      ));
       continue;
     }
     if (
@@ -641,12 +764,12 @@ export async function markdownToDocx(
     ) {
       const table = [line, lines[++i]];
       while (/^\|.*\|$/.test(lines[i + 1] || "")) table.push(lines[++i]);
-      blocks.push(parseTable(table));
+      await pushBlock(parseTable(table));
       continue;
     }
     const heading = /^(#{1,6})\s+(.+)$/.exec(trim);
     if (heading) {
-      blocks.push(
+      await pushBlock(
         new Paragraph({
           heading: headingMap[heading[1].length],
           children: inlineRuns(heading[2]),
@@ -656,14 +779,14 @@ export async function markdownToDocx(
     }
     const list = /^[-*+]\s+(.+)$/.exec(trim);
     if (list) {
-      blocks.push(
+      await pushBlock(
         new Paragraph({ bullet: { level: 0 }, children: inlineRuns(list[1]) }),
       );
       continue;
     }
     const numbered = /^\d+[.)]\s+(.+)$/.exec(trim);
     if (numbered) {
-      blocks.push(
+      await pushBlock(
         new Paragraph({
           numbering: { reference: "numbered", level: 0 },
           children: inlineRuns(numbered[1]),
@@ -673,11 +796,16 @@ export async function markdownToDocx(
     }
     const visual = sourceVisual(trim);
     if (visual) {
-      blocks.push(await visualParagraph(visual, assets, options));
+      await pushBlock(await safeVisualBlock(
+        () => visualParagraph(visual, assets, options),
+        trim,
+        options,
+        "source-visual",
+      ));
       continue;
     }
     if (/^\[VISUAL_PLACEHOLDER/.test(trim)) {
-      blocks.push(
+      await pushBlock(
         new Paragraph({
           alignment: AlignmentType.CENTER,
           children: [
@@ -696,14 +824,14 @@ export async function markdownToDocx(
       while (
         i + 1 < lines.length &&
         lines[i + 1].trim() &&
-        !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||\$\$|<!--|\[(?:VISUAL_|SOURCE_))/.test(
+        !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||\$\$|```|~~~|<!--|\[(?:VISUAL_|SOURCE_))/.test(
           lines[i + 1].trim(),
         )
       )
         paragraph.push(lines[++i]);
       const text = joinSoftLines(paragraph);
       if (text)
-        blocks.push(
+        await pushBlock(
           new Paragraph({
             children: inlineRuns(text),
             spacing: { after: 120 },
@@ -712,25 +840,12 @@ export async function markdownToDocx(
         );
     }
   }
-  const doc = new Document({
-    title,
-    numbering: {
-      config: [
-        {
-          reference: "numbered",
-          levels: [
-            {
-              level: 0,
-              format: "decimal",
-              text: "%1.",
-              alignment: AlignmentType.START,
-            },
-          ],
-        },
-      ],
-    },
-    styles: { default: { document: { run: { font: "Aptos", size: 21 } } } },
-    sections: [{ properties: {}, children: blocks }],
-  });
-  return Packer.toBlob(doc);
+  await flushBlocks();
+  if (!document) {
+    document = new Document({
+      title,
+      sections: [{ properties: {}, children: [new Paragraph("")] }],
+    });
+  }
+  return Packer.toBlob(document);
 }

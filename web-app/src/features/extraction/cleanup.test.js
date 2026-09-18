@@ -11,6 +11,7 @@ import {
   parsePageRange,
   plainText,
   qualityAudit,
+  classifyRunningMatter,
   removeRunningMatter,
 } from "./cleanup.js";
 describe("page ranges", () => {
@@ -34,6 +35,40 @@ describe("cleanup", () => {
       "Body 2",
       "Body 3",
     ]);
+  });
+  it("classifies repeated edges while keeping structural chapter headings", () => {
+    const pages = [1, 2, 3].map((page) => ({
+      page,
+      text: `BOOK TITLE ${page}\nChapter ${page}\nBody ${page}\n${page}`,
+      edges: {
+        headers: [
+          { text: `BOOK TITLE ${page}`, position: "header", fontSize: 8 },
+          { text: `Chapter ${page}`, position: "header", fontSize: 14 },
+        ],
+        footers: [{ text: `${page}`, position: "footer" }],
+      },
+    }));
+    const decisions = classifyRunningMatter(pages, { headers: true, footers: true });
+    expect(decisions[0].decisions).toContainEqual(
+      expect.objectContaining({ action: "REMOVE", position: "header" }),
+    );
+    expect(decisions[0].decisions).toContainEqual(
+      expect.objectContaining({ action: "REMOVE", position: "footer" }),
+    );
+    expect(decisions[0].decisions).toContainEqual(
+      expect.objectContaining({ text: "Chapter 1", action: "KEEP" }),
+    );
+    const merged = classifyRunningMatter(
+      [1, 2, 3].map((page) => ({
+        page,
+        text: `BOOK TITLE ${page} CHAPTER\nBody ${page}`,
+        edges: { headers: [`BOOK TITLE ${page} CHAPTER`], footers: [] },
+      })),
+      { headers: true, footers: false },
+    );
+    expect(merged[0].decisions).toContainEqual(
+      expect.objectContaining({ action: "MERGE", position: "header" }),
+    );
   });
   it("uses geometry candidates even when a header is not the first text block", () => {
     const pages = [1, 2, 3].map((page) => ({
@@ -137,6 +172,10 @@ describe("cleanup", () => {
     expect(headingFor("This ordinary sentence fragment", 18, 10)).toBeNull();
     expect(headingFor("2.3 Capacity Control", 12, 10)).toBe(2);
   });
+  it("uses bold font metadata as heading evidence", () => {
+    expect(headingFor("Capacity Control", 10, 10, { weight: "bold" })).toBe(1);
+    expect(headingFor("ordinary sentence", 10, 10, { weight: "regular" })).toBeNull();
+  });
   it("recognizes conventional front/back matter headings conservatively", () => {
     expect(headingFor("Contents", 11, 10)).toBe(1);
     expect(headingFor("References", 11, 10)).toBe(1);
@@ -148,12 +187,11 @@ describe("cleanup", () => {
       "# Chapter 2\n\n## Revenue Controls\n\n## 2.3 Capacity Control\n\n### 2.3.1 Nested Model",
     );
   });
-  it("joins a lowercase continuation across a page marker", () => {
+  it("joins a lowercase continuation when page markers are not requested", () => {
     const value =
       "This is a sufficiently long sentence which continues\n\n<!-- page: 2 -->\n\nonto the next source page";
-    expect(joinPageParagraphs(value)).toContain(
-      "continues <!-- page: 2 --> onto",
-    );
+    expect(joinPageParagraphs(value)).toContain("continues onto");
+    expect(joinPageParagraphs(value)).not.toContain("<!-- page: 2 -->");
   });
 
   it("repairs line-wrap hyphens without touching code fences", () => {
@@ -178,6 +216,42 @@ describe("cleanup", () => {
       "This is higher than given",
     ].join("\n"));
   });
+  it("keeps valid display-math delimiters paired across later blocks", () => {
+    const displayMath = String.fromCharCode(36).repeat(2);
+    const source = [
+      displayMath,
+      "cameraConfigurationVersion = 103",
+      displayMath,
+      "Then creates:",
+      displayMath,
+      "desiredVersion = 103",
+      displayMath,
+      "If WebSocket exists:",
+    ].join("\n");
+    expect(repairDisplayMathProse(source)).toBe(source);
+  });
+  it("does not let prose thresholds or page content swallow the document as math", () => {
+    const displayMath = String.fromCharCode(36).repeat(2);
+    expect(
+      repairDisplayMathProse(
+        [displayMath, "last heartbeat > 180 sec", displayMath].join("\n"),
+      ),
+    ).toBe("last heartbeat > 180 sec");
+    expect(
+      repairDisplayMathProse(
+        [displayMath, "Security Per Transport # HTTPS TLS", displayMath].join("\n"),
+      ),
+    ).toBe("Security Per Transport # HTTPS TLS");
+    expect(
+      repairDisplayMathProse(
+        [
+          displayMath,
+          "Identity may be validated here. desiredVersion = 103. If WebSocket exists, keep the connection alive. <!-- page: 35 -->",
+          displayMath,
+        ].join("\n"),
+      ),
+    ).not.toContain(displayMath);
+  });
   it("does not report ordinary compound words as broken wrap hyphens", () => {
     const audit = qualityAudit([], "single-resource capacity-control", []);
     expect(audit.issues.some((issue) => issue.code === "WRAP_HYPHENS")).toBe(false);
@@ -186,6 +260,17 @@ describe("cleanup", () => {
     expect(
       cleanupDocument([{ page: 2, text: "Hello" }], { preserveMarkers: true }),
     ).toContain("<!-- page: 2 -->"));
+  it("never embeds a preserved page marker inside a paragraph", () => {
+    const result = cleanupDocument(
+      [
+        { page: 1, text: "This is a sufficiently long sentence which continues" },
+        { page: 2, text: "onto the next source page" },
+      ],
+      { joinParagraphs: true, preserveMarkers: true },
+    );
+    expect(result).toContain("continues\n\n<!-- page: 2 -->\n\nonto");
+    expect(result).not.toContain("continues <!-- page: 2 --> onto");
+  });
   it("preserves code and diagram fences while removing running matter", () => {
     const fence = "```";
     const pages = [1, 2, 3].map((page) => ({
@@ -304,5 +389,74 @@ describe("exports", () => {
     const issue = audit.issues.find((item) => item.code === "OCR_ONLY_PAGES");
     expect(issue).toEqual(expect.objectContaining({ pages: [1] }));
     expect(issue.message).not.toMatch(/renditions are retained/i);
+  });
+
+  it("reports embedded PDF font encoding damage for source review", () => {
+    const audit = qualityAudit(
+      [{ page: 1, text: "nia�n", quality: { characters: 5, embeddedTextCorrupt: true } }],
+      "nia�n",
+    );
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "TEXT_ENCODING_DAMAGE", pages: [1] }),
+    );
+  });
+
+  it("exposes bounded confidence, figure preservation, and OCR usage", () => {
+    const audit = qualityAudit(
+      [
+        {
+          page: 1,
+          text: "Native page",
+          quality: {
+            textBlocks: 3,
+            textConfidence: 0.96,
+            tableConfidence: 0.9,
+            equationConfidence: 0.8,
+            figurePreservation: { detected: 2, preserved: 2, sourceEvidence: 1 },
+            ocrApplied: false,
+          },
+        },
+        {
+          page: 2,
+          text: "OCR page",
+          quality: {
+            textBlocks: 3,
+            textConfidence: 0.72,
+            tableConfidence: 0.84,
+            equationConfidence: 0.7,
+            figurePreservation: { detected: 1, preserved: 1, sourceEvidence: 1 },
+            ocrApplied: true,
+          },
+        },
+      ],
+      "Native page\n\nOCR page",
+    );
+    expect(audit.confidence).toEqual({ text: 0.84, table: 0.87, equation: 0.75, layout: null });
+    expect(audit.figurePreservation).toEqual({ detected: 3, preserved: 3, sourceEvidence: 2 });
+    expect(audit.ocrUsage).toMatchObject({ pages: 1, pageNumbers: [2], ratio: 0.5 });
+  });
+
+  it("labels a custom page range as a partial document", () => {
+    const audit = qualityAudit(
+      [{ page: 1, text: "Recovered page", quality: { characters: 14 } }],
+      "Recovered page",
+      [],
+      { sourcePages: 56, selectedPages: 1, mode: "custom" },
+    );
+    expect(audit.coverage).toMatchObject({ sourcePages: 56, selectedPages: 1 });
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "PARTIAL_DOCUMENT", count: 1 }),
+    );
+  });
+
+  it("fails quality audit when damaged source text has no preserved page evidence", () => {
+    const audit = qualityAudit(
+      [{ page: 4, text: "nia�n", quality: { characters: 5, embeddedTextCorrupt: true, sourcePageFallbackFailed: true } }],
+      "nia�n",
+    );
+    expect(audit.status).toBe("needs-review");
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "SOURCE_EVIDENCE_MISSING", pages: [4] }),
+    );
   });
 });

@@ -194,9 +194,16 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
       ((value - rawTop) / rawHeight) * (pageBounds[3] - pageBounds[1])
     );
   };
-  const pageWidth = Math.max(1, maxX - minX);
+  const measuredWidth = Math.max(1, maxX - minX);
   const tocLike = looksLikeContents(allLines);
   const equationRanges = options.equationRanges || [];
+  const mapX = (value) => {
+    if (!Array.isArray(pageBounds)) return value;
+    return (
+      pageBounds[0] +
+      ((value - minX) / measuredWidth) * (pageBounds[2] - pageBounds[0])
+    );
+  };
   const entries = [];
   let paragraph = [];
 
@@ -204,9 +211,17 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
     if (!paragraph.length) return;
     const text = joinLines(paragraph);
     const withMath = inlineMathMarkdown(text);
+    const first = paragraph[0];
+    const last = paragraph.at(-1);
     entries.push({
-      y: mapY(paragraph[0].y0),
-      x: paragraph[0].x0,
+      y: mapY(first.y0),
+      x: mapX(first.x0),
+      bbox: [
+        mapX(first.x0),
+        mapY(first.y0),
+        mapX(Math.max(...paragraph.map((line) => line.x1))),
+        mapY(last.y1),
+      ],
       markdown:
         withMath === text
           ? escapeOcr(text, escapeMarkdown)
@@ -227,6 +242,13 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
         equation.emitted = true;
         entries.push({
           y: mapY(equation.y0),
+          x: mapX(equation.x0 ?? minX),
+          bbox: [
+            mapX(equation.x0 ?? minX),
+            mapY(equation.y0),
+            mapX(equation.x1 ?? maxX),
+            mapY(equation.y1),
+          ],
           kind: equation.fallbackMarker ? "equation-fallback" : "equation",
           markdown:
             equation.fallbackMarker || `$$\n${equation.latex}\n$$`,
@@ -251,7 +273,8 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
       flushParagraph();
       entries.push({
         y: mapY(line.y0),
-        x: line.x0,
+        x: mapX(line.x0),
+        bbox: [mapX(line.x0), mapY(line.y0), mapX(line.x1), mapY(line.y1)],
         markdown: `${"#".repeat(level)} ${escapeOcr(line.text, escapeMarkdown, {
           protectBlockStart: false,
         })}`,
@@ -265,7 +288,7 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
 
     const first = paragraph[0];
     const columnShift =
-      first && Math.abs(line.x0 - first.x0) > Math.max(medianHeight * 3, pageWidth * 0.16);
+      first && Math.abs(line.x0 - first.x0) > Math.max(medianHeight * 3, measuredWidth * 0.16);
     if (
       previous &&
       (line.y0 - previous.y1 > medianHeight * 0.9 || columnShift)

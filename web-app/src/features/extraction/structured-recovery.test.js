@@ -107,6 +107,17 @@ describe("structured text recovery", () => {
     ]);
   });
 
+  it("keeps vertically stacked source images as separate assets", () => {
+    const images = [
+      [348, 159, 492, 216],
+      [348, 223, 392, 309],
+      [348, 316, 408, 388],
+      [348, 388, 405, 460],
+      [348, 460, 396, 532],
+    ];
+    expect(coalesceImageRects(images)).toEqual(images);
+  });
+
   it("replays JSON images omitted by the native walk", () => {
     class Page {
       toStructuredText(options) {

@@ -1,4 +1,8 @@
 import { splitEquationProse } from "./math-markdown.js";
+import {
+  documentIRFromPages,
+  documentIRToMarkdown,
+} from "./document-ir.js";
 
 const PAGE = /^\s*<!--\s*page:\s*(\d+)\s*-->\s*$/;
 const STRUCTURAL =
@@ -37,8 +41,14 @@ export function parsePageRange(input, total) {
   return [...pages].sort((a, b) => a - b);
 }
 
+function edgeText(value) {
+  if (value && typeof value === "object")
+    return String(value.text ?? value.value ?? value.label ?? "");
+  return String(value ?? "");
+}
+
 function plainMarkdownLine(line) {
-  return String(line || "")
+  return edgeText(line)
     .replace(/^\s*#{1,6}\s+/, "")
     .replace(/^\s*>\s?/, "")
     .replace(/\*\*|__|~~|`/g, "")
@@ -186,6 +196,116 @@ function commonEdgeTokens(pages, fromStart, headers, footers) {
   return null;
 }
 
+export const RUNNING_MATTER_ACTIONS = Object.freeze({
+  REMOVE: "REMOVE",
+  KEEP: "KEEP",
+  MERGE: "MERGE",
+});
+
+function structuralEdge(value) {
+  const text = plainMarkdownLine(edgeText(value));
+  return (
+    /^(?:chapter|part|appendix|section|contents|table of contents|list of (?:figures|tables)|preface|acknowledg(?:e)?ments|references|bibliography|index)\b/i.test(
+      text,
+    ) ||
+    /^\d+(?:\.\d+){0,5}\.?\s+[A-Z]/u.test(text)
+  );
+}
+
+function edgeCommonMatch(value, fragment, fromStart) {
+  if (!fragment?.sample) return false;
+  const tokens = plainMarkdownLine(edgeText(value)).split(/\s+/).filter(Boolean);
+  const expected = fragment.sample.split(/\s+/).filter(Boolean);
+  if (tokens.length < expected.length) return false;
+  const candidate = fromStart
+    ? tokens.slice(0, expected.length)
+    : tokens.slice(-expected.length);
+  return candidate.every(
+    (token, index) =>
+      normalizeEdgeToken(token) === normalizeEdgeToken(expected[index]),
+  );
+}
+
+function classifyEdge(value, position, repeated, common) {
+  const text = edgeText(value).trim();
+  const key = signature(text);
+  const pageLabel = isPageLabel(text);
+  const structural = structuralEdge(text);
+  const commonFragment = edgeCommonMatch(value, common, position === "header");
+  const repeatedEdge = repeated.has(key);
+  let action = RUNNING_MATTER_ACTIONS.KEEP;
+  if (structural) action = RUNNING_MATTER_ACTIONS.KEEP;
+  else if (pageLabel || repeatedEdge) action = RUNNING_MATTER_ACTIONS.REMOVE;
+  else if (commonFragment) action = RUNNING_MATTER_ACTIONS.MERGE;
+  const metadata = value && typeof value === "object" ? value : {};
+  const fontSize = Number(metadata.fontSize ?? metadata.size);
+  const fontWeight = metadata.fontWeight ?? metadata.weight;
+  const bbox = Array.isArray(metadata.bbox) ? metadata.bbox.slice(0, 4) : null;
+  const confidence = structural
+    ? 0.93
+    : action === RUNNING_MATTER_ACTIONS.REMOVE
+      ? 0.9
+      : action === RUNNING_MATTER_ACTIONS.MERGE
+        ? 0.82
+        : 0.62;
+  return {
+    position,
+    text,
+    key,
+    action,
+    confidence,
+    signals: {
+      repeated: repeatedEdge,
+      commonFragment,
+      pageLabel,
+      structural,
+      ...(Number.isFinite(fontSize) ? { fontSize } : {}),
+      ...(fontWeight !== undefined ? { fontWeight } : {}),
+      ...(bbox ? { bbox } : {}),
+    },
+  };
+}
+
+/**
+ * Classifies edge candidates before any text is changed. The decision is
+ * intentionally serializable so a quality report can explain why an edge was
+ * removed, kept, or merged. Repetition is evidence, not a blanket deletion
+ * rule: chapter/section edges remain structural content.
+ */
+export function classifyRunningMatter(
+  pages = [],
+  { headers = true, footers = true } = {},
+) {
+  const repeated = repeatedEdgeSignatures(pages, headers, footers);
+  const commonHeader = headers ? commonEdgeTokens(pages, true, headers, footers) : null;
+  const commonFooter = footers ? commonEdgeTokens(pages, false, headers, footers) : null;
+  return pages.map((page) => {
+    const edges = selectedEdges(page, headers, footers);
+    const decisions = [];
+    for (const [position, values, common] of [
+      ["header", edges.headers, commonHeader],
+      ["footer", edges.footers, commonFooter],
+    ]) {
+      const seen = new Set();
+      for (const value of values) {
+        const decision = classifyEdge(value, position, repeated, common);
+        if (!decision.text || seen.has(`${position}:${decision.key}`)) continue;
+        seen.add(`${position}:${decision.key}`);
+        decisions.push(decision);
+      }
+    }
+    return {
+      page: Number(page.page),
+      decisions,
+      summary: {
+        remove: decisions.filter((item) => item.action === RUNNING_MATTER_ACTIONS.REMOVE).length,
+        keep: decisions.filter((item) => item.action === RUNNING_MATTER_ACTIONS.KEEP).length,
+        merge: decisions.filter((item) => item.action === RUNNING_MATTER_ACTIONS.MERGE).length,
+      },
+    };
+  });
+}
+
 function stripCommonEdgeTokens(text, fragment, fromStart) {
   if (!fragment) return text;
   const lines = String(text || "").split("\n");
@@ -243,6 +363,77 @@ function stripEdgeFragment(line, candidates, repeated, fromStart) {
     if (/^\s*(?:#{1,6}|>)?\s*$/.test(result)) return "";
   }
   return result;
+}
+
+function cleanBlockRunningMatter(markdown, decisions) {
+  let lines = String(markdown || "").split("\n");
+  for (const decision of decisions) {
+    if (decision.action === RUNNING_MATTER_ACTIONS.KEEP) continue;
+    const indexes = lines
+      .map((line, index) => (line.trim() ? index : -1))
+      .filter((index) => index >= 0);
+    if (!indexes.length) break;
+    const candidates =
+      decision.position === "header"
+        ? indexes.slice(0, Math.min(3, indexes.length))
+        : indexes.slice(-Math.min(3, indexes.length));
+    for (const index of candidates) {
+      const line = lines[index];
+      if (structuralEdge(line)) continue;
+      const exact = signature(line) === decision.key;
+      const pageLabel = decision.signals.pageLabel && isPageLabel(line);
+      if (decision.action === RUNNING_MATTER_ACTIONS.REMOVE && (exact || pageLabel)) {
+        lines[index] = "";
+        continue;
+      }
+      const cleaned = stripEdgeFragment(
+        line,
+        [decision.text],
+        new Set([decision.key]),
+        decision.position === "header",
+      );
+      if (cleaned !== line) lines[index] = cleaned;
+    }
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Applies previously classified edge decisions to semantic blocks. */
+export function applyRunningMatterToDocumentIR(documentIR, classifications = []) {
+  if (!documentIR || !Array.isArray(documentIR.pages)) return documentIR;
+  const byPage = new Map(
+    classifications.map((value) => [Number(value.page), value]),
+  );
+  return {
+    ...documentIR,
+    pages: documentIR.pages.map((page) => {
+      const classification = byPage.get(Number(page.page));
+      const decisions = classification?.decisions || [];
+      if (!decisions.length) return page;
+      const blocks = (page.blocks || [])
+        .map((block) => {
+          // Running-matter classification must never edit a fenced block. A
+          // diagram or code sample may intentionally contain the same words
+          // as a page header or footer.
+          if (/^\s*(?:```|~~~)/u.test(String(block.markdown || ""))) return block;
+          const markdown = cleanBlockRunningMatter(block.markdown, decisions);
+          return markdown ? { ...block, markdown } : null;
+        })
+        .filter(Boolean);
+      const ids = new Set(blocks.map((block) => block.id));
+      return {
+        ...page,
+        blocks,
+        relationships: (page.relationships || []).filter(
+          (relation) => ids.has(relation.from) && ids.has(relation.to),
+        ),
+        runningMatter: {
+          decisions,
+          summary: classification.summary,
+        },
+      };
+    }),
+  };
 }
 
 export function removeRunningMatter(
@@ -304,9 +495,11 @@ export function removeRunningMatter(
   });
 }
 
-export function headingFor(line, fontSize, bodySize) {
+export function headingFor(line, fontSize, bodySize, font = null) {
   const value = line.trim();
   const words = value.split(/\s+/);
+  const fontWeight = `${font?.weight || ""} ${font?.name || ""} ${font?.style || ""}`;
+  const bold = /bold|semibold|demi|black/i.test(fontWeight);
   if (
     !value ||
     value.length > 140 ||
@@ -331,7 +524,7 @@ export function headingFor(line, fontSize, bodySize) {
       );
     if (
       numberedTitle &&
-      (level > 1 || fontSize >= bodySize * 1.12 || uppercase > 0.72)
+      (level > 1 || fontSize >= bodySize * 1.12 || uppercase > 0.72 || bold)
     )
       return Math.min(6, level);
     return null;
@@ -342,17 +535,17 @@ export function headingFor(line, fontSize, bodySize) {
       value,
     )
   )
-    return fontSize >= bodySize * 1.05 || uppercase > 0.72 ? 1 : null;
+    return fontSize >= bodySize * 1.05 || uppercase > 0.72 || bold ? 1 : null;
   if (/^appendix(?:\s+[A-Z0-9]+)?(?:\s+.+)?$/i.test(value))
-    return fontSize >= bodySize * 1.05 || uppercase > 0.72 ? 1 : null;
+    return fontSize >= bodySize * 1.05 || uppercase > 0.72 || bold ? 1 : null;
   const titleLike =
     uppercase > 0.72 ||
     words.every((word) =>
       /^(?:[A-Z][\p{L}'’&-]*|(?:and|of|the|to|in|for|a|an))$/u.test(word),
     );
   if (!titleLike) return null;
-  if (fontSize >= bodySize * 1.45 && words.length <= 14) return 1;
-  if (fontSize >= bodySize * 1.22 && words.length <= 16) return 2;
+  if ((fontSize >= bodySize * 1.45 || bold) && words.length <= 14) return 1;
+  if ((fontSize >= bodySize * 1.22 || bold) && words.length <= 16) return 2;
   return null;
 }
 
@@ -421,11 +614,25 @@ export function repairLineWrapHyphens(markdown) {
 function falseDisplayMathBody(body) {
   const text = String(body || "").replace(/\s+/g, " ").trim();
   const words = text ? text.split(" ").length : 0;
+  const mathCommand = /\\(?:frac|sqrt|sum|prod|int|sin|cos|tan|log|ln|exp|lim|begin|end)\b/u.test(text);
+  const scriptedTerm = /\b[A-Za-z]\s*[_^]\s*[A-Za-z0-9({\[]/u.test(text);
+  const arithmetic = /[=+*/^_]/u.test(text);
+  const proseCue =
+    /\b(?:security|transport|certificate|websocket|heartbeat|server|identity|should|must|because|therefore|the|and|with|from|when|this|that)\b/i.test(
+      text,
+    );
   if (
     /^(?:theorem|lemma|proposition|corollary|example)\b/i.test(text) &&
     words > 5 &&
     /[,;]/u.test(text)
   )
+    return true;
+  if (text.includes("<!--") || /(?:^|\s)#{1,6}\s/u.test(text)) return true;
+  if (words > 60) return true;
+  if (words > 14 && !mathCommand) return true;
+  if (proseCue && words > 5 && !mathCommand && !scriptedTerm && !arithmetic)
+    return true;
+  if (/[<>≤≥≠≈]/u.test(text) && words > 2 && !mathCommand && !scriptedTerm && !arithmetic)
     return true;
   return (
     /^(?:of|by|from|for|as)\b/i.test(text) &&
@@ -451,17 +658,20 @@ export function repairDisplayMathProse(markdown) {
       );
       if (end > index) {
         const body = lines.slice(index + 1, end).join("\n");
+        if (falseDisplayMathBody(body)) {
+          result.push(body);
+          index = end;
+          continue;
+        }
         const split = splitEquationProse(body);
         if (split) {
           result.push(DISPLAY_MATH, split.equation, DISPLAY_MATH, "", split.prose);
           index = end;
           continue;
         }
-        if (falseDisplayMathBody(body)) {
-          result.push(body);
-          index = end;
-          continue;
-        }
+        result.push(line, ...lines.slice(index + 1, end), lines[end]);
+        index = end;
+        continue;
       }
     }
     result.push(line);
@@ -469,7 +679,7 @@ export function repairDisplayMathProse(markdown) {
   return result.join("\n");
 }
 
-export function joinPageParagraphs(markdown) {
+export function joinPageParagraphs(markdown, { preserveMarkers = false } = {}) {
   return markdown.replace(
     /([^\n]+)\n\n(<!-- page: \d+ -->)\n\n([^\n]+)/g,
     (all, left, marker, right) => {
@@ -483,29 +693,39 @@ export function joinPageParagraphs(markdown) {
         !/^\p{Ll}/u.test(b)
       )
         return all;
-      if (/-$/.test(a) && /^[a-z]/.test(b))
-        return `${a.slice(0, -1)}${marker}${b}`;
-      return `${a} ${marker} ${b}`;
+      if (preserveMarkers) return `${a}\n\n${marker}\n\n${b}`;
+      if (/-$/.test(a) && /^[a-z]/.test(b)) return `${a.slice(0, -1)}${b}`;
+      return `${a} ${b}`;
     },
   );
 }
 
 export function cleanupDocument(rawPages, options = {}) {
   let pages = rawPages.map((p) => ({ ...p, text: normalizeText(p.text) }));
-  if (options.removeHeaders || options.removeFooters)
-    pages = removeRunningMatter(pages, {
+  let documentIR = documentIRFromPages(pages);
+  if (options.removeHeaders || options.removeFooters) {
+    const classifications = classifyRunningMatter(pages, {
       headers: !!options.removeHeaders,
       footers: !!options.removeFooters,
     });
-  let markdown = pages
-    .map(
-      (p) =>
-        `${options.preserveMarkers ? `<!-- page: ${p.page} -->\n\n` : ""}${p.text}`,
-    )
-    .join("\n\n");
+    documentIR = applyRunningMatterToDocumentIR(documentIR, classifications);
+    const originalPages = new Map(pages.map((page) => [Number(page.page), page]));
+    pages = documentIR.pages.map((pageIR) => ({
+      ...(originalPages.get(Number(pageIR.page)) || {}),
+      page: pageIR.page,
+      text: documentIRToMarkdown({ pages: [pageIR] }),
+      documentIR: pageIR,
+    }));
+  }
+  let markdown = documentIRToMarkdown(documentIR, {
+    preserveMarkers: !!options.preserveMarkers,
+  });
   if (options.detectHeadings !== false)
     markdown = normalizeHeadingHierarchy(markdown);
-  if (options.joinParagraphs) markdown = joinPageParagraphs(markdown);
+  if (options.joinParagraphs)
+    markdown = joinPageParagraphs(markdown, {
+      preserveMarkers: !!options.preserveMarkers,
+    });
   markdown = repairLineWrapHyphens(markdown);
   if (options.extractEquations !== false)
     markdown = repairDisplayMathProse(markdown);
@@ -551,7 +771,14 @@ export function documentMetrics(markdown) {
   };
 }
 
-export function qualityAudit(pages, markdown, warnings = []) {
+function averageConfidence(values) {
+  const usable = values.map(Number).filter(Number.isFinite);
+  return usable.length
+    ? Number((usable.reduce((sum, value) => sum + value, 0) / usable.length).toFixed(3))
+    : null;
+}
+
+export function qualityAudit(pages, markdown, warnings = [], selection = {}) {
   const metrics = documentMetrics(markdown);
   const issues = [];
   const empty = pages
@@ -593,6 +820,16 @@ export function qualityAudit(pages, markdown, warnings = []) {
         )
       );
     }).length;
+  const encodingDamaged = pages
+    .filter(
+      (page) =>
+        page.quality?.embeddedTextCorrupt ||
+        String(page.text || "").includes("\uFFFD"),
+    )
+    .map((page) => page.page);
+  const sourceFallbackFailures = pages
+    .filter((page) => page.quality?.sourcePageFallbackFailed)
+    .map((page) => page.page);
   if (empty.length)
     issues.push({
       code: "LOW_TEXT_PAGES",
@@ -664,6 +901,24 @@ export function qualityAudit(pages, markdown, warnings = []) {
       count: leakedRunning,
       message: "Probable running headers or page labels remain.",
     });
+  if (encodingDamaged.length)
+    issues.push({
+      code: "TEXT_ENCODING_DAMAGE",
+      severity: "warning",
+      count: encodingDamaged.length,
+      pages: encodingDamaged.slice(0, 50),
+      message:
+        "Embedded PDF text contained unmappable characters; OCR or source visual review was required.",
+    });
+  if (sourceFallbackFailures.length)
+    issues.push({
+      code: "SOURCE_EVIDENCE_MISSING",
+      severity: "error",
+      count: sourceFallbackFailures.length,
+      pages: sourceFallbackFailures.slice(0, 50),
+      message:
+        "A page with damaged embedded text could not be preserved as source evidence.",
+    });
   const ocrOnly = pages.filter(
     (page) =>
       page.quality?.ocrApplied &&
@@ -682,6 +937,38 @@ export function qualityAudit(pages, markdown, warnings = []) {
     .filter((page) => page.quality?.ocrApplied)
     .map((page) => page.page);
   const ocrPages = ocrPageNumbers.length;
+  const confidence = {
+    text: averageConfidence(pages.map((page) => page.quality?.textConfidence)),
+    table: averageConfidence(pages.map((page) => page.quality?.tableConfidence)),
+    equation: averageConfidence(pages.map((page) => page.quality?.equationConfidence)),
+    layout: averageConfidence(pages.map((page) => page.quality?.layoutConfidence)),
+  };
+  const lowLayoutPages = pages
+    .filter(
+      (page) =>
+        Number.isFinite(Number(page.quality?.layoutConfidence)) &&
+        Number(page.quality.layoutConfidence) < 0.6,
+    )
+    .map((page) => page.page);
+  if (lowLayoutPages.length)
+    issues.push({
+      code: "LOW_LAYOUT_CONFIDENCE",
+      severity: "warning",
+      count: lowLayoutPages.length,
+      pages: lowLayoutPages.slice(0, 50),
+      message:
+        "Reading order geometry was ambiguous on these pages; compare columns, tables, and figures with the source PDF.",
+    });
+  const figurePreservation = pages.reduce(
+    (summary, page) => {
+      const value = page.quality?.figurePreservation || {};
+      summary.detected += Number(value.detected) || 0;
+      summary.preserved += Number(value.preserved) || 0;
+      summary.sourceEvidence += Number(value.sourceEvidence) || 0;
+      return summary;
+    },
+    { detected: 0, preserved: 0, sourceEvidence: 0 },
+  );
   if (pages.length && ocrPages === pages.length)
     issues.push({
       code: "OCR_ONLY_DOCUMENT",
@@ -706,6 +993,23 @@ export function qualityAudit(pages, markdown, warnings = []) {
       pages: failedPages.slice(0, 50),
       message: "One or more selected pages could not be extracted.",
     });
+  const sourcePages = Number(selection.sourcePages) || pages.length;
+  const selectedPages = Number(selection.selectedPages) || pages.length;
+  if (selectedPages > pages.length && !failedPages.length)
+    issues.push({
+      code: "INCOMPLETE_DOCUMENT",
+      severity: "error",
+      count: selectedPages - pages.length,
+      message: `Only ${pages.length} of ${selectedPages} selected pages were extracted.`,
+    });
+  if (sourcePages > selectedPages)
+    issues.push({
+      code: "PARTIAL_DOCUMENT",
+      severity: "warning",
+      count: 1,
+      pages: pages.map((page) => page.page).slice(0, 50),
+      message: `Only ${selectedPages} of ${sourcePages} source pages were selected; this export is intentionally partial.`,
+    });
   return {
     status: issues.some((issue) => issue.severity === "error")
       ? "needs-review"
@@ -715,9 +1019,19 @@ export function qualityAudit(pages, markdown, warnings = []) {
     issues,
     coverage: {
       totalPages: pages.length,
+      sourcePages,
+      selectedPages,
+      processedPages: pages.map((page) => page.page),
       ocrAppliedPages: ocrPageNumbers,
       ocrOnlyPages: ocrOnly.map((page) => page.page),
       failedPages,
+    },
+    confidence,
+    figurePreservation,
+    ocrUsage: {
+      pages: ocrPages,
+      pageNumbers: ocrPageNumbers,
+      ratio: pages.length ? Number((ocrPages / pages.length).toFixed(3)) : 0,
     },
   };
 }

@@ -2,6 +2,8 @@ import { expect, it } from "vitest";
 import {
   buildEquationCandidate,
   captionFor,
+  dedupeNearbyEquationEntries,
+  embeddedTextNeedsOcr,
   equationImageCandidatesFor,
   isDiagramLike,
   isEquation,
@@ -9,13 +11,35 @@ import {
   latexMarkdown,
   looksLikeOcrEquation,
   normalizeBackground,
+  orderPageEntries,
+  pageLayoutSummary,
   ocrProgressMessage,
   ocrTableMarkdown,
+  paddedBbox,
+  pageTableFromBlocks,
+  pageTableFromVectors,
   textFallbackBlocks,
 } from "./extract-worker.js";
 
 it("reconstructs equation candidates as LaTeX instead of visual assets", () => {
   expect(latexMarkdown("p ≤ μ + ½")).toBe("p \\leq \\mu + \\frac{1}{2}");
+});
+
+it("routes replacement-character PDF text to OCR", () => {
+  expect(
+    embeddedTextNeedsOcr([{ lines: [{ text: "nia\uFFFDn" }] }]),
+  ).toBe(true);
+  expect(embeddedTextNeedsOcr([{ lines: [{ text: "normal text" }] }])).toBe(false);
+});
+
+it("removes only adjacent duplicate equation emissions", () => {
+  const entries = [
+    { kind: "equation", y: 100, markdown: "$$\\nx=1\\n$$" },
+    { kind: "equation", y: 104, markdown: "$$\\nx=1\\n$$" },
+    { kind: "equation", y: 300, markdown: "$$\\nx=1\\n$$" },
+  ];
+  expect(dedupeNearbyEquationEntries(entries, 10)).toHaveLength(2);
+  expect(dedupeNearbyEquationEntries(entries, 10).at(-1).y).toBe(300);
 });
 
 it("associates a nearby figure caption with its visual placeholder", () => {
@@ -61,6 +85,120 @@ it("converts a stable OCR word grid into a Markdown table", () => {
   expect(ocrTableMarkdown(data)).toBe(
     "| Class | Demand | Fare |\n| --- | --- | --- |\n| Y | 120 | 450 |\n| M | 85 | 320 |\n| B | 40 | 180 |",
   );
+});
+
+it("returns table confidence and refuses inconsistent block rows", () => {
+  const row = (y, cells) => cells.map((text, index) => ({
+    bbox: [10 + index * 90, y, 70 + index * 90, y + 12],
+    text,
+  }));
+  const stable = pageTableFromBlocks(
+    [{ lines: [
+      ...row(10, ["Class", "Demand"]),
+      ...row(30, ["Y", "120"]),
+      ...row(50, ["M", "85"]),
+    ] }],
+    10,
+    [0, 0, 300, 500],
+  );
+  expect(stable).toMatchObject({
+    confidence: expect.any(Number),
+    rows: 3,
+    columns: 2,
+    tableIR: {
+      columns: 2,
+      rows: expect.arrayContaining([["Class", "Demand"]]),
+    },
+  });
+  expect(stable.confidence).toBeGreaterThanOrEqual(0.82);
+
+  const unstable = pageTableFromBlocks(
+    [{ lines: [
+      ...row(10, ["Class", "Demand"]),
+      ...row(30, ["Y", "120", "450"]),
+      ...row(50, ["M", "85"]),
+    ] }],
+    10,
+    [0, 0, 300, 500],
+  );
+  expect(unstable).toBeNull();
+});
+
+it("reconstructs a conservative table from a stable PDF vector grid", () => {
+  const vector = (bbox) => ({ bbox });
+  const vectors = [
+    vector([10, 0, 250, 0.3]),
+    vector([10, 20, 250, 20.3]),
+    vector([10, 40, 250, 40.3]),
+    vector([10, 60, 250, 60.3]),
+    vector([90, 0, 90.3, 60]),
+    vector([170, 0, 170.3, 60]),
+  ];
+  const text = (row, column, value) => ({
+    text: value,
+    bbox: [10 + column * 80, row * 20 + 5, 60 + column * 80, row * 20 + 15],
+  });
+  const result = pageTableFromVectors(
+    [{
+      lines: [
+        text(0, 0, "Class"), text(0, 1, "Demand"), text(0, 2, "Fare"),
+        text(1, 0, "Y"), text(1, 1, "120"), text(1, 2, "450"),
+        text(2, 0, "M"), text(2, 1, "85"), text(2, 2, "320"),
+      ],
+    }],
+    vectors,
+    10,
+    [0, 0, 300, 100],
+  );
+  expect(result).toMatchObject({
+    rows: 3,
+    columns: 3,
+    tableIR: {
+      method: "pdf-vector-grid",
+      columns: 3,
+    },
+  });
+  expect(result.markdown).toContain("| Class | Demand | Fare |");
+  expect(result.confidence).toBeGreaterThanOrEqual(0.82);
+});
+
+it("rejects a vector table row that spans columns instead of inventing cells", () => {
+  const vector = (bbox) => ({ bbox });
+  const vectors = [
+    vector([10, 0, 250, 0.3]),
+    vector([10, 20, 250, 20.3]),
+    vector([10, 40, 250, 40.3]),
+    vector([10, 60, 250, 60.3]),
+    vector([90, 0, 90.3, 60]),
+    vector([170, 0, 170.3, 60]),
+  ];
+  expect(
+    pageTableFromVectors(
+      [{
+        lines: [
+          { text: "Merged heading", bbox: [10, 5, 160, 15] },
+          { text: "Y", bbox: [10, 25, 60, 35] },
+          { text: "120", bbox: [90, 25, 140, 35] },
+          { text: "450", bbox: [170, 25, 220, 35] },
+          { text: "M", bbox: [10, 45, 60, 55] },
+          { text: "85", bbox: [90, 45, 140, 55] },
+          { text: "320", bbox: [170, 45, 220, 55] },
+        ],
+      }],
+      vectors,
+      10,
+      [0, 0, 300, 100],
+    ),
+  ).toBeNull();
+});
+
+it("keeps visual crop padding bounded by page geometry", () => {
+  expect(paddedBbox([10, 20, 30, 40], [0, 0, 100, 100], 5)).toEqual([
+    5,
+    15,
+    35,
+    45,
+  ]);
 });
 
 it("rejects prose-like or geometrically unstable OCR instead of inventing a table", () => {
@@ -115,6 +253,49 @@ it("keeps ASCII diagrams out of display math and accepts compact equations", () 
   expect(isEquation("+------------------+", { bbox: [0, 0, 200, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
   expect(isEquation("p ≤ μ + ½", { bbox: [80, 240, 260, 260], size: 12 }, [0, 0, 612, 792], 10)).toBe(true);
   expect(isEquation("status = PENDING_ENROLLMENT", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+  expect(isEquation("last heartbeat < 60 sec", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+  expect(isEquation("cameraConfigurationVersion = 103", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+});
+
+it("reads stable text columns top-to-bottom before moving to the next column", () => {
+  const entries = [
+    { kind: "text", x: 340, y: 20, rawText: "right one" },
+    { kind: "text", x: 70, y: 60, rawText: "left two" },
+    { kind: "text", x: 340, y: 60, rawText: "right two" },
+    { kind: "text", x: 70, y: 20, rawText: "left one" },
+  ];
+  expect(orderPageEntries(entries, [0, 0, 612, 792], 10).map((entry) => entry.rawText)).toEqual([
+    "left one",
+    "left two",
+    "right one",
+    "right two",
+  ]);
+  expect(pageLayoutSummary(entries, [0, 0, 612, 792], 10)).toMatchObject({
+    orderMethod: "two-column-geometry",
+    columns: 2,
+    confidence: 0.9,
+  });
+});
+
+it("keeps full-width headings and visuals as reading-order anchors", () => {
+  const entries = [
+    { kind: "visual", x: 50, y: 8, bbox: [50, 8, 570, 24], markdown: "# Title" },
+    { kind: "text", x: 70, y: 40, rawText: "left one", bbox: [70, 40, 200, 52] },
+    { kind: "text", x: 340, y: 40, rawText: "right one", bbox: [340, 40, 470, 52] },
+    { kind: "text", x: 70, y: 60, rawText: "left two", bbox: [70, 60, 200, 72] },
+    { kind: "text", x: 340, y: 60, rawText: "right two", bbox: [340, 60, 470, 72] },
+    { kind: "visual", x: 50, y: 90, bbox: [50, 90, 570, 180], markdown: "[figure]" },
+    { kind: "source-page", x: 0, y: 181, bbox: [0, 0, 612, 792], markdown: "[source]" },
+  ];
+  expect(orderPageEntries(entries, [0, 0, 612, 792], 10).map((entry) => entry.rawText || entry.markdown)).toEqual([
+    "# Title",
+    "left one",
+    "left two",
+    "right one",
+    "right two",
+    "[figure]",
+    "[source]",
+  ]);
 });
 
 it("finds compact equation images next to a formula cue", () => {

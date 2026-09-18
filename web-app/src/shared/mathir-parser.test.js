@@ -9,6 +9,14 @@ it("parses a simple inline equation into MathIR", () => {
   expect(ir.disposition).toBe("accepted");
 });
 
+it("stores binary MathIR relationships as bounded graph references", () => {
+  const ir = parseLatexToMathIR("x + 1 = 2");
+  const root = ir.nodes.find((node) => node.id === ir.rootId);
+  expect(root.leftId).toBe("root-left");
+  expect(root.rightId).toBe("root-right");
+  expect(ir.nodes.find((node) => node.id === root.leftId)?.type).toBe("sum");
+});
+
 it("accepts normalized relation commands emitted by the extractor", () => {
   const ir = parseLatexToMathIR("p \\leq q + 1");
   expect(ir.errors).toEqual([]);
@@ -41,6 +49,24 @@ it("parses nested fraction structure and preserves semantic structure", () => {
   expect(ast.numerator.value).toBe(1);
   expect(ast.denominator.type).toBe("sum");
   expect(ast.denominator.right.type).toBe("fraction");
+});
+
+it("stores graph references without embedding the recursive AST in every node", () => {
+  const ir = parseLatexToMathIR("\\frac{1}{1 + \\frac{1}{x}}");
+  const nestedObjects = ir.nodes.flatMap((node) =>
+    Object.values(node).filter((value) => value && typeof value === "object" && !Array.isArray(value)),
+  );
+
+  expect(nestedObjects).toHaveLength(0);
+  expect(ir.nodes.some((node) => node.denominatorId)).toBe(true);
+});
+
+it("keeps a long candidate bounded instead of expanding duplicate MathIR nodes", () => {
+  const source = Array.from({ length: 100 }, (_, index) => `x_${index}`).join(" + ");
+  const ir = parseLatexToMathIR(source);
+
+  expect(ir.nodes.length).toBeLessThan(8192);
+  expect(JSON.stringify(ir).length).toBeLessThan(256 * 1024);
 });
 
 it("parses a definite integral with limits and returns MathIR", () => {

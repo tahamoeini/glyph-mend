@@ -689,12 +689,21 @@ function flattenAst(value, idPrefix = "root") {
       id: currentId,
       type: item.type || "unknown",
     };
-    if (item.value !== undefined) record.value = item.value;
+    // MathIR stores relationships as IDs. Keeping the original recursive AST
+    // object here as well creates a second (and often repeated) copy of every
+    // descendant. That turns a linear equation into a quadratic export graph
+    // and was the root cause of large-document failures such as
+    // `MathIR.nodes[19328] exceeds the structured-data node limit`.
+    if (item.value !== undefined && !isPlainObject(item.value) && !Array.isArray(item.value))
+      record.value = item.value;
+    if (item.raw !== undefined && typeof item.raw === "string") record.raw = item.raw;
     if (item.symbol !== undefined) record.symbol = item.symbol;
     if (item.command !== undefined) record.command = item.command;
     if (item.accent !== undefined) record.accent = item.accent;
     if (item.environment !== undefined) record.environment = item.environment;
     if (item.style !== undefined) record.style = item.style;
+    if (item.left !== undefined) record.leftId = `${currentId}-left`;
+    if (item.right !== undefined) record.rightId = `${currentId}-right`;
     if (item.numerator !== undefined) record.numeratorId = `${currentId}-num`;
     if (item.denominator !== undefined) record.denominatorId = `${currentId}-den`;
     if (item.body !== undefined) record.bodyId = `${currentId}-body`;

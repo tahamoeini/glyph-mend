@@ -2,6 +2,20 @@ import { assertSafeStructuredValue } from "./security-boundaries.js";
 
 const RECONSTRUCTED_ASSET_SCHEMA_VERSION = 1;
 const MATH_IR_SCHEMA_VERSION = 1;
+/**
+ * MathIR is a graph, not a recursive document tree. Keep the graph bounded
+ * independently from generic structured-message limits so one malformed or
+ * pathological equation cannot take down a whole document export.
+ *
+ * These limits are deliberately conservative. A candidate that exceeds them
+ * remains eligible for source-asset preservation; it must not be flattened
+ * into an unbounded object just to make export appear to succeed.
+ */
+export const MATH_IR_LIMITS = Object.freeze({
+  maxNodes: 8192,
+  maxDepth: 128,
+  maxStringLength: 256 * 1024,
+});
 const VISUAL_IR_SCHEMA_VERSION = 1;
 const CHART_IR_SCHEMA_VERSION = 1;
 const MAX_IR_JSON_CHARS = 16 * 1024 * 1024;
@@ -109,16 +123,43 @@ function canonicalJson(value) {
   return JSON.stringify(deepNormalize(value));
 }
 
-function parseJson(value, name) {
+function parseJson(value, name, limits = null) {
   let parsed = value;
   if (typeof value === "string") {
-    if (value.length > MAX_IR_JSON_CHARS)
-      throw new RangeError(`${name} JSON exceeds the ${MAX_IR_JSON_CHARS}-character limit.`);
+    const maximum = limits?.maxStringLength || MAX_IR_JSON_CHARS;
+    if (value.length > maximum)
+      throw new RangeError(`${name} JSON exceeds the ${maximum}-character limit.`);
     parsed = JSON.parse(value);
   }
   if (!isPlainObject(parsed)) throw new TypeError(`${name} must be a JSON object or JSON text.`);
+  if (limits) assertMathIREnvelope(parsed, name, limits);
   assertSafeStructuredValue(parsed, name);
   return parsed;
+}
+
+function assertMathIRDepth(value, label, limits, depth = 0, seen = new Set()) {
+  if (depth > limits.maxDepth)
+    throw new RangeError(`${label} exceeds the ${limits.maxDepth}-level MathIR depth limit.`);
+  if (value === null || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries())
+      assertMathIRDepth(item, `${label}[${index}]`, limits, depth + 1, seen);
+    return;
+  }
+  for (const [key, child] of Object.entries(value))
+    assertMathIRDepth(child, `${label}.${key}`, limits, depth + 1, seen);
+}
+
+function assertMathIREnvelope(value, label, limits) {
+  const nodeCount = Array.isArray(value.nodes) ? value.nodes.length : 0;
+  if (nodeCount > limits.maxNodes)
+    throw new RangeError(`${label} exceeds the ${limits.maxNodes}-node limit.`);
+  const serializedLength = typeof value === "string" ? value.length : JSON.stringify(value)?.length || 0;
+  if (serializedLength > limits.maxStringLength)
+    throw new RangeError(`${label} exceeds the ${limits.maxStringLength}-character limit.`);
+  assertMathIRDepth(value, label, limits);
 }
 
 function requiredObject(value, label) {
@@ -693,7 +734,7 @@ export function deserializeReconstructedAsset(value) {
 }
 
 export function parseMathIR(value) {
-  const source = parseJson(value, "MathIR");
+  const source = parseJson(value, "MathIR", MATH_IR_LIMITS);
   const { schemaVersion } = normalizeBaseContract(source, "MathIR");
   const out = cloneUnknownFields(source, new Set([
     "schemaVersion",

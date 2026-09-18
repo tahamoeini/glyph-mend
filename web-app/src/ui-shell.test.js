@@ -111,6 +111,12 @@ describe("application UI contract", () => {
     expect(
       document.getElementById("ocrDpi").closest("details").classList.contains("advanced"),
     ).toBe(true);
+    expect(document.getElementById("advancedOptions").open).toBe(false);
+    expect(document.querySelector(".extraction-profile h3").textContent).toBe("Smart Extraction");
+    expect(document.getElementById("extractButtonLabel").textContent).toBe("Start extraction");
+    ["documentComplexity", "documentPageCount", "documentFileSize"].forEach((id) =>
+      expect(document.getElementById(id)).not.toBeNull(),
+    );
   });
 
   it("exposes accessible document tabs and local export actions", () => {

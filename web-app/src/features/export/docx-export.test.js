@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { strFromU8, unzipSync } from "fflate";
 import { markdownToDocx } from "./docx-export.js";
+import { shouldUseStreamingDocx } from "./streaming-docx.js";
 async function contents(blob) {
   const bytes = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -8,7 +9,12 @@ async function contents(blob) {
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(blob);
   });
-  return unzipSync(new Uint8Array(bytes));
+  return Object.fromEntries(
+    Object.entries(unzipSync(new Uint8Array(bytes))).map(([name, data]) => [
+      name,
+      Uint8Array.from(data),
+    ]),
+  );
 }
 it("creates a DOCX with structural content and native math", async () => {
   const blob = await markdownToDocx(
@@ -19,6 +25,47 @@ it("creates a DOCX with structural content and native math", async () => {
   expect(blob.type).toContain("officedocument");
   expect(strFromU8(files["word/document.xml"])).toContain("<m:oMath>");
   expect(strFromU8(files["word/document.xml"])).toContain('w:val="Heading1"');
+});
+
+it("keeps escaped Markdown table pipes inside their source cell", async () => {
+  const markdown = "| Header | Value |\n| --- | --- |\n| A | left\\|right |";
+  for (const options of [{ streaming: false }, { streaming: true }]) {
+    const files = await contents(await markdownToDocx(markdown, "Table", options));
+    const xml = strFromU8(files["word/document.xml"]);
+    expect(xml).toContain("left|right");
+    expect(xml.match(/<w:tr>/g)).toHaveLength(2);
+    expect(xml.match(/<w:tc>/g)).toHaveLength(4);
+  }
+});
+
+it("exports unlabelled diagram fences as preserved monospaced blocks", async () => {
+  for (const fence of [String.fromCharCode(96).repeat(3), "~~~"]) {
+    const markdown = `The diagram follows.\n${fence}\nStart --> Decision\n| yes |\n${fence}`;
+    for (const options of [{ streaming: false }, { streaming: true }]) {
+      const files = await contents(await markdownToDocx(markdown, "Diagram", options));
+      const xml = strFromU8(files["word/document.xml"]);
+      expect(xml).not.toContain("```\\n");
+      expect(xml).not.toContain("~~~\\n");
+      expect(xml).toContain("[text source preserved]");
+      expect(xml).toContain("Start --&gt; Decision");
+      expect(xml).toContain("<w:br/>");
+    }
+  }
+});
+
+it("separates legacy inline page markers before DOCX export", async () => {
+  for (const options of [{ streaming: false }, { streaming: true }]) {
+    const files = await contents(
+      await markdownToDocx("Before <!-- page: 2 --> After", "Markers", {
+        ...options,
+        pageBreaks: true,
+      }),
+    );
+    const xml = strFromU8(files["word/document.xml"]);
+    expect(xml).toContain("Before");
+    expect(xml).toContain("After");
+    expect(xml).toContain('<w:br w:type="page"/>');
+  }
 });
 it("maps nested math structures to native OMML nodes", async () => {
   const blob = await markdownToDocx(
@@ -89,6 +136,33 @@ it("supports explicit source-page breaks", async () => {
   });
   expect(paged.size).toBeGreaterThan(flowing.size);
 });
+
+it("flushes large Markdown exports in bounded document sections", async () => {
+  const progress = [];
+  const markdown = Array.from({ length: 1100 }, (_, index) => `Paragraph ${index}`).join("\n\n");
+  const blob = await markdownToDocx(markdown, "Large document", {
+    maxBlocksPerSection: 32,
+    onProgress: (event) => progress.push(event),
+  });
+
+  expect(blob.size).toBeGreaterThan(0);
+  expect(progress.length).toBeGreaterThan(1);
+  expect(progress.at(-1).blocks).toBeGreaterThan(0);
+});
+
+it("preserves an oversized equation as source text instead of crashing export", async () => {
+  const warnings = [];
+  const source = "x".repeat(256 * 1024 + 1);
+  const blob = await markdownToDocx(`$$\n${source}\n$$`, "Large equation", {
+    onWarning: (warning) => warnings.push(warning),
+  });
+
+  expect(blob.size).toBeGreaterThan(0);
+  expect(warnings).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: "equation" }),
+  ]));
+});
+
 it("never leaks inline provenance comments and joins Markdown soft lines", async () => {
   const files = await contents(
     await markdownToDocx(
@@ -121,4 +195,105 @@ it("embeds preserved source visuals", async () => {
   expect(
     Object.keys(files).some((name) => name.startsWith("word/media/")),
   ).toBe(true);
+});
+
+it("keeps source visual captions visible in both DOCX writers", async () => {
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ),
+    (character) => character.charCodeAt(0),
+  );
+  for (const options of [{ streaming: false }, { streaming: true }]) {
+    const files = await contents(
+      await markdownToDocx(
+        '[SOURCE_VISUAL page=7 id="captioned" kind="graphic" bbox="0,0,1,1" caption="Figure 7.1 Demand curve"]',
+        "Caption",
+        { ...options, assets: new Map([["captioned", { data: png, width: 1, height: 1, caption: "Figure 7.1 Demand curve" }]]) },
+      ),
+    );
+    expect(strFromU8(files["word/document.xml"])).toContain("Figure 7.1 Demand curve");
+  }
+});
+
+it("streams large DOCX packages without retaining one document object model", async () => {
+  const progress = [];
+  const files = await contents(
+    await markdownToDocx(
+      "# Large export\n\n" +
+        Array.from({ length: 300 }, (_, index) => `Paragraph ${index}`).join("\n\n") +
+        "\n\n$$\nx_i^2 + \\frac{1}{2}\n$$",
+      "Streaming test",
+      { streaming: true, onProgress: (event) => progress.push(event) },
+    ),
+  );
+
+  expect(Object.keys(files)).toEqual(expect.arrayContaining([
+    "[Content_Types].xml",
+    "word/document.xml",
+    "word/_rels/document.xml.rels",
+  ]));
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("<m:oMath>");
+  expect(xml).toContain("Paragraph 299");
+  expect(progress.at(-1)).toEqual(expect.objectContaining({ streaming: true, complete: true }));
+});
+
+it("preserves binary equation operands in the streaming OMML writer", async () => {
+  const files = await contents(
+    await markdownToDocx("$$\nx + 1 = 2\n$$", "Streaming equation", {
+      streaming: true,
+    }),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("<m:t>x</m:t>");
+  expect(xml).toContain("<m:t>1</m:t>");
+  expect(xml).toContain("<m:t>2</m:t>");
+  expect(xml).toContain("<m:t>=</m:t>");
+});
+
+it("keeps streaming media in relationship-addressed package entries", async () => {
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ),
+    (character) => character.charCodeAt(0),
+  );
+  const files = await contents(
+    await markdownToDocx(
+      '[SOURCE_VISUAL page=7 id="streaming-image" kind="image" bbox="0,0,1,1"]',
+      "Streaming visual",
+      { streaming: true, assets: new Map([["streaming-image", { id: "streaming-image", data: png, width: 1, height: 1 }]]) },
+    ),
+  );
+  expect(Object.keys(files)).toContain("word/media/image-00001.png");
+  expect(strFromU8(files["word/document.xml"])).toContain('r:embed="rId8"');
+  expect(strFromU8(files["word/_rels/document.xml.rels"])).toContain('Id="rId8"');
+  expect(strFromU8(files["word/_rels/document.xml.rels"])).toContain('Target="media/image-00001.png"');
+});
+
+it("isolates unreadable streaming assets without dangling relationships", async () => {
+  const warnings = [];
+  const files = await contents(
+    await markdownToDocx(
+      '[SOURCE_VISUAL page=7 id="unreadable" kind="image" bbox="0,0,1,1"]',
+      "Streaming visual",
+      {
+        streaming: true,
+        assets: new Map([["unreadable", { data: { arrayBuffer: async () => { throw new Error("read failed"); } } }]]),
+        onWarning: (warning) => warnings.push(warning),
+      },
+    ),
+  );
+  expect(strFromU8(files["word/document.xml"])).toContain("Source image preserved on PDF page 7.");
+  expect(strFromU8(files["word/_rels/document.xml.rels"])).not.toContain('Id="rId8"');
+  expect(warnings).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: "visual", error: "read failed" }),
+  ]));
+});
+
+it("selects the streaming writer for large inputs and asset-heavy workspaces", () => {
+  expect(shouldUseStreamingDocx("x".repeat(512 * 1024))).toBe(true);
+  expect(shouldUseStreamingDocx("short", { assets: new Map(Array.from({ length: 512 }, (_, index) => [String(index), {}])) })).toBe(true);
+  expect(shouldUseStreamingDocx("short", { streaming: false, assets: new Map(Array.from({ length: 512 }, (_, index) => [String(index), {}])) })).toBe(false);
 });
