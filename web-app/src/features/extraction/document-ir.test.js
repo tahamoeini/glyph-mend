@@ -7,6 +7,7 @@ import {
   documentIRToMarkdown,
   pageDocumentIR,
 } from "./document-ir.js";
+import { semanticDocumentFromLegacyDocumentIR } from "../../shared/semantic-document-ir.js";
 
 it("normalizes ordered page blocks into semantic DocumentIR without losing provenance", () => {
   const ir = pageDocumentIR(
@@ -128,4 +129,42 @@ it("keeps legacy checkpoints exportable through a text-block IR fallback", () =>
   const ir = documentIRFromPages([{ page: 4, text: "Legacy paragraph\n\n- item" }]);
   expect(ir.pages[0].blocks.map((block) => block.type)).toEqual(["paragraph", "list"]);
   expect(documentIRToMarkdown(ir)).toBe("Legacy paragraph\n\n- item");
+});
+
+it("carries layout classification, source IDs, and separate structure confidence into v2", () => {
+  const ir = pageDocumentIR({ page: 5 }, {
+    blocks: [{
+      id: "p5-block-1",
+      kind: "text",
+      layoutType: "heading",
+      headingLevel: 2,
+      markdown: "## 1.1 Scope",
+      rawText: "1.1 Scope",
+      bbox: [40, 60, 180, 75],
+      confidence: { overall: 0.98 },
+      structureConfidence: 0.91,
+      sourceSpanIds: ["p5-span-1"],
+      sourceObjectIds: ["p5-object-1"],
+      diagnostics: [{ code: "heading-evidence", severity: "info", message: "Numbering and spacing agree." }],
+    }],
+    layout: {
+      orderMethod: "layout-v1",
+      columns: 1,
+      confidence: 0.88,
+      layerVersion: "layout-v1",
+      metrics: { blockCount: 1 },
+    },
+  });
+  const semantic = semanticDocumentFromLegacyDocumentIR({ pages: [ir] });
+  expect(ir.blocks[0]).toMatchObject({
+    type: "heading",
+    structureConfidence: 0.91,
+    sourceSpanIds: ["p5-span-1"],
+  });
+  expect(ir.layout).toMatchObject({ layerVersion: "layout-v1", metrics: { blockCount: 1 } });
+  expect(semantic.pages[0].nodes[0]).toMatchObject({
+    type: "heading",
+    source: { spanIds: ["p5-span-1"], objectIds: ["p5-object-1"] },
+    confidence: { extraction: 0.98, structure: 0.91 },
+  });
 });

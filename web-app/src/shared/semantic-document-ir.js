@@ -404,16 +404,30 @@ function normalizePage(value, index) {
 
 function normalizeDocument(input, { allowMissingVersion = false } = {}) {
   const source = assertRecord(input, "Semantic Document IR");
-  assertSafeStructuredValue(source, "Semantic Document IR");
+  // The worker/app transport limit is intentionally page-scoped. A complete
+  // document may contain many independently bounded pages, and provenance
+  // arrays (especially spanIds) are legitimate evidence rather than semantic
+  // nodes. Walking every page with one shared structured-node counter makes a
+  // valid large document fail merely because an earlier page consumed the
+  // budget. Validate the envelope once and each page with a fresh bounded
+  // counter so one pathological page is still rejected without imposing a
+  // false document-wide limit.
+  const { pages: pageValues, ...documentEnvelope } = source;
+  assertSafeStructuredValue(documentEnvelope, "Semantic Document IR");
   if (!allowMissingVersion && source.schemaVersion !== SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION)
     throw new TypeError(`Semantic Document IR schemaVersion must be ${SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION}.`);
   if (source.schema !== undefined && source.schema !== SEMANTIC_DOCUMENT_IR_SCHEMA)
     throw new TypeError(`Semantic Document IR schema must be ${SEMANTIC_DOCUMENT_IR_SCHEMA}.`);
-  const pageValues = source.pages ?? [];
-  if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
-  if (pageValues.length > SEMANTIC_DOCUMENT_IR_LIMITS.maxPages)
+  if (pageValues !== undefined) {
+    if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
+    pageValues.forEach((page, index) =>
+      assertSafeStructuredValue(page, `Semantic Document IR.pages[${index}]`),
+    );
+  }
+  const pagesInput = pageValues ?? [];
+  if (pagesInput.length > SEMANTIC_DOCUMENT_IR_LIMITS.maxPages)
     throw new RangeError(`Semantic Document IR exceeds the ${SEMANTIC_DOCUMENT_IR_LIMITS.maxPages}-page limit.`);
-  const pages = pageValues.map(normalizePage).sort((left, right) => left.pageNumber - right.pageNumber);
+  const pages = pagesInput.map(normalizePage).sort((left, right) => left.pageNumber - right.pageNumber);
   const allIds = new Set();
   const collect = (node, label) => {
     if (allIds.has(node.id)) throw new TypeError(`${label} reuses node id ${node.id}.`);
@@ -491,7 +505,7 @@ function listItemChildren(markdown, pageNumber, parentIdentity) {
 }
 
 function legacyNode(block, pageNumber, index) {
-  const legacyType = String(block?.type || block?.kind || "paragraph").toLowerCase();
+  const legacyType = String(block?.layoutType || block?.type || block?.kind || "paragraph").toLowerCase();
   const type = normalizeNodeType(legacyType, "legacy block type");
   const markdown = String(block?.markdown ?? block?.text ?? "");
   const sourceIds = sourceIdsForLegacy(block);
@@ -503,6 +517,7 @@ function legacyNode(block, pageNumber, index) {
     ...(markdown ? { markdown, text: String(block?.rawText ?? block?.text ?? markdown) } : {}),
     ...(block?.caption ? { caption: String(block.caption) } : {}),
     ...(block?.tableIR || block?.table ? { table: deepClone(block.tableIR || block.table) } : {}),
+    ...(block?.headingLevel ? { headingLevel: Number(block.headingLevel) } : {}),
     legacyType,
   };
   const node = {
@@ -515,10 +530,15 @@ function legacyNode(block, pageNumber, index) {
     coordinateSpace: block?.coordinateSpace || (block?.bbox ? "page-points" : "unknown"),
     sourceKind,
     source: sourceIds,
-    confidence: normalizeConfidence(confidenceInput),
+    confidence: normalizeConfidence({
+      ...(typeof confidenceInput === "object" ? confidenceInput : { legacyOverall: confidenceInput }),
+      ...(block?.structureConfidence !== undefined ? { structure: block.structureConfidence } : {}),
+      ...(block?.reconstructionConfidence !== undefined ? { reconstruction: block.reconstructionConfidence } : {}),
+      ...(block?.exportConfidence !== undefined ? { export: block.exportConfidence } : {}),
+    }),
     disposition: normalizeDisposition(block?.disposition, { type }, { kind: sourceKind }),
     reconstructionVersion: 2,
-    diagnostics: [],
+    diagnostics: normalizeDiagnostics(block?.diagnostics, `legacy block ${index} diagnostics`),
   };
   if (typeof confidenceInput === "number" || confidenceInput?.overall !== undefined)
     node.diagnostics.push({
