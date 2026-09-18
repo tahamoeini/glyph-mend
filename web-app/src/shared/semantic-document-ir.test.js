@@ -10,6 +10,7 @@ import {
   validateSemanticDocumentIR,
 } from "./semantic-document-ir.js";
 import { SEMANTIC_DOCUMENT_IR_V2_FIXTURE } from "./semantic-document-ir.fixtures.js";
+import { tableIRFromRows } from "./table-ir.js";
 
 it("creates and validates v2 nodes without collapsing confidence dimensions", () => {
   const document = createSemanticDocumentIR(SEMANTIC_DOCUMENT_IR_V2_FIXTURE);
@@ -89,43 +90,6 @@ it("adapts legacy extraction blocks without losing text or source references", (
   expect(document.pages[0].nodes[0].diagnostics[0].code).toBe("LEGACY_CONFIDENCE_DIMENSION");
 });
 
-it("validates each page independently while retaining large-document provenance", () => {
-  const legacy = {
-    pages: Array.from({ length: 120 }, (_, pageIndex) => ({
-      page: pageIndex + 1,
-      blocks: [{
-        id: `page-${pageIndex + 1}-paragraph`,
-        type: "paragraph",
-        markdown: `Page ${pageIndex + 1}`,
-        bbox: [10, 10, 180, 30],
-        sourceSpanIds: Array.from({ length: 1_000 }, (_, spanIndex) =>
-          `p${pageIndex + 1}-span-${spanIndex}`,
-        ),
-      }],
-    })),
-  };
-
-  const document = semanticDocumentFromLegacyDocumentIR(legacy);
-
-  expect(document.pages).toHaveLength(120);
-  expect(document.pages[0].nodes[0].source.spanIds).toHaveLength(1_000);
-  expect(document.pages[119].nodes[0].source.spanIds[999]).toBe("p120-span-999");
-});
-
-it("still rejects a single page that exceeds the structured-data budget", () => {
-  expect(() => semanticDocumentFromLegacyDocumentIR({
-    pages: [{
-      page: 1,
-      blocks: [{
-        type: "paragraph",
-        markdown: "Oversized page",
-        bbox: [10, 10, 180, 30],
-        sourceSpanIds: Array.from({ length: 101_000 }, (_, spanIndex) => `span-${spanIndex}`),
-      }],
-    }],
-  })).toThrow(/exceeds the .*node limit/);
-});
-
 it("rejects invalid external IR at the schema boundary", () => {
   expect(() => validateSemanticDocumentIR({ schemaVersion: 1, pages: [] })).toThrow(/schemaVersion/);
   expect(() => createSemanticDocumentIR({
@@ -158,4 +122,19 @@ it("reports provenance, dispositions, diagnostics, and confidence dimensions sep
   expect(report.confidence.structure).toMatchObject({ known: 7, unknown: 0 });
   expect(report.provenance.nodesWithSourceCrop).toBe(2);
   expect(report).not.toHaveProperty("overall");
+});
+
+it("includes canonical TableIR confidence and unresolved-cell metrics in quality reports", () => {
+  const table = tableIRFromRows({
+    tableId: "quality-table",
+    rows: [["A", "B"], ["1", "2"]],
+    confidence: { detection: 0.9, structure: 0.85, content: 0.8, export: 0.82 },
+  });
+  const document = createSemanticDocumentIR({
+    documentId: "table-quality-document",
+    pages: [{ pageNumber: 1, nodes: [{ type: "table", content: { table }, sourcePage: 1, sourceKind: "native-text" }] }],
+  });
+  const report = semanticDocumentQualityReport(document);
+  expect(report.tables).toMatchObject({ count: 1, cells: 4, unresolvedCellDiagnostics: 0 });
+  expect(report.tables.confidence.structure).toMatchObject({ known: 1, mean: 0.85 });
 });

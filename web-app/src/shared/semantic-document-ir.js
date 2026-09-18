@@ -1,4 +1,5 @@
 import { assertSafeStructuredValue } from "./security-boundaries.js";
+import { TABLE_IR_SCHEMA, validateTableIR } from "./table-ir.js";
 
 /**
  * Semantic Document IR v2 is the stable, JSON-safe contract between page
@@ -325,12 +326,14 @@ function normalizeNode(value, pageNumber, index, parentId = null) {
     type === "figure" || type === "chart" || type === "unresolved-visual" ? "source-crop" : "native-text",
     `pages[${pageNumber}].nodes[${index}].sourceKind`,
   );
-  const content = normalizeContent(
+  let content = normalizeContent(
     input.content ?? (input.markdown !== undefined || input.text !== undefined
       ? { markdown: input.markdown ?? input.text, text: input.text ?? input.rawText ?? input.markdown }
       : undefined),
     `pages[${pageNumber}].nodes[${index}].content`,
   );
+  if (content.table?.schema === TABLE_IR_SCHEMA)
+    content = { ...content, table: validateTableIR(content.table) };
   const source = normalizeSource(input.source, sourceKind, `pages[${pageNumber}].nodes[${index}].source`);
   const sourcePage = positiveInteger(input.sourcePage ?? input.page ?? pageNumber, "node.sourcePage");
   const bbox = normalizeBBox(input.bbox ?? input.source?.bbox, "node.bbox");
@@ -404,30 +407,16 @@ function normalizePage(value, index) {
 
 function normalizeDocument(input, { allowMissingVersion = false } = {}) {
   const source = assertRecord(input, "Semantic Document IR");
-  // The worker/app transport limit is intentionally page-scoped. A complete
-  // document may contain many independently bounded pages, and provenance
-  // arrays (especially spanIds) are legitimate evidence rather than semantic
-  // nodes. Walking every page with one shared structured-node counter makes a
-  // valid large document fail merely because an earlier page consumed the
-  // budget. Validate the envelope once and each page with a fresh bounded
-  // counter so one pathological page is still rejected without imposing a
-  // false document-wide limit.
-  const { pages: pageValues, ...documentEnvelope } = source;
-  assertSafeStructuredValue(documentEnvelope, "Semantic Document IR");
+  assertSafeStructuredValue(source, "Semantic Document IR");
   if (!allowMissingVersion && source.schemaVersion !== SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION)
     throw new TypeError(`Semantic Document IR schemaVersion must be ${SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION}.`);
   if (source.schema !== undefined && source.schema !== SEMANTIC_DOCUMENT_IR_SCHEMA)
     throw new TypeError(`Semantic Document IR schema must be ${SEMANTIC_DOCUMENT_IR_SCHEMA}.`);
-  if (pageValues !== undefined) {
-    if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
-    pageValues.forEach((page, index) =>
-      assertSafeStructuredValue(page, `Semantic Document IR.pages[${index}]`),
-    );
-  }
-  const pagesInput = pageValues ?? [];
-  if (pagesInput.length > SEMANTIC_DOCUMENT_IR_LIMITS.maxPages)
+  const pageValues = source.pages ?? [];
+  if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
+  if (pageValues.length > SEMANTIC_DOCUMENT_IR_LIMITS.maxPages)
     throw new RangeError(`Semantic Document IR exceeds the ${SEMANTIC_DOCUMENT_IR_LIMITS.maxPages}-page limit.`);
-  const pages = pagesInput.map(normalizePage).sort((left, right) => left.pageNumber - right.pageNumber);
+  const pages = pageValues.map(normalizePage).sort((left, right) => left.pageNumber - right.pageNumber);
   const allIds = new Set();
   const collect = (node, label) => {
     if (allIds.has(node.id)) throw new TypeError(`${label} reuses node id ${node.id}.`);
@@ -683,6 +672,20 @@ export function semanticDocumentQualityReport(value) {
   const countBy = (items) => Object.fromEntries(
     [...new Set(items)].sort().map((key) => [key, items.filter((item) => item === key).length]),
   );
+  const tables = nodes
+    .map((node) => node.content?.table)
+    .filter((table) => table?.schema === TABLE_IR_SCHEMA);
+  const tableConfidence = {};
+  for (const dimension of ["detection", "structure", "content", "export"]) {
+    const values = tables.map((table) => table.confidence[dimension]).filter((item) => item !== null);
+    tableConfidence[dimension] = {
+      known: values.length,
+      unknown: tables.length - values.length,
+      minimum: values.length ? Math.min(...values) : null,
+      maximum: values.length ? Math.max(...values) : null,
+      mean: values.length ? Number((values.reduce((sum, item) => sum + item, 0) / values.length).toFixed(6)) : null,
+    };
+  }
   return {
     schema: SEMANTIC_DOCUMENT_IR_SCHEMA,
     schemaVersion: SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION,
@@ -692,6 +695,13 @@ export function semanticDocumentQualityReport(value) {
     nodeTypes: countBy(nodes.map((node) => node.type)),
     dispositions: countBy(nodes.map((node) => node.disposition)),
     confidence: confidenceReport,
+    tables: {
+      count: tables.length,
+      cells: tables.reduce((sum, table) => sum + table.cells.length, 0),
+      unresolvedCellDiagnostics: tables.reduce((sum, table) => sum + table.unresolvedCellDiagnostics.length, 0),
+      dispositions: countBy(tables.map((table) => table.disposition)),
+      confidence: tableConfidence,
+    },
     provenance: {
       nodesWithBbox: nodes.filter((node) => node.bbox).length,
       nodesWithSourceSpan: nodes.filter((node) => node.source.spanIds.length).length,

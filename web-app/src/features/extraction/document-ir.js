@@ -2,6 +2,7 @@ import {
   semanticDocumentFromLegacyDocumentIR,
   semanticDocumentToMarkdown,
 } from "../../shared/semantic-document-ir.js";
+import { TABLE_IR_SCHEMA, validateTableIR } from "../../shared/table-ir.js";
 
 /**
  * The page extractor speaks in coordinates; the rest of the product should
@@ -110,6 +111,45 @@ function childIds(block) {
 
 function normalizeTableIR(value, fallbackConfidence = 0.5) {
   if (!value || typeof value !== "object") return undefined;
+  if (value.schema === TABLE_IR_SCHEMA) {
+    const table = validateTableIR(value);
+    const cellsById = new Map(table.cells.map((cell) => [cell.id, cell]));
+    return {
+      schema: table.schema,
+      schemaVersion: table.schemaVersion,
+      tableId: table.tableId,
+      bbox: table.bbox,
+      coordinateSpace: table.coordinateSpace,
+      rows: table.rows.map((row) => ({
+        ...row,
+        cells: row.cells.map((id) => cellsById.get(id)).filter(Boolean),
+      })),
+      columns: table.columns.length,
+      columnDefinitions: table.columns,
+      cells: table.cells,
+      spans: table.cells
+        .filter((cell) => cell.rowSpan > 1 || cell.colSpan > 1)
+        .map((cell) => ({
+          cellId: cell.id,
+          rowIndex: cell.rowIndex,
+          columnIndex: cell.columnIndex,
+          rowSpan: cell.rowSpan,
+          colSpan: cell.colSpan,
+        })),
+      confidence: table.confidence.structure ?? fallbackConfidence,
+      confidenceDimensions: table.confidence,
+      source: table.source,
+      detectedRules: table.detectedRules,
+      alignment: table.alignment,
+      ...(table.method ? { method: table.method } : {}),
+      ...(table.caption ? { caption: table.caption } : {}),
+      unresolvedCellDiagnostics: table.unresolvedCellDiagnostics,
+      diagnostics: table.diagnostics,
+      disposition: table.disposition,
+      reconstructionVersion: table.reconstructionVersion,
+      emptyCellPolicy: table.emptyCellPolicy,
+    };
+  }
   const normalizeCell = (cell) => {
     const bbox = finiteBBox(cell?.bbox);
     return {
