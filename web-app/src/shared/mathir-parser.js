@@ -702,6 +702,8 @@ function flattenAst(value, idPrefix = "root") {
     if (item.accent !== undefined) record.accent = item.accent;
     if (item.environment !== undefined) record.environment = item.environment;
     if (item.style !== undefined) record.style = item.style;
+    if (item.left !== undefined) record.leftId = `${currentId}-left`;
+    if (item.right !== undefined) record.rightId = `${currentId}-right`;
     if (item.numerator !== undefined) record.numeratorId = `${currentId}-num`;
     if (item.denominator !== undefined) record.denominatorId = `${currentId}-den`;
     if (item.body !== undefined) record.bodyId = `${currentId}-body`;

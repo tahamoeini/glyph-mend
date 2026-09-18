@@ -59,6 +59,7 @@ web-app/src/
   shared/brand.js           Brand loading, caching, validation, and DOM application
   mupdf-vite.js             MuPDF static-asset adapter for Vite
   features/extraction/      OCR worker and Markdown reconstruction
+    document-ir.js          Ordered semantic page/document representation
   features/export/          DOCX export
   storage/                  IndexedDB workspace persistence
   shared/                   Shared browser utilities
@@ -69,6 +70,22 @@ web-app/public/             PWA manifest, runtime branding JSON, logo, and nativ
 ```
 
 Runtime-only MuPDF, PDF.js, and Tesseract files are copied by `vite.config.js` into the production build. They remain static deployable assets because nested browser workers cannot safely depend on Vite's internal dependency URLs.
+
+### Browser extraction data flow
+
+PDF coordinates are retained as source provenance, not used as the final
+document order. Each page worker result is normalized into a bounded
+DocumentIR page with semantic blocks (paragraphs, headings, lists, tables,
+figures, equations, and captions). The cleanup pipeline applies running-matter
+and Markdown policy to that IR, then the Markdown and DOCX exporters consume
+the ordered block stream. Assets remain page-level references with local bytes
+and provenance; a source image is kept whenever semantic reconstruction is not
+validated.
+
+Extraction runs in bounded page batches. Each completed page is committed to
+IndexedDB before the next batch, and a page error is retried once in a fresh
+worker. A page that still fails is reported in the quality audit while other
+pages continue, preserving deterministic page order at finalization.
 
 The runtime brand JSON and brand assets are deliberately excluded from Workbox precaching. The browser loads the current configuration with `cache: no-store` and stores the last successful brand locally as an offline fallback. PWA install metadata is generated during brand synchronization and therefore requires a rebuild when the installed-app name or icon changes.
 

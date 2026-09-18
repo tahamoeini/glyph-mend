@@ -1,4 +1,8 @@
 import { splitEquationProse } from "./math-markdown.js";
+import {
+  documentIRFromPages,
+  documentIRToMarkdown,
+} from "./document-ir.js";
 
 const PAGE = /^\s*<!--\s*page:\s*(\d+)\s*-->\s*$/;
 const STRUCTURAL =
@@ -421,11 +425,25 @@ export function repairLineWrapHyphens(markdown) {
 function falseDisplayMathBody(body) {
   const text = String(body || "").replace(/\s+/g, " ").trim();
   const words = text ? text.split(" ").length : 0;
+  const mathCommand = /\\(?:frac|sqrt|sum|prod|int|sin|cos|tan|log|ln|exp|lim|begin|end)\b/u.test(text);
+  const scriptedTerm = /\b[A-Za-z]\s*[_^]\s*[A-Za-z0-9({\[]/u.test(text);
+  const arithmetic = /[=+*/^_]/u.test(text);
+  const proseCue =
+    /\b(?:security|transport|certificate|websocket|heartbeat|server|identity|should|must|because|therefore|the|and|with|from|when|this|that)\b/i.test(
+      text,
+    );
   if (
     /^(?:theorem|lemma|proposition|corollary|example)\b/i.test(text) &&
     words > 5 &&
     /[,;]/u.test(text)
   )
+    return true;
+  if (text.includes("<!--") || /(?:^|\s)#{1,6}\s/u.test(text)) return true;
+  if (words > 60) return true;
+  if (words > 14 && !mathCommand) return true;
+  if (proseCue && words > 5 && !mathCommand && !scriptedTerm && !arithmetic)
+    return true;
+  if (/[<>≤≥≠≈]/u.test(text) && words > 2 && !mathCommand && !scriptedTerm && !arithmetic)
     return true;
   return (
     /^(?:of|by|from|for|as)\b/i.test(text) &&
@@ -451,17 +469,20 @@ export function repairDisplayMathProse(markdown) {
       );
       if (end > index) {
         const body = lines.slice(index + 1, end).join("\n");
+        if (falseDisplayMathBody(body)) {
+          result.push(body);
+          index = end;
+          continue;
+        }
         const split = splitEquationProse(body);
         if (split) {
           result.push(DISPLAY_MATH, split.equation, DISPLAY_MATH, "", split.prose);
           index = end;
           continue;
         }
-        if (falseDisplayMathBody(body)) {
-          result.push(body);
-          index = end;
-          continue;
-        }
+        result.push(line, ...lines.slice(index + 1, end), lines[end]);
+        index = end;
+        continue;
       }
     }
     result.push(line);
@@ -469,7 +490,7 @@ export function repairDisplayMathProse(markdown) {
   return result.join("\n");
 }
 
-export function joinPageParagraphs(markdown) {
+export function joinPageParagraphs(markdown, { preserveMarkers = false } = {}) {
   return markdown.replace(
     /([^\n]+)\n\n(<!-- page: \d+ -->)\n\n([^\n]+)/g,
     (all, left, marker, right) => {
@@ -483,29 +504,40 @@ export function joinPageParagraphs(markdown) {
         !/^\p{Ll}/u.test(b)
       )
         return all;
-      if (/-$/.test(a) && /^[a-z]/.test(b))
-        return `${a.slice(0, -1)}${marker}${b}`;
-      return `${a} ${marker} ${b}`;
+      if (preserveMarkers) return `${a}\n\n${marker}\n\n${b}`;
+      if (/-$/.test(a) && /^[a-z]/.test(b)) return `${a.slice(0, -1)}${b}`;
+      return `${a} ${b}`;
     },
   );
 }
 
 export function cleanupDocument(rawPages, options = {}) {
   let pages = rawPages.map((p) => ({ ...p, text: normalizeText(p.text) }));
+  let documentIR = documentIRFromPages(pages);
   if (options.removeHeaders || options.removeFooters)
-    pages = removeRunningMatter(pages, {
-      headers: !!options.removeHeaders,
-      footers: !!options.removeFooters,
-    });
-  let markdown = pages
-    .map(
-      (p) =>
-        `${options.preserveMarkers ? `<!-- page: ${p.page} -->\n\n` : ""}${p.text}`,
-    )
-    .join("\n\n");
+    pages = removeRunningMatter(
+      pages.map((page) => ({
+        ...page,
+        text: documentIRToMarkdown(
+          documentIRFromPages([page]),
+        ),
+      })),
+      {
+        headers: !!options.removeHeaders,
+        footers: !!options.removeFooters,
+      },
+    ).map((page) => ({ ...page, documentIR: undefined }));
+  if (options.removeHeaders || options.removeFooters)
+    documentIR = documentIRFromPages(pages);
+  let markdown = documentIRToMarkdown(documentIR, {
+    preserveMarkers: !!options.preserveMarkers,
+  });
   if (options.detectHeadings !== false)
     markdown = normalizeHeadingHierarchy(markdown);
-  if (options.joinParagraphs) markdown = joinPageParagraphs(markdown);
+  if (options.joinParagraphs)
+    markdown = joinPageParagraphs(markdown, {
+      preserveMarkers: !!options.preserveMarkers,
+    });
   markdown = repairLineWrapHyphens(markdown);
   if (options.extractEquations !== false)
     markdown = repairDisplayMathProse(markdown);
@@ -551,7 +583,14 @@ export function documentMetrics(markdown) {
   };
 }
 
-export function qualityAudit(pages, markdown, warnings = []) {
+function averageConfidence(values) {
+  const usable = values.map(Number).filter(Number.isFinite);
+  return usable.length
+    ? Number((usable.reduce((sum, value) => sum + value, 0) / usable.length).toFixed(3))
+    : null;
+}
+
+export function qualityAudit(pages, markdown, warnings = [], selection = {}) {
   const metrics = documentMetrics(markdown);
   const issues = [];
   const empty = pages
@@ -599,6 +638,9 @@ export function qualityAudit(pages, markdown, warnings = []) {
         page.quality?.embeddedTextCorrupt ||
         String(page.text || "").includes("\uFFFD"),
     )
+    .map((page) => page.page);
+  const sourceFallbackFailures = pages
+    .filter((page) => page.quality?.sourcePageFallbackFailed)
     .map((page) => page.page);
   if (empty.length)
     issues.push({
@@ -680,6 +722,15 @@ export function qualityAudit(pages, markdown, warnings = []) {
       message:
         "Embedded PDF text contained unmappable characters; OCR or source visual review was required.",
     });
+  if (sourceFallbackFailures.length)
+    issues.push({
+      code: "SOURCE_EVIDENCE_MISSING",
+      severity: "error",
+      count: sourceFallbackFailures.length,
+      pages: sourceFallbackFailures.slice(0, 50),
+      message:
+        "A page with damaged embedded text could not be preserved as source evidence.",
+    });
   const ocrOnly = pages.filter(
     (page) =>
       page.quality?.ocrApplied &&
@@ -698,6 +749,21 @@ export function qualityAudit(pages, markdown, warnings = []) {
     .filter((page) => page.quality?.ocrApplied)
     .map((page) => page.page);
   const ocrPages = ocrPageNumbers.length;
+  const confidence = {
+    text: averageConfidence(pages.map((page) => page.quality?.textConfidence)),
+    table: averageConfidence(pages.map((page) => page.quality?.tableConfidence)),
+    equation: averageConfidence(pages.map((page) => page.quality?.equationConfidence)),
+  };
+  const figurePreservation = pages.reduce(
+    (summary, page) => {
+      const value = page.quality?.figurePreservation || {};
+      summary.detected += Number(value.detected) || 0;
+      summary.preserved += Number(value.preserved) || 0;
+      summary.sourceEvidence += Number(value.sourceEvidence) || 0;
+      return summary;
+    },
+    { detected: 0, preserved: 0, sourceEvidence: 0 },
+  );
   if (pages.length && ocrPages === pages.length)
     issues.push({
       code: "OCR_ONLY_DOCUMENT",
@@ -722,6 +788,23 @@ export function qualityAudit(pages, markdown, warnings = []) {
       pages: failedPages.slice(0, 50),
       message: "One or more selected pages could not be extracted.",
     });
+  const sourcePages = Number(selection.sourcePages) || pages.length;
+  const selectedPages = Number(selection.selectedPages) || pages.length;
+  if (selectedPages > pages.length && !failedPages.length)
+    issues.push({
+      code: "INCOMPLETE_DOCUMENT",
+      severity: "error",
+      count: selectedPages - pages.length,
+      message: `Only ${pages.length} of ${selectedPages} selected pages were extracted.`,
+    });
+  if (sourcePages > selectedPages)
+    issues.push({
+      code: "PARTIAL_DOCUMENT",
+      severity: "warning",
+      count: 1,
+      pages: pages.map((page) => page.page).slice(0, 50),
+      message: `Only ${selectedPages} of ${sourcePages} source pages were selected; this export is intentionally partial.`,
+    });
   return {
     status: issues.some((issue) => issue.severity === "error")
       ? "needs-review"
@@ -731,9 +814,19 @@ export function qualityAudit(pages, markdown, warnings = []) {
     issues,
     coverage: {
       totalPages: pages.length,
+      sourcePages,
+      selectedPages,
+      processedPages: pages.map((page) => page.page),
       ocrAppliedPages: ocrPageNumbers,
       ocrOnlyPages: ocrOnly.map((page) => page.page),
       failedPages,
+    },
+    confidence,
+    figurePreservation,
+    ocrUsage: {
+      pages: ocrPages,
+      pageNumbers: ocrPageNumbers,
+      ratio: pages.length ? Number((ocrPages / pages.length).toFixed(3)) : 0,
     },
   };
 }

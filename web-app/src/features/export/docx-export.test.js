@@ -26,6 +26,47 @@ it("creates a DOCX with structural content and native math", async () => {
   expect(strFromU8(files["word/document.xml"])).toContain("<m:oMath>");
   expect(strFromU8(files["word/document.xml"])).toContain('w:val="Heading1"');
 });
+
+it("keeps escaped Markdown table pipes inside their source cell", async () => {
+  const markdown = "| Header | Value |\n| --- | --- |\n| A | left\\|right |";
+  for (const options of [{ streaming: false }, { streaming: true }]) {
+    const files = await contents(await markdownToDocx(markdown, "Table", options));
+    const xml = strFromU8(files["word/document.xml"]);
+    expect(xml).toContain("left|right");
+    expect(xml.match(/<w:tr>/g)).toHaveLength(2);
+    expect(xml.match(/<w:tc>/g)).toHaveLength(4);
+  }
+});
+
+it("exports unlabelled diagram fences as preserved monospaced blocks", async () => {
+  for (const fence of [String.fromCharCode(96).repeat(3), "~~~"]) {
+    const markdown = `The diagram follows.\n${fence}\nStart --> Decision\n| yes |\n${fence}`;
+    for (const options of [{ streaming: false }, { streaming: true }]) {
+      const files = await contents(await markdownToDocx(markdown, "Diagram", options));
+      const xml = strFromU8(files["word/document.xml"]);
+      expect(xml).not.toContain("```\\n");
+      expect(xml).not.toContain("~~~\\n");
+      expect(xml).toContain("[text source preserved]");
+      expect(xml).toContain("Start --&gt; Decision");
+      expect(xml).toContain("<w:br/>");
+    }
+  }
+});
+
+it("separates legacy inline page markers before DOCX export", async () => {
+  for (const options of [{ streaming: false }, { streaming: true }]) {
+    const files = await contents(
+      await markdownToDocx("Before <!-- page: 2 --> After", "Markers", {
+        ...options,
+        pageBreaks: true,
+      }),
+    );
+    const xml = strFromU8(files["word/document.xml"]);
+    expect(xml).toContain("Before");
+    expect(xml).toContain("After");
+    expect(xml).toContain('<w:br w:type="page"/>');
+  }
+});
 it("maps nested math structures to native OMML nodes", async () => {
   const blob = await markdownToDocx(
     "$$\n\\frac{1}{1 + \\frac{1}{x}}\\sum_{i=1}^n i^2\\sqrt{x^2 + 1}\n$$",
@@ -156,6 +197,25 @@ it("embeds preserved source visuals", async () => {
   ).toBe(true);
 });
 
+it("keeps source visual captions visible in both DOCX writers", async () => {
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ),
+    (character) => character.charCodeAt(0),
+  );
+  for (const options of [{ streaming: false }, { streaming: true }]) {
+    const files = await contents(
+      await markdownToDocx(
+        '[SOURCE_VISUAL page=7 id="captioned" kind="graphic" bbox="0,0,1,1" caption="Figure 7.1 Demand curve"]',
+        "Caption",
+        { ...options, assets: new Map([["captioned", { data: png, width: 1, height: 1, caption: "Figure 7.1 Demand curve" }]]) },
+      ),
+    );
+    expect(strFromU8(files["word/document.xml"])).toContain("Figure 7.1 Demand curve");
+  }
+});
+
 it("streams large DOCX packages without retaining one document object model", async () => {
   const progress = [];
   const files = await contents(
@@ -177,6 +237,19 @@ it("streams large DOCX packages without retaining one document object model", as
   expect(xml).toContain("<m:oMath>");
   expect(xml).toContain("Paragraph 299");
   expect(progress.at(-1)).toEqual(expect.objectContaining({ streaming: true, complete: true }));
+});
+
+it("preserves binary equation operands in the streaming OMML writer", async () => {
+  const files = await contents(
+    await markdownToDocx("$$\nx + 1 = 2\n$$", "Streaming equation", {
+      streaming: true,
+    }),
+  );
+  const xml = strFromU8(files["word/document.xml"]);
+  expect(xml).toContain("<m:t>x</m:t>");
+  expect(xml).toContain("<m:t>1</m:t>");
+  expect(xml).toContain("<m:t>2</m:t>");
+  expect(xml).toContain("<m:t>=</m:t>");
 });
 
 it("keeps streaming media in relationship-addressed package entries", async () => {

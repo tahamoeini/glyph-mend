@@ -11,8 +11,11 @@ import {
   latexMarkdown,
   looksLikeOcrEquation,
   normalizeBackground,
+  orderPageEntries,
   ocrProgressMessage,
   ocrTableMarkdown,
+  paddedBbox,
+  pageTableFromBlocks,
   textFallbackBlocks,
 } from "./extract-worker.js";
 
@@ -82,6 +85,44 @@ it("converts a stable OCR word grid into a Markdown table", () => {
   );
 });
 
+it("returns table confidence and refuses inconsistent block rows", () => {
+  const row = (y, cells) => cells.map((text, index) => ({
+    bbox: [10 + index * 90, y, 70 + index * 90, y + 12],
+    text,
+  }));
+  const stable = pageTableFromBlocks(
+    [{ lines: [
+      ...row(10, ["Class", "Demand"]),
+      ...row(30, ["Y", "120"]),
+      ...row(50, ["M", "85"]),
+    ] }],
+    10,
+    [0, 0, 300, 500],
+  );
+  expect(stable).toMatchObject({ confidence: expect.any(Number), rows: 3, columns: 2 });
+  expect(stable.confidence).toBeGreaterThanOrEqual(0.82);
+
+  const unstable = pageTableFromBlocks(
+    [{ lines: [
+      ...row(10, ["Class", "Demand"]),
+      ...row(30, ["Y", "120", "450"]),
+      ...row(50, ["M", "85"]),
+    ] }],
+    10,
+    [0, 0, 300, 500],
+  );
+  expect(unstable).toBeNull();
+});
+
+it("keeps visual crop padding bounded by page geometry", () => {
+  expect(paddedBbox([10, 20, 30, 40], [0, 0, 100, 100], 5)).toEqual([
+    5,
+    15,
+    35,
+    45,
+  ]);
+});
+
 it("rejects prose-like or geometrically unstable OCR instead of inventing a table", () => {
   const data = {
     blocks: [
@@ -134,6 +175,23 @@ it("keeps ASCII diagrams out of display math and accepts compact equations", () 
   expect(isEquation("+------------------+", { bbox: [0, 0, 200, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
   expect(isEquation("p ≤ μ + ½", { bbox: [80, 240, 260, 260], size: 12 }, [0, 0, 612, 792], 10)).toBe(true);
   expect(isEquation("status = PENDING_ENROLLMENT", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+  expect(isEquation("last heartbeat < 60 sec", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+  expect(isEquation("cameraConfigurationVersion = 103", { bbox: [0, 0, 240, 20], size: 10 }, [0, 0, 612, 792], 10)).toBe(false);
+});
+
+it("reads stable text columns top-to-bottom before moving to the next column", () => {
+  const entries = [
+    { kind: "text", x: 340, y: 20, rawText: "right one" },
+    { kind: "text", x: 70, y: 60, rawText: "left two" },
+    { kind: "text", x: 340, y: 60, rawText: "right two" },
+    { kind: "text", x: 70, y: 20, rawText: "left one" },
+  ];
+  expect(orderPageEntries(entries, [0, 0, 612, 792], 10).map((entry) => entry.rawText)).toEqual([
+    "left one",
+    "left two",
+    "right one",
+    "right two",
+  ]);
 });
 
 it("finds compact equation images next to a formula cue", () => {

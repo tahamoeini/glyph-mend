@@ -9,6 +9,14 @@ it("parses a simple inline equation into MathIR", () => {
   expect(ir.disposition).toBe("accepted");
 });
 
+it("stores binary MathIR relationships as bounded graph references", () => {
+  const ir = parseLatexToMathIR("x + 1 = 2");
+  const root = ir.nodes.find((node) => node.id === ir.rootId);
+  expect(root.leftId).toBe("root-left");
+  expect(root.rightId).toBe("root-right");
+  expect(ir.nodes.find((node) => node.id === root.leftId)?.type).toBe("sum");
+});
+
 it("accepts normalized relation commands emitted by the extractor", () => {
   const ir = parseLatexToMathIR("p \\leq q + 1");
   expect(ir.errors).toEqual([]);

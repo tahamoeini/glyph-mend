@@ -120,6 +120,34 @@ it("normalizes OCR pixel coordinates into PDF page coordinates", () => {
   expect(entries.at(-1).y).toBeLessThanOrEqual(640);
 });
 
+it("keeps OCR entry geometry for reading-order analysis", () => {
+  const entries = ocrMarkdownEntries(
+    {
+      blocks: [
+        {
+          paragraphs: [
+            {
+              lines: [
+                { text: "Left column", bbox: { x0: 10, y0: 10, x1: 110, y1: 25 } },
+                { text: "Right column", bbox: { x0: 300, y0: 12, x1: 420, y1: 27 } },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    identity,
+    { pageBounds: [0, 0, 456, 640] },
+  );
+  expect(entries).toHaveLength(2);
+  expect(entries[0].x).toBe(0);
+  expect(entries[0].bbox[0]).toBe(0);
+  expect(entries[0].bbox[2]).toEqual(expect.any(Number));
+  expect(entries[0].bbox[3]).toEqual(expect.any(Number));
+  expect(entries[0].bbox[2]).toBeGreaterThan(entries[0].bbox[0]);
+  expect(entries[1].x).toBeGreaterThan(entries[0].x);
+});
+
 it("escapes OCR dollar signs so diagram noise cannot become display math", () => {
   const entries = ocrMarkdownEntries(
     { text: "$$\n$100 fare", blocks: null },

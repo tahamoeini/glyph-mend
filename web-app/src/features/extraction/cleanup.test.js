@@ -148,12 +148,11 @@ describe("cleanup", () => {
       "# Chapter 2\n\n## Revenue Controls\n\n## 2.3 Capacity Control\n\n### 2.3.1 Nested Model",
     );
   });
-  it("joins a lowercase continuation across a page marker", () => {
+  it("joins a lowercase continuation when page markers are not requested", () => {
     const value =
       "This is a sufficiently long sentence which continues\n\n<!-- page: 2 -->\n\nonto the next source page";
-    expect(joinPageParagraphs(value)).toContain(
-      "continues <!-- page: 2 --> onto",
-    );
+    expect(joinPageParagraphs(value)).toContain("continues onto");
+    expect(joinPageParagraphs(value)).not.toContain("<!-- page: 2 -->");
   });
 
   it("repairs line-wrap hyphens without touching code fences", () => {
@@ -178,6 +177,42 @@ describe("cleanup", () => {
       "This is higher than given",
     ].join("\n"));
   });
+  it("keeps valid display-math delimiters paired across later blocks", () => {
+    const displayMath = String.fromCharCode(36).repeat(2);
+    const source = [
+      displayMath,
+      "cameraConfigurationVersion = 103",
+      displayMath,
+      "Then creates:",
+      displayMath,
+      "desiredVersion = 103",
+      displayMath,
+      "If WebSocket exists:",
+    ].join("\n");
+    expect(repairDisplayMathProse(source)).toBe(source);
+  });
+  it("does not let prose thresholds or page content swallow the document as math", () => {
+    const displayMath = String.fromCharCode(36).repeat(2);
+    expect(
+      repairDisplayMathProse(
+        [displayMath, "last heartbeat > 180 sec", displayMath].join("\n"),
+      ),
+    ).toBe("last heartbeat > 180 sec");
+    expect(
+      repairDisplayMathProse(
+        [displayMath, "Security Per Transport # HTTPS TLS", displayMath].join("\n"),
+      ),
+    ).toBe("Security Per Transport # HTTPS TLS");
+    expect(
+      repairDisplayMathProse(
+        [
+          displayMath,
+          "Identity may be validated here. desiredVersion = 103. If WebSocket exists, keep the connection alive. <!-- page: 35 -->",
+          displayMath,
+        ].join("\n"),
+      ),
+    ).not.toContain(displayMath);
+  });
   it("does not report ordinary compound words as broken wrap hyphens", () => {
     const audit = qualityAudit([], "single-resource capacity-control", []);
     expect(audit.issues.some((issue) => issue.code === "WRAP_HYPHENS")).toBe(false);
@@ -186,6 +221,17 @@ describe("cleanup", () => {
     expect(
       cleanupDocument([{ page: 2, text: "Hello" }], { preserveMarkers: true }),
     ).toContain("<!-- page: 2 -->"));
+  it("never embeds a preserved page marker inside a paragraph", () => {
+    const result = cleanupDocument(
+      [
+        { page: 1, text: "This is a sufficiently long sentence which continues" },
+        { page: 2, text: "onto the next source page" },
+      ],
+      { joinParagraphs: true, preserveMarkers: true },
+    );
+    expect(result).toContain("continues\n\n<!-- page: 2 -->\n\nonto");
+    expect(result).not.toContain("continues <!-- page: 2 --> onto");
+  });
   it("preserves code and diagram fences while removing running matter", () => {
     const fence = "```";
     const pages = [1, 2, 3].map((page) => ({
@@ -313,6 +359,65 @@ describe("exports", () => {
     );
     expect(audit.issues).toContainEqual(
       expect.objectContaining({ code: "TEXT_ENCODING_DAMAGE", pages: [1] }),
+    );
+  });
+
+  it("exposes bounded confidence, figure preservation, and OCR usage", () => {
+    const audit = qualityAudit(
+      [
+        {
+          page: 1,
+          text: "Native page",
+          quality: {
+            textBlocks: 3,
+            textConfidence: 0.96,
+            tableConfidence: 0.9,
+            equationConfidence: 0.8,
+            figurePreservation: { detected: 2, preserved: 2, sourceEvidence: 1 },
+            ocrApplied: false,
+          },
+        },
+        {
+          page: 2,
+          text: "OCR page",
+          quality: {
+            textBlocks: 3,
+            textConfidence: 0.72,
+            tableConfidence: 0.84,
+            equationConfidence: 0.7,
+            figurePreservation: { detected: 1, preserved: 1, sourceEvidence: 1 },
+            ocrApplied: true,
+          },
+        },
+      ],
+      "Native page\n\nOCR page",
+    );
+    expect(audit.confidence).toEqual({ text: 0.84, table: 0.87, equation: 0.75 });
+    expect(audit.figurePreservation).toEqual({ detected: 3, preserved: 3, sourceEvidence: 2 });
+    expect(audit.ocrUsage).toMatchObject({ pages: 1, pageNumbers: [2], ratio: 0.5 });
+  });
+
+  it("labels a custom page range as a partial document", () => {
+    const audit = qualityAudit(
+      [{ page: 1, text: "Recovered page", quality: { characters: 14 } }],
+      "Recovered page",
+      [],
+      { sourcePages: 56, selectedPages: 1, mode: "custom" },
+    );
+    expect(audit.coverage).toMatchObject({ sourcePages: 56, selectedPages: 1 });
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "PARTIAL_DOCUMENT", count: 1 }),
+    );
+  });
+
+  it("fails quality audit when damaged source text has no preserved page evidence", () => {
+    const audit = qualityAudit(
+      [{ page: 4, text: "nia�n", quality: { characters: 5, embeddedTextCorrupt: true, sourcePageFallbackFailed: true } }],
+      "nia�n",
+    );
+    expect(audit.status).toBe("needs-review");
+    expect(audit.issues).toContainEqual(
+      expect.objectContaining({ code: "SOURCE_EVIDENCE_MISSING", pages: [4] }),
     );
   });
 });

@@ -164,7 +164,7 @@
           <fieldset class="control-section document-scope">
             <legend><span class="section-index">01</span> Document scope</legend>
             <div class="segmented-control" role="radiogroup" aria-label="Pages to extract"><label><input type="radio" name="rangeMode" value="all" checked><span>All pages</span></label><label><input type="radio" name="rangeMode" value="custom"><span>Custom</span></label></div>
-            <label class="field-label" for="pageRange">Page range<input id="pageRange" placeholder="1–5, 8, 12–20" disabled><small>Use commas and ranges</small></label>
+            <label class="field-label" for="pageRange">Page range<input id="pageRange" type="text" inputmode="numeric" placeholder="1–5, 8, 12–20" disabled aria-describedby="documentScopeSummary"><small id="documentScopeSummary" aria-live="polite">All pages will be selected when a PDF is opened.</small></label>
           </fieldset>
           <details id="advancedOptions" class="advanced control-section">
             <summary><span><span class="section-index">02</span> Advanced options</span><small>Structure, visuals, math, OCR, processing</small><span class="summary-icon" aria-hidden="true"><svg class="icon"><use href="#icon-chevron-down"></use></svg></span></summary>

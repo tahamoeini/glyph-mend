@@ -1,6 +1,9 @@
 import { Deflate, strToU8 } from "fflate";
 import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
+import { repairDisplayMathProse } from "../extraction/cleanup.js";
 import { MATH_IR_LIMITS } from "../../shared/semantic-ir.js";
+import { markdownTableRows } from "./markdown-table.js";
+import { normalizeExportMarkdown } from "./markdown-normalize.js";
 
 export const STREAMING_DOCX_LIMITS = Object.freeze({
   automaticThresholdCharacters: 512 * 1024,
@@ -348,8 +351,20 @@ function mathNodeXml(node, map, depth = 0) {
       const degree = resolveNode(node, map, "index");
       return `<m:rad><m:radPr/>${degree ? `<m:deg>${mathNodeXml(degree, map, depth + 1)}</m:deg>` : ""}<m:e>${mathNodeXml(resolveNode(node, map, "value"), map, depth + 1)}</m:e></m:rad>`;
     }
-    case "sum":
-    case "prod":
+    case "sum": {
+      const body = resolveNode(node, map, "body");
+      if (!body && !node.bodyId) return binaryXml(node, map, "+", depth);
+      const lower = resolveNode(node, map, "lower");
+      const upper = resolveNode(node, map, "upper");
+      return `<m:nary><m:naryPr><m:chr m:val="∑"/><m:limLoc m:val="undOvr"/></m:naryPr>${lower ? `<m:sub>${mathNodeXml(lower, map, depth + 1)}</m:sub>` : ""}${upper ? `<m:sup>${mathNodeXml(upper, map, depth + 1)}</m:sup>` : ""}<m:e>${mathNodeXml(body, map, depth + 1)}</m:e></m:nary>`;
+    }
+    case "prod": {
+      const body = resolveNode(node, map, "body");
+      if (!body && !node.bodyId) return binaryXml(node, map, "×", depth);
+      const lower = resolveNode(node, map, "lower");
+      const upper = resolveNode(node, map, "upper");
+      return `<m:nary><m:naryPr><m:chr m:val="∏"/><m:limLoc m:val="undOvr"/></m:naryPr>${lower ? `<m:sub>${mathNodeXml(lower, map, depth + 1)}</m:sub>` : ""}${upper ? `<m:sup>${mathNodeXml(upper, map, depth + 1)}</m:sup>` : ""}<m:e>${mathNodeXml(body, map, depth + 1)}</m:e></m:nary>`;
+    }
     case "integral": {
       const lower = resolveNode(node, map, "lower");
       const upper = resolveNode(node, map, "upper");
@@ -423,14 +438,21 @@ function paragraphXml(content, options = {}) {
 }
 
 function tableXml(lines) {
-  const rows = lines
-    .filter((_, index) => index !== 1)
-    .map((line, rowIndex) => {
-      const cells = line.replace(/^\||\|$/g, "").split("|");
+  const rows = markdownTableRows(lines)
+    .map((cells, rowIndex) => {
       return `<w:tr>${cells.map((cell) => `<w:tc><w:tcPr>${rowIndex === 0 ? "<w:shd w:fill=\"E8F0EE\"/>" : ""}</w:tcPr>${paragraphXml(inlineXml(cell.trim()))}</w:tc>`).join("")}</w:tr>`;
     })
     .join("");
   return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4"/><w:left w:val="single" w:sz="4"/><w:bottom w:val="single" w:sz="4"/><w:right w:val="single" w:sz="4"/><w:insideH w:val="single" w:sz="4"/><w:insideV w:val="single" w:sz="4"/></w:tblBorders></w:tblPr>${rows}</w:tbl>`;
+}
+
+function sourceCodeXml(language, source) {
+  const lines = [`[${language} source preserved]`, ...String(source || "").split(/\r?\n/u)];
+  const properties = '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:color w:val="666666"/>';
+  const runs = lines
+    .map((line, index) => `<w:r><w:rPr>${properties}</w:rPr>${index ? "<w:br/>" : ""}<w:t xml:space="preserve">${escapeXml(line || " ")}</w:t></w:r>`)
+    .join("");
+  return paragraphXml(runs, { spacing: 140 });
 }
 
 function imageXml(asset, relationshipId, drawingId) {
@@ -513,11 +535,15 @@ async function addTextEntry(entry, state, options) {
       const target = `media/image-${String(state.media.length + 1).padStart(5, "0")}.${extension}`;
       state.media.push({ asset, extension, relationshipId, target, data });
       const drawingId = state.nextDrawingId++;
-      return paragraphXml(imageXml(asset, relationshipId, drawingId), { align: "center", spacing: 140 });
+      const caption = asset?.caption
+        ? `<w:r><w:rPr><w:i/><w:color w:val="666666"/></w:rPr><w:br/><w:t xml:space="preserve">${escapeXml(asset.caption)}</w:t></w:r>`
+        : "";
+      return paragraphXml(imageXml(asset, relationshipId, drawingId) + caption, { align: "center", spacing: 140 });
     }
     if (asset?.data)
       notifyStreamingWarning(options, { kind: "visual", message: `Asset ${asset.id || fields.id} was not readable; source marker preserved.`, error: readError instanceof Error ? readError.message : undefined });
-    return paragraphXml(inlineXml(`Source ${fields.kind || "visual"} preserved on PDF page ${fields.page}.`), { align: "center", spacing: 140 });
+    const caption = fields.caption ? ` ${fields.caption}` : "";
+    return paragraphXml(inlineXml(`Source ${fields.kind || "visual"} preserved on PDF page ${fields.page}.${caption}`), { align: "center", spacing: 140 });
   }
   return paragraphXml(inlineXml(entry));
 }
@@ -557,7 +583,9 @@ export async function markdownToStreamingDocx(markdown, title = "Document", opti
 
   try {
     push(documentHeader);
-    const lines = String(markdown || "").split("\n");
+    const lines = normalizeExportMarkdown(repairDisplayMathProse(markdown), {
+      pageBreaks: !!options.pageBreaks,
+    }).split("\n");
     let inMath = false;
     let math = [];
     for (let index = 0; index < lines.length; index += 1) {
@@ -586,12 +614,14 @@ export async function markdownToStreamingDocx(markdown, title = "Document", opti
         math.push(trim);
         continue;
       }
-      const fence = /^```([A-Za-z0-9_-]+)\s*$/.exec(trim);
+      const fence = /^(```|~~~)([A-Za-z0-9_-]+)?\s*$/.exec(trim);
       if (fence) {
+        const delimiter = fence[1];
+        const language = fence[2] || "text";
         const source = [];
-        while (index + 1 < lines.length && lines[index + 1].trim() !== "```") source.push(lines[++index]);
-        if (lines[index + 1]?.trim() === "```") index += 1;
-        await pushBlock(paragraphXml(inlineXml(`[${fence[1]} source preserved]\n${source.join("\n")}`), { spacing: 140 }));
+        while (index + 1 < lines.length && lines[index + 1].trim() !== delimiter) source.push(lines[++index]);
+        if (lines[index + 1]?.trim() === delimiter) index += 1;
+        await pushBlock(sourceCodeXml(language, source.join("\n")));
         continue;
       }
       if (/^\|.*\|$/.test(trim) && /^\|?\s*:?-{3,}/.test((lines[index + 1] || "").trim())) {
@@ -625,7 +655,7 @@ export async function markdownToStreamingDocx(markdown, title = "Document", opti
       }
       if (trim) {
         const paragraph = [line];
-        while (index + 1 < lines.length && lines[index + 1].trim() && !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||\$\$|<!--|\[(?:VISUAL_|SOURCE_))/.test(lines[index + 1].trim())) paragraph.push(lines[++index]);
+        while (index + 1 < lines.length && lines[index + 1].trim() && !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||\$\$|```|~~~|<!--|\[(?:VISUAL_|SOURCE_))/.test(lines[index + 1].trim())) paragraph.push(lines[++index]);
         const text = paragraph.map((value) => value.trim()).join(" ").replace(/\s+/g, " ").trim();
         if (text) await pushBlock(paragraphXml(inlineXml(text), { spacing: 120 }));
       }

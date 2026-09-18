@@ -355,39 +355,50 @@ async function svgParagraph(svg, asset = {}, sourceDescription = "SVG visual") {
     type: "png",
   };
   if (!fallback.data) return null;
+  const children = [new ImageRun({
+    type: "svg",
+    data: svgDataUri(svg),
+    transformation: size,
+    fallback: { type: fallback.type || "png", data: fallback.data },
+    altText: {
+      title: sourceDescription,
+      description: asset.description || "Vector visual preserved by GlyphMend",
+      name: asset.id || "glyphmend-svg-visual",
+    },
+  })];
+  if (asset.caption)
+    children.push(new TextRun({
+      text: asset.caption,
+      break: 1,
+      italics: true,
+      color: "666666",
+    }));
   return new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: { before: 100, after: 140 },
-    children: [new ImageRun({
-      type: "svg",
-      data: svgDataUri(svg),
-      transformation: size,
-      fallback: { type: fallback.type || "png", data: fallback.data },
-      altText: {
-        title: sourceDescription,
-        description: asset.description || "Vector visual preserved by GlyphMend",
-        name: asset.id || "glyphmend-svg-visual",
-      },
-    })],
+    children,
   });
 }
 
 function sourceParagraph(source, language = "visual") {
+  const lines = [`[${language} source preserved]`, ...String(source || "").split(/\r?\n/u)];
   return new Paragraph({
     spacing: { before: 100, after: 140 },
-    children: [new TextRun({
-      text: `[${language} source preserved]\n${source}`,
+    children: lines.map((line, index) => new TextRun({
+      text: line || " ",
       font: "Courier New",
       color: "666666",
-    })],
+      break: index ? 1 : 0,
+    })),
   });
 }
 
 function preservedParagraph(fields) {
+  const caption = fields.caption ? ` ${fields.caption}` : "";
   return new Paragraph({
     alignment: AlignmentType.CENTER,
     children: [new TextRun({
-      text: `Source ${fields.kind || "visual"} preserved on PDF page ${fields.page}.`,
+      text: `Source ${fields.kind || "visual"} preserved on PDF page ${fields.page}.${caption}`,
       italics: true,
       color: "666666",
     })],
@@ -399,10 +410,18 @@ export async function visualParagraph(fields, assets, options = {}) {
   if (options.nativeVisuals !== false && asset.visualIR) {
     const native = mapVisualIRToDrawingML(asset.visualIR);
     if (native.ok) {
+      const children = [ImportedXmlComponent.fromXmlString(native.xml)];
+      if (asset.caption)
+        children.push(new TextRun({
+          text: asset.caption,
+          break: 1,
+          italics: true,
+          color: "666666",
+        }));
       return new Paragraph({
         alignment: AlignmentType.CENTER,
         spacing: { before: 100, after: 140 },
-        children: [ImportedXmlComponent.fromXmlString(native.xml)],
+        children,
       });
     }
   }
@@ -426,19 +445,27 @@ export async function visualParagraph(fields, assets, options = {}) {
   }
   if (asset.data && !isSvgAsset(asset)) {
     const size = visualSize(asset);
+    const children = [new ImageRun({
+      type: asset.type || "png",
+      data: asset.data,
+      transformation: size,
+      altText: {
+        title: description,
+        description: `Preserved from PDF page ${fields.page}`,
+        name: fields.id,
+      },
+    })];
+    if (asset.caption)
+      children.push(new TextRun({
+        text: asset.caption,
+        break: 1,
+        italics: true,
+        color: "666666",
+      }));
     return new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 100, after: 140 },
-      children: [new ImageRun({
-        type: asset.type || "png",
-        data: asset.data,
-        transformation: size,
-        altText: {
-          title: description,
-          description: `Preserved from PDF page ${fields.page}`,
-          name: fields.id,
-        },
-      })],
+      children,
     });
   }
   return preservedParagraph(fields);

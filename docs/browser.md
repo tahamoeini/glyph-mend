@@ -42,7 +42,7 @@ complete          → extraction and document-level cleanup finished
 | Stops after `batch-start` | Rebuild/redeploy. If neither `worker-start` nor `engine-ready` appears, inspect browser developer-console errors. |
 | Engine startup timeout | Confirm the deployment serves the copied MuPDF JS and WASM assets under `/mupdf/`. |
 | Tesseract `importScripts` error | Rebuild/redeploy so `/tesseract/worker.min.js`, `/tesseract-core/`, and `/tessdata/` are present. |
-| A run reports an extraction version below 10 | Reload with browser cache bypassed or unregister the old service worker, then reopen the PDF. The current restoration branch uses extraction version 10 and invalidates incompatible older browser checkpoints. |
+| A run reports an extraction version below 13 | Reload with browser cache bypassed or unregister the old service worker, then reopen the PDF. The current restoration branch uses extraction version 13 and invalidates incompatible older browser checkpoints. |
 | OCR-only output loses source evidence | Confirm the current build is loaded, then retry with **Preserve visual content** enabled. OCR pages retain source evidence conservatively rather than claiming editable reconstruction of raster tables or formulas. |
 | Brand changes do not appear | Confirm `branding.json` and the configured logo path are deployed, then reload. Run `npm run brand:sync` before rebuilding PWA metadata. |
 | Resume unavailable | Check browser storage permissions and available disk quota; export a workspace checkpoint before clearing site data. |

@@ -30,7 +30,10 @@ import {
 } from "docx";
 
 import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
+import { repairDisplayMathProse } from "../extraction/cleanup.js";
 import { fencedVisualParagraph, visualParagraph } from "./visual-docx.js";
+import { markdownTableRows } from "./markdown-table.js";
+import { normalizeExportMarkdown } from "./markdown-normalize.js";
 import {
   markdownToStreamingDocx,
   shouldUseStreamingDocx,
@@ -128,18 +131,15 @@ function sourceVisual(line) {
   return fields;
 }
 function parseTable(lines) {
+  const rows = markdownTableRows(lines);
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: lines
-      .filter((_, i) => i !== 1)
+    rows: rows
       .map(
         (line, i) =>
           new TableRow({
             tableHeader: i === 0,
-            children: line
-              .replace(/^\||\|$/g, "")
-              .split("|")
-              .map(
+            children: line.map(
                 (cell) =>
                   new TableCell({
                     children: [
@@ -674,7 +674,9 @@ export async function markdownToDocx(
   let blocks = [];
   let sectionCount = 0;
   let document = null;
-  const lines = markdown.split("\n");
+  const lines = normalizeExportMarkdown(repairDisplayMathProse(markdown), {
+    pageBreaks: !!options.pageBreaks,
+  }).split("\n");
   let inMath = false,
     math = [];
   const assets = options.assets || new Map();
@@ -741,16 +743,18 @@ export async function markdownToDocx(
       math.push(trim);
       continue;
     }
-    const fence = /^```([A-Za-z0-9_-]+)\s*$/.exec(trim);
+    const fence = /^(```|~~~)([A-Za-z0-9_-]+)?\s*$/.exec(trim);
     if (fence) {
+      const delimiter = fence[1];
+      const language = fence[2] || "text";
       const sourceLines = [];
-      while (i + 1 < lines.length && lines[i + 1].trim() !== "```") sourceLines.push(lines[++i]);
-      if (lines[i + 1]?.trim() === "```") i += 1;
+      while (i + 1 < lines.length && lines[i + 1].trim() !== delimiter) sourceLines.push(lines[++i]);
+      if (lines[i + 1]?.trim() === delimiter) i += 1;
       await pushBlock(await safeVisualBlock(
-        () => fencedVisualParagraph(fence[1], sourceLines.join("\n"), options),
+        () => fencedVisualParagraph(language, sourceLines.join("\n"), options),
         sourceLines.join("\n"),
         options,
-        `fenced-${fence[1]}`,
+        `fenced-${language}`,
       ));
       continue;
     }
@@ -820,7 +824,7 @@ export async function markdownToDocx(
       while (
         i + 1 < lines.length &&
         lines[i + 1].trim() &&
-        !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||\$\$|<!--|\[(?:VISUAL_|SOURCE_))/.test(
+        !/^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|\||\$\$|```|~~~|<!--|\[(?:VISUAL_|SOURCE_))/.test(
           lines[i + 1].trim(),
         )
       )
