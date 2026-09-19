@@ -1,5 +1,6 @@
 import { assertSafeStructuredValue } from "./security-boundaries.js";
 import { TABLE_IR_SCHEMA, validateTableIR } from "./table-ir.js";
+import { CHART_IR_SCHEMA, VISUAL_IR_SCHEMA, validateChartIR, validateVisualIR } from "./visual-ir.js";
 
 /**
  * Semantic Document IR v2 is the stable, JSON-safe contract between page
@@ -122,19 +123,6 @@ function canonicalize(value) {
 function canonicalJson(value) {
   assertSafeJsonValue(value, "Semantic Document IR");
   return JSON.stringify(canonicalize(value));
-}
-
-function canonicalSemanticDocumentJson(value) {
-  const source = assertRecord(value, "Semantic Document IR");
-  const { pages: pageValues, ...documentEnvelope } = source;
-  assertSafeJsonValue(documentEnvelope, "Semantic Document IR");
-  if (pageValues !== undefined) {
-    if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
-    pageValues.forEach((page, index) =>
-      assertSafeJsonValue(page, `Semantic Document IR.pages[${index}]`),
-    );
-  }
-  return JSON.stringify(canonicalize(source));
 }
 
 function deepClone(value) {
@@ -272,7 +260,10 @@ function normalizeContent(value, label) {
   if (typeof value === "string") return { markdown: value, text: value };
   const content = assertRecord(value, label);
   assertSafeJsonValue(content, label);
-  return deepClone(content);
+  const output = deepClone(content);
+  if (output.visualIR?.schema === VISUAL_IR_SCHEMA) output.visualIR = validateVisualIR(output.visualIR);
+  if (output.chartIR?.schema === CHART_IR_SCHEMA) output.chartIR = validateChartIR(output.chartIR);
+  return output;
 }
 
 function normalizeSource(value, sourceKind, label = "source") {
@@ -420,28 +411,16 @@ function normalizePage(value, index) {
 
 function normalizeDocument(input, { allowMissingVersion = false } = {}) {
   const source = assertRecord(input, "Semantic Document IR");
-  // A document is composed of independently bounded pages. Sharing the
-  // transport node counter across all pages makes a valid large document
-  // fail once cumulative provenance (for example spanIds) crosses the
-  // per-message budget. Keep the envelope bounded separately and validate
-  // each page with a fresh counter so one pathological page still fails
-  // closed without imposing a false document-wide node limit.
-  const { pages: pageValues, ...documentEnvelope } = source;
-  assertSafeStructuredValue(documentEnvelope, "Semantic Document IR");
+  assertSafeStructuredValue(source, "Semantic Document IR");
   if (!allowMissingVersion && source.schemaVersion !== SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION)
     throw new TypeError(`Semantic Document IR schemaVersion must be ${SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION}.`);
   if (source.schema !== undefined && source.schema !== SEMANTIC_DOCUMENT_IR_SCHEMA)
     throw new TypeError(`Semantic Document IR schema must be ${SEMANTIC_DOCUMENT_IR_SCHEMA}.`);
-  if (pageValues !== undefined) {
-    if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
-    pageValues.forEach((page, index) =>
-      assertSafeStructuredValue(page, `Semantic Document IR.pages[${index}]`),
-    );
-  }
-  const pagesInput = pageValues ?? [];
-  if (pagesInput.length > SEMANTIC_DOCUMENT_IR_LIMITS.maxPages)
+  const pageValues = source.pages ?? [];
+  if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
+  if (pageValues.length > SEMANTIC_DOCUMENT_IR_LIMITS.maxPages)
     throw new RangeError(`Semantic Document IR exceeds the ${SEMANTIC_DOCUMENT_IR_LIMITS.maxPages}-page limit.`);
-  const pages = pagesInput.map(normalizePage).sort((left, right) => left.pageNumber - right.pageNumber);
+  const pages = pageValues.map(normalizePage).sort((left, right) => left.pageNumber - right.pageNumber);
   const allIds = new Set();
   const collect = (node, label) => {
     if (allIds.has(node.id)) throw new TypeError(`${label} reuses node id ${node.id}.`);
@@ -532,6 +511,7 @@ function legacyNode(block, pageNumber, index) {
     ...(block?.caption ? { caption: String(block.caption) } : {}),
     ...(block?.tableIR || block?.table ? { table: deepClone(block.tableIR || block.table) } : {}),
     ...(block?.equationIR ? { equationIR: deepClone(block.equationIR) } : {}),
+    ...(block?.visualIR?.schema === "glyphmend.visual-ir" ? { visualIR: deepClone(block.visualIR) } : {}),
     ...(Array.isArray(block?.inlineEquationIRs) && block.inlineEquationIRs.length
       ? { inlineEquationIRs: deepClone(block.inlineEquationIRs) }
       : {}),
@@ -628,6 +608,7 @@ export function legacyDocumentIRFromSemanticDocument(document) {
         extractionMethod: `semantic-document-ir-v${node.reconstructionVersion}`,
         children: node.children.map((child) => child.id),
         source: deepClone(node.source),
+        ...(node.content.visualIR?.schema === "glyphmend.visual-ir" ? { visualIR: deepClone(node.content.visualIR) } : {}),
       })),
       relationships: deepClone(page.relationships),
       layout: deepClone(page.layout),
@@ -650,7 +631,7 @@ export function validateSemanticDocumentIR(value) {
 }
 
 export function serializeSemanticDocumentIR(value) {
-  return canonicalSemanticDocumentJson(validateSemanticDocumentIR(value));
+  return canonicalJson(validateSemanticDocumentIR(value));
 }
 
 export function deserializeSemanticDocumentIR(value) {
@@ -715,6 +696,20 @@ export function semanticDocumentQualityReport(value) {
       mean: values.length ? Number((values.reduce((sum, item) => sum + item, 0) / values.length).toFixed(6)) : null,
     };
   }
+  const visuals = nodes
+    .map((node) => node.content?.visualIR)
+    .filter((visual) => visual?.schema === VISUAL_IR_SCHEMA);
+  const visualConfidence = {};
+  for (const dimension of ["detection", "classification", "structure", "reconstruction", "export"]) {
+    const values = visuals.map((visual) => visual.confidence[dimension]).filter((item) => item !== null);
+    visualConfidence[dimension] = {
+      known: values.length,
+      unknown: visuals.length - values.length,
+      minimum: values.length ? Math.min(...values) : null,
+      maximum: values.length ? Math.max(...values) : null,
+      mean: values.length ? Number((values.reduce((sum, item) => sum + item, 0) / values.length).toFixed(6)) : null,
+    };
+  }
   return {
     schema: SEMANTIC_DOCUMENT_IR_SCHEMA,
     schemaVersion: SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION,
@@ -730,6 +725,14 @@ export function semanticDocumentQualityReport(value) {
       unresolvedCellDiagnostics: tables.reduce((sum, table) => sum + table.unresolvedCellDiagnostics.length, 0),
       dispositions: countBy(tables.map((table) => table.disposition)),
       confidence: tableConfidence,
+    },
+    visuals: {
+      count: visuals.length,
+      classes: countBy(visuals.map((visual) => visual.class)),
+      dispositions: countBy(visuals.map((visual) => visual.disposition)),
+      confidence: visualConfidence,
+      withSourceAsset: visuals.filter((visual) => visual.source.assetId || visual.source.cropIds.length).length,
+      warningCount: visuals.reduce((sum, visual) => sum + visual.warnings.length, 0),
     },
     provenance: {
       nodesWithBbox: nodes.filter((node) => node.bbox).length,

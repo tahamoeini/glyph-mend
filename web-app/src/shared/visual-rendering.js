@@ -1,9 +1,11 @@
 import { parseVisualIR } from "./semantic-ir.js";
+import { validateUntrustedVisualSource, visualIRToLegacyVisualIR } from "./visual-ir.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MERMAID_DIRECTIONS = new Set(["LR", "RL", "TD", "BT"]);
 const VISIBLE_NODE_SHAPES = new Set(["box", "rounded-box", "ellipse", "diamond"]);
 const UML_NOTATIONS = new Set(["uml-class", "uml-sequence", "uml-state", "uml-package"]);
+const MAX_GENERATED_VISUAL_CHARS = 256 * 1024;
 
 const SAFE_SVG_TAGS = new Set([
   "svg",
@@ -69,6 +71,12 @@ const SAFE_SVG_ATTRS = new Set([
 
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseRenderableVisualIR(value) {
+  return value?.schema === "glyphmend.visual-ir"
+    ? parseVisualIR(visualIRToLegacyVisualIR(value))
+    : parseVisualIR(value);
 }
 
 function escapeXml(value) {
@@ -250,18 +258,18 @@ function plantUmlPackageDiagram(visualIR) {
 }
 
 export function visualIRToPlantUML(visualIR) {
-  const parsed = parseVisualIR(visualIR);
+  const parsed = parseRenderableVisualIR(visualIR);
   const validation = validatePlantUmlSubset(parsed);
   if (!validation.ok) throw new TypeError(validation.reason);
-  if (validation.kind === "class") return plantUmlClassDiagram(parsed);
-  if (validation.kind === "sequence") return plantUmlSequenceDiagram(parsed);
-  if (validation.kind === "state") return plantUmlStateDiagram(parsed);
-  if (validation.kind === "package") return plantUmlPackageDiagram(parsed);
+  if (validation.kind === "class") return validateUntrustedVisualSource(plantUmlClassDiagram(parsed), "PlantUML");
+  if (validation.kind === "sequence") return validateUntrustedVisualSource(plantUmlSequenceDiagram(parsed), "PlantUML");
+  if (validation.kind === "state") return validateUntrustedVisualSource(plantUmlStateDiagram(parsed), "PlantUML");
+  if (validation.kind === "package") return validateUntrustedVisualSource(plantUmlPackageDiagram(parsed), "PlantUML");
   throw new TypeError("Unsupported PlantUML subset.");
 }
 
 export function routeVisualOutput(visualIR) {
-  const parsed = parseVisualIR(visualIR);
+  const parsed = parseRenderableVisualIR(visualIR);
   const plantUml = validatePlantUmlSubset(parsed);
   if (plantUml.ok) {
     return {
@@ -392,8 +400,11 @@ export function validateMermaidFlowchart(mermaidText) {
     .replace(/^```mermaid\s*\n?/i, "")
     .replace(/\n?```\s*$/i, "")
     .trim();
+  if (!normalized || normalized.length > MAX_GENERATED_VISUAL_CHARS)
+    throw new RangeError("Mermaid flowchart exceeds the generated visual size limit.");
   const lines = normalized.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (!lines.length) throw new TypeError("Mermaid text must not be empty.");
+  if (!lines.length || lines.length > 1024) throw new TypeError("Mermaid text must contain 1-1024 supported lines.");
+  if (lines.some((line) => line.length > 4096)) throw new RangeError("Mermaid line exceeds the generated visual size limit.");
 
   const header = /^flowchart\s+(LR|RL|TD|BT)$/.exec(lines[0]);
   if (!header) throw new TypeError("Mermaid flowchart must start with a supported direction.");
@@ -403,6 +414,8 @@ export function validateMermaidFlowchart(mermaidText) {
   for (const line of lines.slice(1)) {
     const nodeMatch = /^(n\d+)\s*(\["([^"]+)"\]|\(\("([^"]+)"\)\)|\(\"([^"]+)\"\)|\{"([^"]+)"\})$/.exec(line);
     if (nodeMatch) {
+      if (/\b(?:javascript|vbscript|data|file):|\bclick\b|%%\{|\b(?:https?|ftp):\/\//i.test(line))
+        throw new TypeError("Unsafe Mermaid directive or URL rejected.");
       const id = nodeMatch[1];
       const label = nodeMatch[3] || nodeMatch[4] || nodeMatch[5] || nodeMatch[6] || "node";
       const shape = nodeMatch[3]
@@ -418,6 +431,8 @@ export function validateMermaidFlowchart(mermaidText) {
     }
     const edgeMatch = /^(n\d+)\s*(-->|---)(?:\|([^|]+)\|)?\s*(n\d+)$/.exec(line);
     if (edgeMatch) {
+      if (/\b(?:javascript|vbscript|data|file):|\bclick\b|%%\{|\b(?:https?|ftp):\/\//i.test(line))
+        throw new TypeError("Unsafe Mermaid directive or URL rejected.");
       edges.push({
         source: edgeMatch[1],
         target: edgeMatch[4],
@@ -443,7 +458,7 @@ export function validateMermaidFlowchart(mermaidText) {
 }
 
 export function visualIRToMermaid(visualIR) {
-  const parsed = parseVisualIR(visualIR);
+  const parsed = parseRenderableVisualIR(visualIR);
   const nodes = [...parsed.nodes].sort(compareNodeKeys);
   const edges = [...parsed.edges].sort(compareEdgeKeys);
   const nodeIds = new Map(nodes.map((node, index) => [node.id, `n${index + 1}`]));
@@ -466,7 +481,7 @@ export function visualIRToMermaid(visualIR) {
   }
   const output = lines.join("\n");
   validateMermaidFlowchart(output);
-  return output;
+  return validateUntrustedVisualSource(output, "Mermaid");
 }
 
 function createSvgElement(name) {

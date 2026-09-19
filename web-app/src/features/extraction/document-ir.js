@@ -4,6 +4,7 @@ import {
 } from "../../shared/semantic-document-ir.js";
 import { TABLE_IR_SCHEMA, validateTableIR } from "../../shared/table-ir.js";
 import { parseEquationIR } from "../../shared/equation-ir.js";
+import { validateChartIR, validateVisualIR } from "../../shared/visual-ir.js";
 
 /**
  * The page extractor speaks in coordinates; the rest of the product should
@@ -213,9 +214,9 @@ function normalizeBlock(block, page, index) {
   const provenance = block.provenance && typeof block.provenance === "object"
     ? block.provenance
     : {};
-  const sourceSpanIds = block.sourceSpanIds ?? provenance.spanIds ?? provenance.spanId;
-  const sourceObjectIds = block.sourceObjectIds ?? provenance.objectIds ?? provenance.objectId;
-  const sourceCropIds = block.sourceCropIds ?? provenance.cropIds ?? provenance.cropId;
+  const sourceSpanIds = block.sourceSpanIds ?? provenance.spanIds ?? provenance.spanId ?? block.visualIR?.source?.spanIds;
+  const sourceObjectIds = block.sourceObjectIds ?? provenance.objectIds ?? provenance.objectId ?? block.visualIR?.source?.objectIds;
+  const sourceCropIds = block.sourceCropIds ?? provenance.cropIds ?? provenance.cropId ?? block.visualIR?.source?.cropIds;
   const source = {
     page,
     sourcePage: page,
@@ -231,6 +232,9 @@ function normalizeBlock(block, page, index) {
 
   const table = normalizeTableIR(block.tableIR || block.table, confidence.value);
   const equationIR = block.equationIR ? parseEquationIR(block.equationIR) : undefined;
+  const visualIR = block.visualIR?.schema === "glyphmend.visual-ir"
+    ? validateVisualIR(block.visualIR)
+    : undefined;
   const inlineEquationIRs = Array.isArray(block.inlineEquationIRs)
     ? block.inlineEquationIRs.map((value) => parseEquationIR(value))
     : undefined;
@@ -268,6 +272,7 @@ function normalizeBlock(block, page, index) {
       ? { inlineEquationIRs }
       : {}),
     ...(table ? { table } : {}),
+    ...(visualIR ? { visualIR } : {}),
     source,
   };
 }
@@ -304,6 +309,14 @@ function assetReference(asset, page) {
   if (asset.sourceType) reference.sourceType = String(asset.sourceType);
   if (asset.provenance && typeof asset.provenance === "object")
     reference.provenance = asset.provenance;
+  const visualIR = asset.visualIRv2 || (
+    asset.visualIR?.schema === "glyphmend.visual-ir" ? asset.visualIR : null
+  );
+  if (visualIR) reference.visualIR = validateVisualIR(visualIR);
+  const chartIR = asset.chartIRv2 || (
+    asset.chartIR?.schema === "glyphmend.chart-ir" ? asset.chartIR : null
+  );
+  if (chartIR) reference.chartIR = validateChartIR(chartIR);
   return reference;
 }
 

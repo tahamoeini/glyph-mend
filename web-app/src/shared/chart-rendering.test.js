@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { chartIRExportSidecars, chartIRToVegaLite } from "./chart-rendering.js";
 import { CHART_IR_SCHEMA_VERSION } from "./semantic-ir.js";
+import { createChartIR } from "./visual-ir.js";
 
 const acceptedBarChart = {
   schemaVersion: CHART_IR_SCHEMA_VERSION,
@@ -67,4 +68,30 @@ it("rejects weak or unsupported chart evidence", () => {
       },
     }),
   ).toThrow(/non-numeric quantitative field/);
+});
+
+it("adapts versioned ChartIR v2 to the existing browser exporter", () => {
+  const chart = createChartIR({
+    id: "chart-v2",
+    page: 2,
+    bbox: [10, 20, 200, 140],
+    source: { kind: "vector", assetId: "chart-v2-source", cropIds: ["chart-v2-crop"] },
+    data: {
+      fields: [
+        { name: "category", type: "string" },
+        { name: "value", type: "number" },
+      ],
+      rows: [{ rowId: "r1", values: { category: "A", value: 12 } }],
+    },
+    marks: [{ type: "bar" }],
+    encoding: {
+      x: { field: "category", type: "nominal" },
+      y: { field: "value", type: "quantitative" },
+    },
+    confidence: { detection: 0.95, classification: 0.92, structure: 0.9, reconstruction: 0.88, export: 0.9 },
+    disposition: "reconstructed-with-source",
+  });
+  const result = chartIRToVegaLite(chart);
+  expect(result.spec.data.values[0].value).toBe(12);
+  expect(result.csv).toContain("A,12");
 });

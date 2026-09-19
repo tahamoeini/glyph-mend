@@ -8,6 +8,7 @@ import {
   createVisualRecognizerProvider,
   visualProviderResult,
 } from "./visual-provider.js";
+import { legacyVisualIRToV2 } from "../../shared/visual-ir.js";
 
 function supportsLocalML(options = {}) {
   if (options.enableMl === false) return false;
@@ -15,7 +16,18 @@ function supportsLocalML(options = {}) {
 }
 
 function buildVisualWorkerResult(result = {}, meta = {}) {
-  return result;
+  try {
+    return {
+      ...result,
+      visualIRv2: legacyVisualIRToV2(result, {
+        page: result.page || result.candidate?.page || 1,
+        bbox: result.geometry?.bbox || result.candidate?.bbox,
+        sourceKind: result.candidate?.sourceType || "raster",
+      }),
+    };
+  } catch {
+    return result;
+  }
 }
 
 export function createVisualWorkerCapability({
