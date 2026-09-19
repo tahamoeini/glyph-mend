@@ -6,6 +6,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob: https://api.producthunt.com; style-src 'self' 'unsafe-inline'; font-src 'self'; manifest-src 'self'">
   <meta name="theme-color" content="#eef1f5">
   <meta name="description" content="Faithful document reconstruction from PDF to structured Markdown.">
+  <meta name="author" content="Taha Moeini">
+  <meta name="creator" content="Taha Moeini">
+  <meta property="og:title" content="GlyphMend — Browser Edition">
+  <meta property="og:description" content="Faithful document reconstruction from PDF to structured Markdown.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://glyphmend.negar.team/">
+  <meta property="og:site_name" content="GlyphMend">
+  <link rel="canonical" href="https://glyphmend.negar.team/">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/src/styles/style.css">
@@ -50,6 +58,20 @@
     }
   </style>
   <title>GlyphMend — Browser Edition</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "GlyphMend",
+    "url": "https://glyphmend.negar.team/",
+    "applicationCategory": "ProductivityApplication",
+    "creator": {
+      "@type": "Person",
+      "name": "Taha Moeini",
+      "url": "https://taha.one"
+    }
+  }
+  </script>
 </head>
 <body>
   <svg class="icon-sprite" aria-hidden="true" focusable="false" width="0" height="0">
@@ -255,6 +277,9 @@
     </section>
   </main>
   <div id="toast" role="status" aria-live="polite"></div>
+  <footer class="creator-attribution" aria-label="Creator attribution">
+    GlyphMend · Created by <a href="https://taha.one" rel="author noopener noreferrer">Taha Moeini</a>
+  </footer>
   <script type="module" src="/src/brand-bootstrap.js"></script>
   <script type="module" src="/src/app.js"></script>
 </body>
