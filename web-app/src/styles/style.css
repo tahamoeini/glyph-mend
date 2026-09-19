@@ -3656,3 +3656,37 @@
   @media (prefers-reduced-motion: reduce) { .workspace, .sidebar, .exports { transition: none; } }
   @media (forced-colors: active) { .primary, .drop-affordance, #compactInspectorButton, .rail-button.active { background: ButtonFace; color: ButtonText; border: 1px solid ButtonText; } }
 }
+
+
+.creator-attribution {
+  position: fixed;
+  right: 14px;
+  bottom: 10px;
+  z-index: 30;
+  padding: 5px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-content-background) 88%, transparent);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(17, 24, 38, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.creator-attribution a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.creator-attribution a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 540px) {
+  .creator-attribution {
+    right: 8px;
+    bottom: 8px;
+    font-size: 10px;
+  }
+}
