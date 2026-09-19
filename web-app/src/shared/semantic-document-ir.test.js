@@ -154,6 +154,7 @@ it("keeps VisualIR diagnostics within a page-scoped structured-data budget", () 
         type: "figure",
         markdown: `[SOURCE_VISUAL page=${page} id="page-${page}-visual" kind="image"]`,
         bbox: [20, 40, 240, 180],
+        source: { spanIds: visualIR.source.spanIds, cropIds: visualIR.source.cropIds },
         visualIR,
       }],
     };
