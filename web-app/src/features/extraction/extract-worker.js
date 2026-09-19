@@ -3,8 +3,13 @@ import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 import { coalesceStructuredBlocks } from "./structured-lines.js";
 import { analyzePageLayout, layoutEntries } from "./layout-layer.js";
-import { inlineMathMarkdown, splitEquationProse } from "./math-markdown.js";
+import {
+  inlineEquationCandidates,
+  inlineMathMarkdown,
+  splitEquationProse,
+} from "./math-markdown.js";
 import { validateEquationCandidate } from "../recognition/math-validation.js";
+import { equationFromLatex, equationToMarkdown } from "../../shared/equation-ir.js";
 import { documentIRToMarkdown, pageDocumentIR } from "./document-ir.js";
 import { semanticDocumentFromLegacyDocumentIR } from "../../shared/semantic-document-ir.js";
 import {
@@ -1140,6 +1145,10 @@ export function buildEquationCandidate(pageNumber, candidate, rendered, sourceTy
       symbolDensity: Number(Math.min(1, Math.max(0, mathScore / 10)).toFixed(3)),
       geometry: 0.5,
     },
+    sourceSpanIds: Array.isArray(candidate?.sourceSpanIds) ? [...candidate.sourceSpanIds] : [],
+    sourceRegionIds: Array.isArray(candidate?.sourceRegionIds) ? [...candidate.sourceRegionIds] : [],
+    sourceObjectIds: Array.isArray(candidate?.sourceObjectIds) ? [...candidate.sourceObjectIds] : [],
+    mode: candidate?.mode || "display",
     disposition,
     cropAsset: sourceAsset,
   };
@@ -1151,11 +1160,12 @@ function validateEquationReconstruction(
   text,
   crop,
   sourceType = "raster",
+  metadata = {},
 ) {
   const provider = sourceType === "raster" ? "tesseract-ocr" : "mupdf-structured-text";
   const candidate = buildEquationCandidate(
     pageNumber,
-    { kind: "equation", bbox, y: bbox[1], text },
+    { kind: "equation", bbox, y: bbox[1], text, ...metadata },
     crop,
     sourceType,
     text,
@@ -1169,14 +1179,14 @@ function validateEquationReconstruction(
       version: "browser-local",
     },
     candidate.sourceAsset,
-    text,
   );
   candidate.validation = validation.validation;
   candidate.manifest = validation.manifest;
   candidate.output = validation.output;
+  candidate.equationIR = validation.output.equationIR;
   candidate.disposition = validation.disposition;
 
-  const fallbackAsset = !validation.accepted && crop.data?.byteLength
+  const sourceEvidenceAsset = crop.data?.byteLength
     ? {
         id: candidate.sourceAsset.id,
         page: pageNumber,
@@ -1187,9 +1197,11 @@ function validateEquationReconstruction(
         ...crop,
       }
     : null;
+  const fallbackAsset = !validation.accepted ? sourceEvidenceAsset : null;
   return {
     candidate,
     validation,
+    sourceEvidenceAsset,
     fallbackAsset,
     fallbackMarker: fallbackAsset
       ? sourceMarker(pageNumber, fallbackAsset)
@@ -1217,6 +1229,8 @@ function equationReviewItem(candidate, validation, provider) {
       modelHash: candidate.sourceAsset?.provenance?.modelHash || null,
     },
     validation: validation.validation,
+    equationIR: validation.output.equationIR,
+    mode: validation.output.equationIR?.mode || candidate.mode || "display",
     manifest: validation.manifest,
     disposition: candidate.disposition,
     status: candidate.disposition,
@@ -2168,12 +2182,14 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         crop,
         "raster",
       );
-      const { candidate, validation, fallbackAsset } = reconstruction;
+      const { candidate, validation, fallbackAsset, sourceEvidenceAsset } = reconstruction;
       if (fallbackAsset) assets.push(fallbackAsset);
+      else if (sourceEvidenceAsset) assets.push(sourceEvidenceAsset);
       validatedEquationRanges.push({
         ...group,
         latex: validation.output.latex || pageEquationText,
         fallbackMarker: reconstruction.fallbackMarker,
+        equationIR: validation.output.equationIR,
       });
       ocrCandidates.push(candidate);
       reviewItems.push(equationReviewItem(candidate, validation, "tesseract-ocr"));
@@ -2223,15 +2239,24 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         equationText,
         rendered,
         "raster",
+        {
+          mode: "display",
+          sourceObjectIds: [`p${pageNumber}-image-${candidate.sourceImageIndex}`],
+          sourceRegionIds: [`p${pageNumber}-equation-image-${candidate.sourceImageIndex}`],
+        },
       );
       if (reconstruction.fallbackAsset) assets.push(reconstruction.fallbackAsset);
+      else if (reconstruction.sourceEvidenceAsset) assets.push(reconstruction.sourceEvidenceAsset);
       if (reconstruction.validation.accepted) {
         entries.push({
           y: candidate.y,
           x: candidate.bbox[0],
           bbox: candidate.bbox,
-          markdown: DISPLAY_MATH + "\n" + reconstruction.validation.output.latex + "\n" + DISPLAY_MATH,
+          markdown: equationToMarkdown(reconstruction.validation.output.equationIR) ||
+            (DISPLAY_MATH + "\n" + reconstruction.validation.output.latex + "\n" + DISPLAY_MATH),
           kind: "equation",
+          equationIR: reconstruction.validation.output.equationIR,
+          mode: reconstruction.validation.output.equationIR?.mode || "display",
           extractionMethod: "tesseract-equation-image",
         });
       } else {
@@ -2241,6 +2266,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
           bbox: candidate.bbox,
           markdown: reconstruction.fallbackMarker,
           kind: "equation-fallback",
+          equationIR: reconstruction.validation.output.equationIR,
+          mode: reconstruction.validation.output.equationIR?.mode || "display",
           extractionMethod: "source-preservation",
         });
       }
@@ -2287,6 +2314,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     let markdown;
     let entryKind = "text";
     let rawText = rawVisualText;
+    let equationIR = null;
     if (table) {
       markdown = tableIRToMarkdown(table.tableIR);
       entryKind = "table";
@@ -2306,10 +2334,18 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         equationText,
         crop,
         "vector",
+        {
+          mode: "display",
+          sourceSpanIds: block.sourceSpanIds || [],
+          sourceRegionIds: block.sourceBlockIds || [],
+          sourceObjectIds: block.sourceObjectIds || [],
+        },
       );
       if (reconstruction.fallbackAsset) assets.push(reconstruction.fallbackAsset);
+      else if (reconstruction.sourceEvidenceAsset) assets.push(reconstruction.sourceEvidenceAsset);
       if (reconstruction.validation.accepted) {
-        const equationMarkdown = DISPLAY_MATH + "\n" + reconstruction.validation.output.latex + "\n" + DISPLAY_MATH;
+        const equationMarkdown = equationToMarkdown(reconstruction.validation.output.equationIR) ||
+          (DISPLAY_MATH + "\n" + reconstruction.validation.output.latex + "\n" + DISPLAY_MATH);
         markdown = [
           equationMarkdown,
           equationParts?.prose
@@ -2335,6 +2371,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
         entryKind = "equation-fallback";
       }
       rawText = undefined;
+      equationIR = reconstruction.validation.output.equationIR;
       reviewItems.push(
         equationReviewItem(
           reconstruction.candidate,
@@ -2361,12 +2398,77 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       markdown = escapeMd(
         options.extractEquations ? inlineMathMarkdown(text) : text,
       );
+    let inlineEquationIRs = [];
+    if (options.extractEquations && !equationIR) {
+      const inlineCandidates = inlineEquationCandidates(text);
+      if (inlineCandidates.length) {
+        let inlineSourceAsset = null;
+        if (options.preserveVisuals !== false) {
+          try {
+            const rendered = cropPage(page, block.bbox, 2.6);
+            inlineSourceAsset = {
+              id: `p${pageNumber}-inline-equations-${Math.round(block.bbox[0])}-${Math.round(block.bbox[1])}`,
+              page: pageNumber,
+              kind: "equation-source",
+              bbox: block.bbox,
+              sourceType: "vector",
+              caption: "Inline equation source",
+              ...rendered,
+            };
+            assets.push(inlineSourceAsset);
+          } catch {
+            // The inline formula remains editable only when the text graph validates.
+          }
+        }
+        inlineEquationIRs = inlineCandidates.map((candidate, index) => equationFromLatex({
+          id: `p${pageNumber}-inline-equation-${Math.round(block.bbox[1])}-${index + 1}`,
+          mode: "inline",
+          page: pageNumber,
+          bbox: block.bbox,
+          latex: candidate.latex,
+          source: {
+            kind: "vector",
+            page: pageNumber,
+            bbox: block.bbox,
+            coordinateSpace: "pdf-user-space",
+            spanIds: block.sourceSpanIds || [],
+            regionIds: block.sourceBlockIds || [],
+            objectIds: block.sourceObjectIds || [],
+            cropIds: inlineSourceAsset ? [inlineSourceAsset.id] : [],
+            cropAvailable: Boolean(inlineSourceAsset?.data?.byteLength),
+          },
+          confidence: {
+            detection: candidate.explicit ? 0.94 : 0.76,
+            recognition: 0.9,
+            structure: 0.92,
+            validation: 0.92,
+            reconstruction: candidate.explicit ? 0.9 : 0.78,
+            export: 0.96,
+          },
+        }));
+      }
+    }
       entries.push({
         y: block.bbox[1],
         x: block.bbox[0],
         bbox: block.bbox,
         markdown,
         kind: entryKind,
+        ...(equationIR ? { equationIR, mode: equationIR.mode } : {}),
+        ...(inlineEquationIRs.length ? { inlineEquationIRs } : {}),
+        ...(equationIR
+          ? {
+              confidence: {
+                overall: equationIR.confidence.detection,
+                extraction: equationIR.confidence.detection,
+                structure: equationIR.confidence.structure,
+                reconstruction: equationIR.confidence.reconstruction,
+                export: equationIR.confidence.export,
+              },
+              reconstructionConfidence: equationIR.confidence.reconstruction,
+              exportConfidence: equationIR.confidence.export,
+            }
+          : {}),
         rawText,
         layoutType: block.type,
         headingLevel: block.headingLevel,
@@ -2671,6 +2773,16 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     flows: options.flows !== false,
     analysis: layoutAnalysis,
   });
+  const pageEquationIRs = textEntries.flatMap((entry) => [
+    ...(entry.equationIR ? [entry.equationIR] : []),
+    ...(entry.inlineEquationIRs || []),
+  ]);
+  const equationConfidenceDimensions = Object.fromEntries(
+    ["detection", "recognition", "structure", "validation", "reconstruction", "export"].map((dimension) => [
+      dimension,
+      average(pageEquationIRs.map((equation) => equation.confidence?.[dimension])),
+    ]),
+  );
   const documentIR = pageDocumentIR(
     { page: pageNumber, bbox: pageBounds },
     { blocks: textEntries, assets, layout, quality: {} },
@@ -2700,6 +2812,15 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     ),
     equationConfidence: average(
       reviewItems.map((item) => item.candidate?.confidence?.overall),
+    ),
+    equationConfidenceDimensions,
+    equationDispositions: Object.fromEntries(
+      [...new Set(pageEquationIRs.map((equation) => equation.disposition))]
+        .sort()
+        .map((disposition) => [
+          disposition,
+          pageEquationIRs.filter((equation) => equation.disposition === disposition).length,
+        ]),
     ),
     figurePreservation: {
       detected: images.length + vectors.length,

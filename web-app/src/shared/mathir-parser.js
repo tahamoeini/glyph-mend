@@ -68,6 +68,7 @@ const SUPPORTED_COMMANDS = new Set([
   "bmatrix",
   "smallmatrix",
   "array",
+  "linebreak",
   "quad",
   "qquad",
 ]);

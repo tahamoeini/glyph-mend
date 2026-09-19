@@ -3,6 +3,7 @@ import {
   semanticDocumentToMarkdown,
 } from "../../shared/semantic-document-ir.js";
 import { TABLE_IR_SCHEMA, validateTableIR } from "../../shared/table-ir.js";
+import { parseEquationIR } from "../../shared/equation-ir.js";
 
 /**
  * The page extractor speaks in coordinates; the rest of the product should
@@ -229,6 +230,10 @@ function normalizeBlock(block, page, index) {
   if (sourceCropIds) source.cropIds = sourceCropIds;
 
   const table = normalizeTableIR(block.tableIR || block.table, confidence.value);
+  const equationIR = block.equationIR ? parseEquationIR(block.equationIR) : undefined;
+  const inlineEquationIRs = Array.isArray(block.inlineEquationIRs)
+    ? block.inlineEquationIRs.map((value) => parseEquationIR(value))
+    : undefined;
   return {
     id,
     type,
@@ -258,6 +263,10 @@ function normalizeBlock(block, page, index) {
     ...(block.parentId ? { parentId: String(block.parentId) } : {}),
     ...(block.rawText ? { rawText: String(block.rawText) } : {}),
     ...(block.caption ? { caption: String(block.caption) } : {}),
+    ...(equationIR ? { equationIR } : {}),
+    ...(inlineEquationIRs?.length
+      ? { inlineEquationIRs }
+      : {}),
     ...(table ? { table } : {}),
     source,
   };

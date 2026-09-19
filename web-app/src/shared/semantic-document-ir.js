@@ -531,6 +531,10 @@ function legacyNode(block, pageNumber, index) {
     ...(markdown ? { markdown, text: String(block?.rawText ?? block?.text ?? markdown) } : {}),
     ...(block?.caption ? { caption: String(block.caption) } : {}),
     ...(block?.tableIR || block?.table ? { table: deepClone(block.tableIR || block.table) } : {}),
+    ...(block?.equationIR ? { equationIR: deepClone(block.equationIR) } : {}),
+    ...(Array.isArray(block?.inlineEquationIRs) && block.inlineEquationIRs.length
+      ? { inlineEquationIRs: deepClone(block.inlineEquationIRs) }
+      : {}),
     ...(block?.headingLevel ? { headingLevel: Number(block.headingLevel) } : {}),
     legacyType,
   };
