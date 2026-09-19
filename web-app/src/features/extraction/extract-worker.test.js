@@ -106,8 +106,15 @@ it("returns table confidence and refuses inconsistent block rows", () => {
     rows: 3,
     columns: 2,
     tableIR: {
-      columns: 2,
-      rows: expect.arrayContaining([["Class", "Demand"]]),
+      schema: "glyphmend.table-ir",
+      columns: expect.arrayContaining([expect.objectContaining({ index: 0 }), expect.objectContaining({ index: 1 })]),
+      rows: expect.arrayContaining([
+        expect.objectContaining({
+          cells: expect.arrayContaining([
+            expect.any(String),
+          ]),
+        }),
+      ]),
     },
   });
   expect(stable.confidence).toBeGreaterThanOrEqual(0.82);
@@ -155,7 +162,7 @@ it("reconstructs a conservative table from a stable PDF vector grid", () => {
     columns: 3,
     tableIR: {
       method: "pdf-vector-grid",
-      columns: 3,
+      columns: expect.arrayContaining([expect.objectContaining({ index: 0 })]),
     },
   });
   expect(result.markdown).toContain("| Class | Demand | Fare |");

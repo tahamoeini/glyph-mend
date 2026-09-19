@@ -147,6 +147,19 @@ export interface SemanticDocumentQualityReport {
     maximum: number | null;
     mean: number | null;
   }>;
+  tables: {
+    count: number;
+    cells: number;
+    unresolvedCellDiagnostics: number;
+    dispositions: Record<string, number>;
+    confidence: Record<string, {
+      known: number;
+      unknown: number;
+      minimum: number | null;
+      maximum: number | null;
+      mean: number | null;
+    }>;
+  };
   provenance: {
     nodesWithBbox: number;
     nodesWithSourceSpan: number;

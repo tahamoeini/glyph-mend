@@ -8,6 +8,7 @@ import {
   pageDocumentIR,
 } from "./document-ir.js";
 import { semanticDocumentFromLegacyDocumentIR } from "../../shared/semantic-document-ir.js";
+import { tableIRFromRows } from "../../shared/table-ir.js";
 
 it("normalizes ordered page blocks into semantic DocumentIR without losing provenance", () => {
   const ir = pageDocumentIR(
@@ -167,4 +168,33 @@ it("carries layout classification, source IDs, and separate structure confidence
     source: { spanIds: ["p5-span-1"], objectIds: ["p5-object-1"] },
     confidence: { extraction: 0.98, structure: 0.91 },
   });
+});
+
+it("adapts canonical TableIR through legacy DocumentIR and semantic v2 validation", () => {
+  const table = tableIRFromRows({
+    tableId: "canonical-table",
+    sourcePage: 6,
+    bbox: [20, 40, 220, 100],
+    rows: [["Name", "Value"], ["A", "12"]],
+    confidence: { detection: 0.96, structure: 0.93, content: 0.99, export: 0.9 },
+    source: { kind: "native-text", spanIds: ["span-table-1"], cropIds: ["crop-table-1"] },
+  });
+  const legacy = pageDocumentIR({ page: 6 }, {
+    blocks: [{
+      type: "table",
+      markdown: "| Name | Value |\n| --- | --- |\n| A | 12 |",
+      tableIR: table,
+      bbox: table.bbox,
+    }],
+  });
+  expect(legacy.blocks[0].table).toMatchObject({
+    schema: "glyphmend.table-ir",
+    tableId: "canonical-table",
+    columns: 2,
+    confidenceDimensions: { structure: 0.93 },
+  });
+  expect(legacy.blocks[0].table.rows[0].cells[0].text).toBe("Name");
+  const semantic = semanticDocumentFromLegacyDocumentIR({ pages: [legacy] });
+  expect(semantic.pages[0].nodes[0].content.table.schemaVersion).toBe(1);
+  expect(semantic.pages[0].nodes[0].content.table.cells[1].source.cropIds).toEqual(["crop-table-1"]);
 });
