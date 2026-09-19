@@ -124,6 +124,19 @@ function canonicalJson(value) {
   return JSON.stringify(canonicalize(value));
 }
 
+function canonicalSemanticDocumentJson(value) {
+  const source = assertRecord(value, "Semantic Document IR");
+  const { pages: pageValues, ...documentEnvelope } = source;
+  assertSafeJsonValue(documentEnvelope, "Semantic Document IR");
+  if (pageValues !== undefined) {
+    if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
+    pageValues.forEach((page, index) =>
+      assertSafeJsonValue(page, `Semantic Document IR.pages[${index}]`),
+    );
+  }
+  return JSON.stringify(canonicalize(source));
+}
+
 function deepClone(value) {
   if (Array.isArray(value)) return value.map(deepClone);
   if (!isRecord(value)) return value;
@@ -407,16 +420,28 @@ function normalizePage(value, index) {
 
 function normalizeDocument(input, { allowMissingVersion = false } = {}) {
   const source = assertRecord(input, "Semantic Document IR");
-  assertSafeStructuredValue(source, "Semantic Document IR");
+  // A document is composed of independently bounded pages. Sharing the
+  // transport node counter across all pages makes a valid large document
+  // fail once cumulative provenance (for example spanIds) crosses the
+  // per-message budget. Keep the envelope bounded separately and validate
+  // each page with a fresh counter so one pathological page still fails
+  // closed without imposing a false document-wide node limit.
+  const { pages: pageValues, ...documentEnvelope } = source;
+  assertSafeStructuredValue(documentEnvelope, "Semantic Document IR");
   if (!allowMissingVersion && source.schemaVersion !== SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION)
     throw new TypeError(`Semantic Document IR schemaVersion must be ${SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION}.`);
   if (source.schema !== undefined && source.schema !== SEMANTIC_DOCUMENT_IR_SCHEMA)
     throw new TypeError(`Semantic Document IR schema must be ${SEMANTIC_DOCUMENT_IR_SCHEMA}.`);
-  const pageValues = source.pages ?? [];
-  if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
-  if (pageValues.length > SEMANTIC_DOCUMENT_IR_LIMITS.maxPages)
+  if (pageValues !== undefined) {
+    if (!Array.isArray(pageValues)) throw new TypeError("Semantic Document IR pages must be an array.");
+    pageValues.forEach((page, index) =>
+      assertSafeStructuredValue(page, `Semantic Document IR.pages[${index}]`),
+    );
+  }
+  const pagesInput = pageValues ?? [];
+  if (pagesInput.length > SEMANTIC_DOCUMENT_IR_LIMITS.maxPages)
     throw new RangeError(`Semantic Document IR exceeds the ${SEMANTIC_DOCUMENT_IR_LIMITS.maxPages}-page limit.`);
-  const pages = pageValues.map(normalizePage).sort((left, right) => left.pageNumber - right.pageNumber);
+  const pages = pagesInput.map(normalizePage).sort((left, right) => left.pageNumber - right.pageNumber);
   const allIds = new Set();
   const collect = (node, label) => {
     if (allIds.has(node.id)) throw new TypeError(`${label} reuses node id ${node.id}.`);
@@ -621,7 +646,7 @@ export function validateSemanticDocumentIR(value) {
 }
 
 export function serializeSemanticDocumentIR(value) {
-  return canonicalJson(validateSemanticDocumentIR(value));
+  return canonicalSemanticDocumentJson(validateSemanticDocumentIR(value));
 }
 
 export function deserializeSemanticDocumentIR(value) {

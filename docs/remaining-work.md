@@ -2,7 +2,7 @@
 
 Status: live pre-implementation ledger. This file records concrete work needed after the audit; it is not a claim that extraction quality has improved.
 
-This branch implements the first contract slices: versioned Semantic Document IR v2, runtime validation, deterministic serialization, legacy adaptation, worker/app validation, a Markdown/DOCX compatibility adapter, separate quality dimensions, a reconstructable-bundle sidecar, and a conservative versioned TableIR adapter with confidence-gated export/source fallback. The open items below describe the remaining migration rather than work already completed here.
+This branch implements the first contract slices: versioned Semantic Document IR v2, runtime validation, deterministic serialization, legacy adaptation, worker/app validation, a Markdown/DOCX compatibility adapter, separate quality dimensions, a reconstructable-bundle sidecar, and a conservative versioned TableIR adapter with confidence-gated export/source fallback. It also restores page-scoped structured-data validation and serialization so cumulative provenance across valid pages does not consume one shared 100,000-node budget. The open items below describe the remaining migration rather than work already completed here.
 
 Audit baseline: `main` `85d4fa5`, PR #35 merge `305a59b`, PR #35 head `565f1ea`.
 
@@ -12,6 +12,7 @@ Status meanings:
 - **OPEN**: implementation can begin after the stated acceptance test is defined.
 - **UNKNOWN**: the repository shows a risk or missing evidence, but runtime behavior is not verified.
 - **DEFERRED**: intentionally later, after the prerequisite architecture work.
+- **RESOLVED**: fixed on the current feature branch and covered by focused regression tests; retained here for audit history.
 
 ## Priority ledger
 
@@ -38,6 +39,7 @@ Status meanings:
 | GM-REM-019 | OPEN | P2 | Define browser memory, bundle/cache, output-size, and safety budgets by document class. | UI/file/page limits, crop caps, MathIR limits, ZIP/XML safety checks, and Workbox cache settings exist, but are not tied to measured classes. | Publish budgets for text-heavy, scanned, table-heavy, equation-heavy, and image-heavy documents; enforce them in benchmark CI. | Architecture and release acceptance |
 | GM-REM-020 | BLOCKED | P2 | Set release quality thresholds and fallback policy. | Current quality audit reports heuristics and review flags but has no independent structural correctness score. | Choose per-class thresholds for raw/layout/semantic/export metrics, acceptable source-preservation rate, and blocking review items. | Production release decision |
 | GM-REM-021 | BLOCKED | P2 | Complete MuPDF/PyMuPDF and optional companion license/redistribution review. | The build copies MuPDF/PDF.js/Tesseract assets and Python pins PyMuPDF; this audit did not make a legal determination. | Record approved licenses/notices, redistribution terms, asset provenance, and CI checks before changing runtime packaging. | Shipping and Rust companion |
+| GM-REM-022 | RESOLVED | P0 | Prevent valid multi-page Semantic IR from failing the shared structured-data budget during cleanup/export. | A 51-page IR with 2,500 source span IDs per page failed at `pages[36].nodes[1].confidence.export` because TableIR integration had restored document-wide validation. The path was a misleading last-visited field, not an invalid confidence value. | Validate the document envelope and each page with independent bounded counters; serialize the same way; retain rejection for a single oversized page. Covered by `semantic-document-ir.test.js`. | None for this defect; native exporter migration remains GM-REM-008 |
 
 ## Immediate implementation order
 
