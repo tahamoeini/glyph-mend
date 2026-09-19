@@ -1,14 +1,14 @@
 # GlyphMend extraction and reconstruction roadmap
 
-Status: architecture/audit record updated with the conservative TableIR implementation slice. This document does not claim improved extraction quality; no independent real-PDF corpus measurement has been run.
+Status: architecture/audit record updated with the conservative TableIR and evidence-driven EquationIR implementation slices. This document does not claim improved extraction quality; no independent real-PDF corpus measurement has been run.
 
 Audit baseline:
 
 - Repository: `tahamoeini/glyph-mend`
-- Latest `main` inspected: `85d4fa5`
+- Latest `main` inspected: `90307d5d6846996741ede1d969482e4cbbc2f60d` (merge of PR #42)
 - PR #35 merge inspected: `305a59b`
 - PR #35 head inspected: `565f1ea`
-- Audit date: 2026-09-18
+- Audit date: 2026-09-19
 
 This document separates repository facts from inferences and recommendations. A fact is directly visible in the current source, test, fixture, workflow, or manifest. A hypothesis is a likely explanation that still needs a corpus or runtime measurement. An unknown is deliberately not inferred from the repository.
 
@@ -104,6 +104,16 @@ The legacy `DocumentIR` shape remains available. Its adapter preserves the old s
 
 The committed table fixtures cover bordered digital, borderless, merged-header, financial, scientific, page-split, and malformed/partially scanned evidence. They prove schema behavior, deterministic serialization, confidence gating, and source fallback decisions. They do not establish cell accuracy on a real-PDF corpus. Multi-page stitching, reliable worker-side span reconstruction, and independent corpus measurements remain open.
 
+### Evidence-driven EquationIR and editable equation slice
+
+The browser equation path now wraps the existing bounded structural MathIR parser in `web-app/src/shared/equation-ir.js`. EquationIR v1 carries explicit `inline`/`display` mode, deterministic ID, page/bbox/coordinate space, source span/region/object/crop references, separate detection/recognition/structure/validation/reconstruction/export confidence, disposition, reconstruction version, and diagnostics. `parseEquationIR` and `serializeEquationIR` are runtime validation and deterministic serialization boundaries; raw source evidence is not mutated.
+
+The worker retains source crop assets for successful and fallback equation candidates, attaches EquationIR to legacy page entries and Semantic Document IR content, and records per-dimension page quality. Inline candidates remain conservative: explicit TeX delimiters and high-signal relation expressions are represented as inline EquationIR while surrounding prose remains unchanged. Text-native display candidates use existing geometry/provider evidence and the bounded parser; raster/image candidates use local OCR only when a nearby formula cue exists. Unsupported commands, missing operands, and low-confidence candidates remain `needs-review` or `preserved-source`.
+
+Markdown uses editable LaTeX only for validated reconstructed dispositions. The browser DOCX exporter retains its existing Markdown compatibility path and also exposes a direct `equationIRParagraph` adapter that emits native OMML for the validated MathIR subset and returns a source-visual/text fallback otherwise. The streaming DOCX path still consumes Markdown and is not yet a direct EquationIR writer. Source crop references remain available after successful reconstruction.
+
+This slice does not establish equation correctness. The structural comparator has a self-comparison fallback for diagnostics, but the editable gate requires independent expected evidence or the conservative structured-text path; OCR without independent evidence remains review/source-preserved. Parser acceptance therefore means “structurally parseable,” not “mathematically verified.” No mandatory large model or cloud recognition service was added. A local-only recognizer remains optional and must sit behind the same candidate/MathIR contract if evaluated.
+
 ### Runtime and delivery constraints observed in the repository
 
 - The browser app is offline/local-first: MuPDF, PDF.js, Tesseract worker/core/data, and other assets are copied into the Vite build; no upload path is present in the extraction flow.
@@ -163,7 +173,7 @@ Current browser table recognition has rule-grid, block-start, text-gap, and OCR 
 
 ### Equations
 
-The worker uses symbol/text heuristics, inline-math regexes, a bounded MathIR parser, and visual fallback markers. A parseable candidate is not the same as a correctly recognized equation: current validation can compare a candidate with itself, and there is no independent equation ground truth. Unsupported TeX remains raw/fallback by design. Equation quality must be measured with source-aligned syntax/AST/render metrics, not parser acceptance alone.
+The worker uses geometry/text heuristics, conservative inline-math detection, local OCR for eligible image candidates, the bounded MathIR parser, and visual fallback markers. EquationIR now keeps structure separate from evidence and export decisions, but A parseable candidate is not the same as a correctly recognized equation: current validation can compare a candidate with itself, and there is no independent equation ground truth. Unsupported TeX remains raw/fallback by design. Equation quality must be measured with source-aligned syntax/AST/render metrics, not parser acceptance alone.
 
 ### Figures, images, and vectors
 

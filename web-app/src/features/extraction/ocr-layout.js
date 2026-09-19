@@ -252,6 +252,7 @@ export function ocrMarkdownEntries(data, escapeMarkdown, options = {}) {
           kind: equation.fallbackMarker ? "equation-fallback" : "equation",
           markdown:
             equation.fallbackMarker || `$$\n${equation.latex}\n$$`,
+          ...(equation.equationIR ? { equationIR: equation.equationIR, mode: equation.equationIR.mode } : {}),
         });
       }
       continue;

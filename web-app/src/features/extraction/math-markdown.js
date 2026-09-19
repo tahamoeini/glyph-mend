@@ -62,6 +62,38 @@ export function latexMarkdown(value) {
   return text.replace(/½/g, "\\frac{1}{2}");
 }
 
+/** Return conservative inline candidates without changing the surrounding prose. */
+export function inlineEquationCandidates(value) {
+  const text = String(value ?? "");
+  const candidates = [];
+  const occupied = [];
+  const add = (start, end, body, explicit = false) => {
+    const latex = latexMarkdown(body).trim();
+    if (!latex || (!explicit && !plausible(body))) return;
+    if (occupied.some((range) => start < range.end && end > range.start)) return;
+    occupied.push({ start, end });
+    candidates.push({
+      start,
+      end,
+      sourceText: body,
+      latex,
+      mode: "inline",
+      explicit,
+    });
+  };
+  for (const match of text.matchAll(INLINE_TEX_PAREN))
+    add(match.index, match.index + match[0].length, match[1], true);
+  for (const match of text.matchAll(INLINE_DOLLAR))
+    add(match.index, match.index + match[0].length, match[1], true);
+  const protectedText = text.replace(INLINE_TEX_PAREN, (match) => " ".repeat(match.length))
+    .replace(INLINE_DOLLAR, (match) => " ".repeat(match.length));
+  for (const match of protectedText.matchAll(INLINE_EQUATION))
+    add(match.index, match.index + match[0].length, match[0], false);
+  for (const match of protectedText.matchAll(INLINE_PAREN_EXPRESSION))
+    add(match.index, match.index + match[0].length, match[0], false);
+  return candidates.sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
 export function escapeMd(value) {
   let text = String(value ?? "").replace(ESCAPED_PUNCTUATION, "$1");
   text = text.replace(/`/g, "\\`");
