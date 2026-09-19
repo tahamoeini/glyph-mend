@@ -1,4 +1,5 @@
 import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
+import { createEquationIR } from "../../shared/equation-ir.js";
 
 const DEFAULT_POLICY = Object.freeze({ accept: 0.82, review: 0.55 });
 
@@ -145,7 +146,9 @@ export function validateEquationCandidate(candidate = {}, sourceAsset = {}, expe
   };
 
   const actualLatex = normalizeLatex(candidate.latex ?? candidate.normalized ?? candidate.text ?? "");
-  const expected = normalizeLatex(expectedLatex || candidate.expectedLatex || candidate.expected || "");
+  const independentExpected = normalizeLatex(expectedLatex || candidate.expectedLatex || candidate.expected || "");
+  const hasIndependentExpected = independentExpected.length > 0;
+  const expected = independentExpected || actualLatex;
   const parsed = parseCandidate(candidate);
   const confidence = extractConfidence(candidate);
   const visual = createBaselineVisualSimilarity(actualLatex, expected || actualLatex);
@@ -156,7 +159,7 @@ export function validateEquationCandidate(candidate = {}, sourceAsset = {}, expe
     visual.exact &&
     confidence.overall >= threshold.review;
   const confidencePass =
-    confidence.overall >= threshold.accept || structuredTextConfidencePass;
+    (hasIndependentExpected && confidence.overall >= threshold.accept) || structuredTextConfidencePass;
   const mandatoryPassed = parsed.success && renderSuccess && semanticEquivalent && confidencePass;
 
   let disposition = "preserved";
@@ -169,15 +172,68 @@ export function validateEquationCandidate(candidate = {}, sourceAsset = {}, expe
     renderSuccess,
     semanticEquivalent,
     confidencePass,
+    independentEvidence: hasIndependentExpected,
     mandatoryPassed,
     sourcePreserved: true,
     notes: [
       parsed.success ? "math parse succeeded" : "math parse failed",
+      hasIndependentExpected
+        ? "independent expected equation evidence was supplied"
+        : "no independent expected equation evidence was supplied",
       semanticEquivalent ? "semantic comparison matched expected structure" : "semantic comparison mismatched expected structure",
       renderSuccess ? "render-back generation succeeded" : "render-back generation failed",
       confidencePass ? "confidence threshold passed" : "confidence threshold not reached",
     ],
   };
+
+  const sourceId = sourceAsset.id || "source-crop-unknown";
+  const sourcePage = sourceAsset.page ?? candidate.page ?? 1;
+  const sourceBbox = sourceAsset.bbox || candidate.bbox || [0, 0, 0, 0];
+  const equationIR = createEquationIR({
+    id: candidate.id || sourceId,
+    mode: candidate.mode || "display",
+    page: sourcePage,
+    bbox: sourceBbox,
+    coordinateSpace: candidate.coordinateSpace || "pdf-user-space",
+    latex: actualLatex,
+    mathIR: parsed.mathir,
+    source: {
+      kind: sourceAsset.sourceType || candidate.sourceType || "unknown",
+      page: sourcePage,
+      bbox: sourceBbox,
+      coordinateSpace: candidate.coordinateSpace || "pdf-user-space",
+      spanIds: candidate.sourceSpanIds || [],
+      regionIds: candidate.sourceRegionIds || [],
+      objectIds: candidate.sourceObjectIds || [],
+      cropIds: [sourceId],
+      cropAvailable: Boolean(sourceAsset.crop?.data?.byteLength || sourceAsset.data?.byteLength),
+    },
+    confidence: {
+      detection: confidence.detection ?? confidence.overall,
+      recognition: confidence.recognition ?? confidence.token,
+      structure: confidence.structure ?? confidence.sequence,
+      validation: parsed.success && semanticEquivalent
+        ? hasIndependentExpected
+          ? 0.96
+          : candidate.provider === "mupdf-structured-text"
+            ? 0.78
+            : 0.45
+        : visual.score,
+      reconstruction: mandatoryPassed
+        ? confidence.overall
+        : parsed.success && semanticEquivalent
+          ? Math.min(confidence.overall, 0.81)
+          : Math.min(confidence.overall, 0.54),
+      export: parsed.success && semanticEquivalent ? 0.96 : 0.2,
+    },
+    disposition: mandatoryPassed
+      ? "reconstructed-with-source"
+      : parsed.success && semanticEquivalent && confidence.overall >= threshold.review
+        ? "needs-review"
+        : "preserved-source",
+    reconstructionVersion: 1,
+    diagnostics: validation.notes,
+  });
 
   return {
     accepted: mandatoryPassed,
@@ -194,6 +250,7 @@ export function validateEquationCandidate(candidate = {}, sourceAsset = {}, expe
       },
       reconstruction: {
         format: "semantic-ir",
+        equationIRId: equationIR.id,
         source: {
           kind: "validated-candidate",
           recognizer: {
@@ -217,6 +274,7 @@ export function validateEquationCandidate(candidate = {}, sourceAsset = {}, expe
       parse: parsed,
       visual,
       semanticEquivalent,
+      equationIR,
     },
   };
 }

@@ -1,6 +1,8 @@
 import { expect, it } from "vitest";
 import { strFromU8, unzipSync } from "fflate";
-import { markdownToDocx, semanticDocumentToDocx } from "./docx-export.js";
+import { Document, Packer } from "docx";
+import { equationFromLatex } from "../../shared/equation-ir.js";
+import { equationIRParagraph, markdownToDocx, semanticDocumentToDocx } from "./docx-export.js";
 import { SEMANTIC_DOCUMENT_IR_V2_FIXTURE } from "../../shared/semantic-document-ir.fixtures.js";
 import { shouldUseStreamingDocx } from "./streaming-docx.js";
 async function contents(blob) {
@@ -90,6 +92,61 @@ it("maps nested math structures to native OMML nodes", async () => {
   expect(xml).toContain("<m:rad>");
   expect(xml).toContain("<m:sub>");
   expect(xml).toContain("<m:sup>");
+});
+
+it("maps validated EquationIR directly to native OMML", async () => {
+  const equation = equationFromLatex({
+    id: "docx-equation-1",
+    page: 1,
+    bbox: [10, 20, 200, 60],
+    mode: "display",
+    latex: "\\frac{a_1}{\\sqrt{b}}",
+    source: {
+      kind: "vector",
+      page: 1,
+      bbox: [10, 20, 200, 60],
+      cropIds: ["equation-crop-1"],
+      cropAvailable: true,
+    },
+    confidence: {
+      detection: 0.95,
+      recognition: 0.95,
+      structure: 0.95,
+      validation: 0.95,
+      reconstruction: 0.95,
+      export: 0.95,
+    },
+  });
+  const paragraph = await equationIRParagraph(equation);
+  const blob = await Packer.toBlob(new Document({ sections: [{ children: [paragraph] }] }));
+  const xml = strFromU8((await contents(blob))["word/document.xml"]);
+  expect(xml).toContain("<m:f>");
+  expect(xml).toContain("<m:rad>");
+});
+
+it("maps a validated matrix EquationIR to native OMML matrix rows", async () => {
+  const equation = equationFromLatex({
+    id: "docx-matrix-1",
+    page: 1,
+    bbox: [10, 20, 200, 80],
+    mode: "display",
+    latex: "\\begin{pmatrix}a & b \\\\ c & d\\end{pmatrix}",
+    source: { kind: "vector", page: 1, bbox: [10, 20, 200, 80], cropIds: ["matrix-crop"] },
+    confidence: {
+      detection: 0.95,
+      recognition: 0.95,
+      structure: 0.95,
+      validation: 0.95,
+      reconstruction: 0.95,
+      export: 0.95,
+    },
+  });
+  const paragraph = await equationIRParagraph(equation);
+  const blob = await Packer.toBlob(new Document({ sections: [{ children: [paragraph] }] }));
+  const xml = strFromU8((await contents(blob))["word/document.xml"]);
+  expect(xml).toContain("<m:m>");
+  expect(xml.match(/<m:mr>/g)).toHaveLength(2);
+  expect(xml.match(/<m:e>/g)).toHaveLength(4);
 });
 
 it("exports products with the product operator instead of a summation glyph", async () => {

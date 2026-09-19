@@ -30,6 +30,7 @@ import {
 } from "docx";
 
 import { parseLatexToMathIR } from "../../shared/mathir-parser.js";
+import { equationForDocx, parseEquationIR } from "../../shared/equation-ir.js";
 import { semanticDocumentToDocxMarkdown } from "../../shared/semantic-document-ir.js";
 import { repairDisplayMathProse } from "../extraction/cleanup.js";
 import { fencedVisualParagraph, visualParagraph } from "./visual-docx.js";
@@ -242,6 +243,37 @@ function mathNAry(symbol, children, lower, upper) {
   return component;
 }
 
+function mathMatrix(node, nodeMap, walk) {
+  const body = resolveMathNode(node, nodeMap, "body") || node.body;
+  const rows = [[]];
+  for (const child of resolveMathChildren(body, nodeMap)) {
+    if (child.type === "linebreak") {
+      if (rows.at(-1).length) rows.push([]);
+      continue;
+    }
+    if (child.type === "operator" && child.value === "separator") {
+      rows.at(-1).push([]);
+      continue;
+    }
+    if (!rows.at(-1).length || !Array.isArray(rows.at(-1).at(-1))) rows.at(-1).push([]);
+    rows.at(-1).at(-1).push(child);
+  }
+  const matrix = new XmlComponent("m:m");
+  for (const row of rows.filter((cells) => cells.length)) {
+    const matrixRow = new XmlComponent("m:mr");
+    for (const cell of row) {
+      const matrixCell = new XmlComponent("m:e");
+      const children = cell.flatMap((child) => walk(child));
+      (children.length ? children : [new MathRun(" ")]).forEach((child) =>
+        matrixCell.addChildElement(child),
+      );
+      matrixRow.addChildElement(matrixCell);
+    }
+    matrix.addChildElement(matrixRow);
+  }
+  return [matrix];
+}
+
 function mathComponentsFromMathIR(ir, rawText = "") {
   if (!ir || !Array.isArray(ir.nodes) || !ir.nodes.length) return [new MathRun(rawText || " ")];
   const nodeMap = new Map(ir.nodes.map((node) => [node.id, node]));
@@ -389,6 +421,8 @@ function mathComponentsFromMathIR(ir, rawText = "") {
       }
       case "environment": {
         const body = resolveMathNode(node, nodeMap, "body") || node.body;
+        if (["pmatrix", "bmatrix", "smallmatrix", "array", "cases"].includes(node.environment))
+          return mathMatrix(node, nodeMap, walk);
         return walk(body);
       }
       case "linebreak":
@@ -658,6 +692,51 @@ function equationParagraph(source, options) {
       children: [new TextRun({ text: raw, italics: true })],
     });
   }
+}
+
+function equationParagraphFromMathIR(ir, raw, options = {}) {
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    children: [new WordMath({ children: mathComponentsFromMathIR(ir, raw) })],
+  });
+}
+
+/**
+ * Native DOCX entry point for the versioned EquationIR contract. The source
+ * crop remains the fallback when validation/export confidence does not permit
+ * editable OMML; callers may provide the extraction asset map for that path.
+ */
+export async function equationIRParagraph(value, options = {}) {
+  const equation = parseEquationIR(value);
+  const mathIR = equationForDocx(equation);
+  if (mathIR) {
+    try {
+      return equationParagraphFromMathIR(mathIR, equation.latex, options);
+    } catch (error) {
+      notifyExportWarning(options, {
+        kind: "equation",
+        message: error instanceof Error ? error.message : String(error),
+        fallback: "source-visual-or-text",
+      });
+    }
+  }
+  const sourceId = equation.source.cropIds[0];
+  const asset = sourceId && (options.assets?.get?.(sourceId) || options.assets?.[sourceId]);
+  if (asset?.data) {
+    return visualParagraph(
+      { id: sourceId, kind: "equation", page: equation.page, bbox: equation.bbox },
+      options.assets,
+      options,
+    );
+  }
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    children: [new TextRun({
+      text: `[Equation source preserved on PDF page ${equation.page}]`,
+      italics: true,
+      color: "666666",
+    })],
+  });
 }
 
 export async function markdownToDocx(

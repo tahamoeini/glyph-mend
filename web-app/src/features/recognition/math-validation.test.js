@@ -90,6 +90,20 @@ describe("equation validation gating", () => {
     expect(ocr.disposition).toBe("review");
   });
 
+  it("does not accept high-confidence OCR without independent expected evidence", () => {
+    const result = validateEquationCandidate(
+      {
+        latex: "x = y",
+        provider: "tesseract-ocr",
+        confidence: { overall: 0.99, token: 0.99, sequence: 0.99 },
+      },
+      { id: "source-crop-ocr", page: 3, bbox: [10, 20, 200, 60] },
+    );
+    expect(result.accepted).toBe(false);
+    expect(result.validation.independentEvidence).toBe(false);
+    expect(result.output.equationIR.disposition).toBe("needs-review");
+  });
+
   it("uses a conservative visual similarity fallback for structure-sensitive math", () => {
     const score = createBaselineVisualSimilarity("\\sum_{i=1}^n i", "\\sum_{i=1}^n i^2");
     expect(score.score).toBeLessThan(1);

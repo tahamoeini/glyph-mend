@@ -2,9 +2,9 @@
 
 Status: live pre-implementation ledger. This file records concrete work needed after the audit; it is not a claim that extraction quality has improved.
 
-This branch implements the first contract slices: versioned Semantic Document IR v2, runtime validation, deterministic serialization, legacy adaptation, worker/app validation, a Markdown/DOCX compatibility adapter, separate quality dimensions, a reconstructable-bundle sidecar, and a conservative versioned TableIR adapter with confidence-gated export/source fallback. It also restores page-scoped structured-data validation and serialization so cumulative provenance across valid pages does not consume one shared 100,000-node budget. The open items below describe the remaining migration rather than work already completed here.
+This branch implements the first contract slices: versioned Semantic Document IR v2, runtime validation, deterministic serialization, legacy adaptation, worker/app validation, a Markdown/DOCX compatibility adapter, separate quality dimensions, a reconstructable-bundle sidecar, a conservative versioned TableIR adapter with confidence-gated export/source fallback, and an evidence-driven EquationIR v1 adapter with bounded MathIR, source-crop retention, Markdown LaTeX, and direct native DOCX OMML support for the validated subset. It also restores page-scoped structured-data validation and serialization so cumulative provenance across valid pages does not consume one shared 100,000-node budget. The open items below describe the remaining migration rather than work already completed here.
 
-Audit baseline: `main` `85d4fa5`, PR #35 merge `305a59b`, PR #35 head `565f1ea`.
+Audit baseline: `main` `90307d5d6846996741ede1d969482e4cbbc2f60d` (merge of PR #42), PR #35 merge `305a59b`, PR #35 head `565f1ea`.
 
 Status meanings:
 
@@ -40,12 +40,13 @@ Status meanings:
 | GM-REM-020 | BLOCKED | P2 | Set release quality thresholds and fallback policy. | Current quality audit reports heuristics and review flags but has no independent structural correctness score. | Choose per-class thresholds for raw/layout/semantic/export metrics, acceptable source-preservation rate, and blocking review items. | Production release decision |
 | GM-REM-021 | BLOCKED | P2 | Complete MuPDF/PyMuPDF and optional companion license/redistribution review. | The build copies MuPDF/PDF.js/Tesseract assets and Python pins PyMuPDF; this audit did not make a legal determination. | Record approved licenses/notices, redistribution terms, asset provenance, and CI checks before changing runtime packaging. | Shipping and Rust companion |
 | GM-REM-022 | RESOLVED | P0 | Prevent valid multi-page Semantic IR from failing the shared structured-data budget during cleanup/export. | A 51-page IR with 2,500 source span IDs per page failed at `pages[36].nodes[1].confidence.export` because TableIR integration had restored document-wide validation. The path was a misleading last-visited field, not an invalid confidence value. | Validate the document envelope and each page with independent bounded counters; serialize the same way; retain rejection for a single oversized page. Covered by `semantic-document-ir.test.js`. | None for this defect; native exporter migration remains GM-REM-008 |
+| GM-REM-023 | IN PROGRESS | P0 | Complete evidence-backed equation correctness and direct exporter migration. | `shared/equation-ir.js` validates deterministic structural MathIR envelopes, explicit inline/display mode, source references, confidence dimensions, dispositions, LaTeX serialization, and direct DOCX OMML for the supported subset. Worker crops are retained for successful and fallback candidates; inline and matrix fixtures are deterministic. Independent equation truth, render comparison, and the streaming DOCX direct path are not present. | Add independently authored equation PDF annotations and source glyph alignment; measure token/AST/render/source metrics; prohibit self-comparison from counting as correctness; migrate streaming DOCX and Python through the contract only after conformance tests pass. | Equation release gates and exporter convergence |
 
 ## Immediate implementation order
 
 1. GM-REM-001, GM-REM-002, and GM-REM-004: corpus, schemas, and raw evidence.
 2. GM-REM-003 and GM-REM-005: layout graph and typed structural candidates.
-3. GM-REM-006 and GM-REM-007: tables and independently validated equations.
+3. GM-REM-006, GM-REM-007, and GM-REM-023: tables, independent equation truth, and EquationIR/exporter conformance.
 4. GM-REM-008 and GM-REM-009: canonical reconstruction/exporters and calibrated quality.
 5. GM-REM-010 through GM-REM-017: OCR, visual assets, durability, review UI, browser tests, and Python convergence.
 6. GM-REM-012, GM-REM-019, GM-REM-018, and GM-REM-021: measured performance, budgets, licensing, and only then the optional companion decision.
