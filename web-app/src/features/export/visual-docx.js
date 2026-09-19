@@ -7,6 +7,7 @@ import {
 } from "docx";
 
 import { parseVisualIR } from "../../shared/semantic-ir.js";
+import { visualIRToLegacyVisualIR } from "../../shared/visual-ir.js";
 import {
   mermaidFlowchartToSvg,
   routeVisualOutput,
@@ -192,7 +193,9 @@ function nativeFailure(reason) {
 export function mapVisualIRToDrawingML(value) {
   let visualIR;
   try {
-    visualIR = parseVisualIR(value);
+    visualIR = value?.schema === "glyphmend.visual-ir"
+      ? parseVisualIR(visualIRToLegacyVisualIR(value))
+      : parseVisualIR(value);
   } catch (error) {
     return nativeFailure(`VisualIR validation failed: ${error.message}`);
   }
@@ -407,8 +410,9 @@ function preservedParagraph(fields) {
 
 export async function visualParagraph(fields, assets, options = {}) {
   const asset = assets?.get?.(fields.id) || assets?.[fields.id] || {};
-  if (options.nativeVisuals !== false && asset.visualIR) {
-    const native = mapVisualIRToDrawingML(asset.visualIR);
+  const visualIR = asset.visualIR || asset.visualIRv2;
+  if (options.nativeVisuals !== false && visualIR) {
+    const native = mapVisualIRToDrawingML(visualIR);
     if (native.ok) {
       const children = [ImportedXmlComponent.fromXmlString(native.xml)];
       if (asset.caption)
@@ -428,11 +432,11 @@ export async function visualParagraph(fields, assets, options = {}) {
 
   let svg = svgData(asset);
   let description = `Source ${fields.kind || "visual"}`;
-  if (!svg && asset.visualIR) {
+  if (!svg && visualIR) {
     try {
-      const route = routeVisualOutput(asset.visualIR);
+      const route = routeVisualOutput(visualIR);
       if (route.format === "mermaid") {
-        svg = visualIRToSvg(asset.visualIR, { description });
+        svg = visualIRToSvg(visualIR, { description });
         description = "Mermaid-compatible VisualIR rendered as SVG";
       }
     } catch {

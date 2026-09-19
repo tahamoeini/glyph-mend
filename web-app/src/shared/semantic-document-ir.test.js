@@ -11,6 +11,7 @@ import {
 } from "./semantic-document-ir.js";
 import { SEMANTIC_DOCUMENT_IR_V2_FIXTURE } from "./semantic-document-ir.fixtures.js";
 import { tableIRFromRows } from "./table-ir.js";
+import { classifyVisualEvidence } from "./visual-ir.js";
 
 it("creates and validates v2 nodes without collapsing confidence dimensions", () => {
   const document = createSemanticDocumentIR(SEMANTIC_DOCUMENT_IR_V2_FIXTURE);
@@ -126,6 +127,44 @@ it("still rejects a single page that exceeds the structured-data budget", () => 
       }],
     }],
   })).toThrow(/exceeds the .*node limit/);
+});
+
+
+it("keeps VisualIR diagnostics within a page-scoped structured-data budget", () => {
+  const pages = Array.from({ length: 51 }, (_, pageIndex) => {
+    const page = pageIndex + 1;
+    const visualIR = classifyVisualEvidence({
+      page,
+      bbox: [20, 40, 240, 180],
+      sourceKind: "raster",
+      assetId: `page-${page}-visual`,
+      sourceSpanIds: Array.from({ length: 2_500 }, (_, spanIndex) => `p${page}-span-${spanIndex}`),
+      images: [{ id: `page-${page}-image`, bbox: [20, 40, 240, 180] }],
+      sourceAsset: {
+        assetId: `page-${page}-visual`,
+        cropIds: [`page-${page}-crop`],
+        format: "raster",
+        preserved: true,
+      },
+    });
+    return {
+      page,
+      blocks: [{
+        id: `page-${page}-visual-block`,
+        type: "figure",
+        markdown: `[SOURCE_VISUAL page=${page} id="page-${page}-visual" kind="image"]`,
+        bbox: [20, 40, 240, 180],
+        source: { spanIds: visualIR.source.spanIds, cropIds: visualIR.source.cropIds },
+        visualIR,
+      }],
+    };
+  });
+  const document = semanticDocumentFromLegacyDocumentIR({ pages });
+  const restored = deserializeSemanticDocumentIR(serializeSemanticDocumentIR(document));
+
+  expect(restored.pages).toHaveLength(51);
+  expect(restored.pages[50].nodes[0].content.visualIR.diagnostics[0].details.imageCount).toBe(1);
+  expect(restored.pages[50].nodes[0].source.spanIds).toHaveLength(2_500);
 });
 
 it("rejects invalid external IR at the schema boundary", () => {

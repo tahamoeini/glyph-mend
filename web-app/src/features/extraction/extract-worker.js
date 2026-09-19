@@ -20,6 +20,7 @@ import {
   ACTIVE_FORMAT_LIMITS,
   validateExtractionRequest,
 } from "../../shared/security-boundaries.js";
+import { classifyVisualEvidence, createVisualIR } from "../../shared/visual-ir.js";
 
 const FORMULA_CUE =
   /(?:equation|formula|expression|defined by|given by|satisfies|we have|becomes|therefore|hence|where|as follows|satisfying|express(?:ed)?|condition(?: reduces)? to|is the (?:largest|smallest)|at (?:a )?price|is given by|reduces to|is equal to)\s*:?\s*$/i;
@@ -1301,6 +1302,86 @@ function sourceMarker(pageNumber, asset) {
     ? ` caption="${asset.caption.replace(/["\\]/g, " ").replace(/\s+/g, " ").trim()}"`
     : "";
   return `[SOURCE_VISUAL page=${pageNumber} id="${asset.id}" kind="${asset.kind}" bbox="${box}"${caption}]`;
+}
+
+function visualBboxIntersects(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== 4 || right.length !== 4)
+    return false;
+  return left[0] < right[2] && left[2] > right[0] && left[1] < right[3] && left[3] > right[1];
+}
+
+function classifyPageVisualAssets(assets, { page, pageBounds, images, vectors } = {}) {
+  const pageArea = Math.max(1, (pageBounds?.[2] - pageBounds?.[0]) * (pageBounds?.[3] - pageBounds?.[1]));
+  return assets.map((asset) => {
+    if (asset.visualIRv2) return asset;
+    const assetVectors = (vectors || []).filter((item) => visualBboxIntersects(item.bbox, asset.bbox));
+    const assetImages = (images || []).filter((item) => visualBboxIntersects(item.bbox, asset.bbox));
+    const sourceKind = asset.kind === "source-page"
+      ? "source-page"
+      : asset.kind === "graphic"
+        ? "vector"
+        : asset.sourceType === "vector"
+          ? "vector"
+          : asset.sourceType === "pdf-page"
+            ? "source-page"
+            : "raster";
+    const classHint = asset.kind === "equation-source" || asset.kind === "equation"
+      ? "equation-image"
+      : asset.kind === "source-page"
+        ? "background"
+        : asset.kind === "image"
+          ? undefined
+          : asset.kind;
+    const sourceObjectIds = asset.sourceObjectIds || assetVectors.map((item) => item.id).filter(Boolean);
+    const sourceCropIds = asset.sourceCropIds || [asset.id].filter(Boolean);
+    try {
+      const visualIRv2 = classifyVisualEvidence({
+        id: asset.id,
+        page,
+        bbox: asset.bbox,
+        coordinateSpace: "page-points",
+        sourceKind,
+        assetId: asset.id,
+        cropId: asset.id,
+        classHint,
+        caption: asset.caption,
+        text: asset.caption,
+        images: assetImages,
+        vectors: assetVectors,
+        sourceSpanIds: asset.sourceSpanIds || [],
+        sourceObjectIds,
+        sourceCropIds,
+        pageArea,
+        sourceAsset: {
+          assetId: asset.id,
+          cropIds: sourceCropIds,
+          format: asset.format || asset.type || "raster",
+          preserved: true,
+        },
+      });
+      return { ...asset, visualIRv2 };
+    } catch (error) {
+      const visualIRv2 = createVisualIR({
+        id: asset.id,
+        class: "unresolved-visual",
+        page,
+        bbox: asset.bbox,
+        coordinateSpace: "page-points",
+        source: {
+          kind: sourceKind,
+          assetId: asset.id,
+          objectIds: sourceObjectIds,
+          cropIds: sourceCropIds,
+        },
+        sourceAsset: { assetId: asset.id, cropIds: sourceCropIds, preserved: true },
+        confidence: { detection: 0.2, classification: 0.1, structure: 0.1, reconstruction: null, export: 0.9 },
+        disposition: "preserved-source",
+        warnings: ["Visual classification failed closed; source asset retained."],
+        diagnostics: [{ code: "visual-classification-failed", severity: "error", message: String(error?.message || error) }],
+      });
+      return { ...asset, visualIRv2 };
+    }
+  });
 }
 
 export function dedupeNearbyEquationEntries(entries = [], bodySize = 10) {
@@ -2759,6 +2840,13 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     }
   }
 
+  const visualAssets = classifyPageVisualAssets(assets, {
+    page: pageNumber,
+    pageBounds,
+    images,
+    vectors,
+  });
+  const visualAssetsById = new Map(visualAssets.map((asset) => [asset.id, asset]));
   const orderedEntries = options.flows === false
     ? [...entries].sort((a, b) => a.y - b.y || (a.x || 0) - (b.x || 0))
     : orderPageEntries(entries, pageBounds, bodySize);
@@ -2783,9 +2871,16 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
       average(pageEquationIRs.map((equation) => equation.confidence?.[dimension])),
     ]),
   );
+  const semanticEntries = textEntries.map((entry) => {
+    const marker = /\bid="([^"\\]+)"/u.exec(String(entry.markdown || ""));
+    const visualAsset = marker ? visualAssetsById.get(marker[1]) : null;
+    return visualAsset?.visualIRv2
+      ? { ...entry, assetId: visualAsset.id, visualIR: visualAsset.visualIRv2 }
+      : entry;
+  });
   const documentIR = pageDocumentIR(
     { page: pageNumber, bbox: pageBounds },
-    { blocks: textEntries, assets, layout, quality: {} },
+    { blocks: semanticEntries, assets: visualAssets, layout, quality: {} },
   );
   const text = documentIRToMarkdown(documentIR);
   const quality = {
@@ -2794,14 +2889,14 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     images: images.length,
     vectors: vectors.length,
     equations: (text.match(/^\$\$/gm) || []).length / 2,
-    preservedVisuals: assets.length,
+    preservedVisuals: visualAssets.length,
     preservedEquationFallbacks: textEntries.filter(
       (entry) => entry.kind === "equation-fallback",
     ).length,
     suspiciousGaps: 0,
     ocrApplied,
     embeddedTextCorrupt,
-    sourcePagePreserved: assets.some((asset) => asset.kind === "source-page"),
+    sourcePagePreserved: visualAssets.some((asset) => asset.kind === "source-page"),
     sourcePageFallbackFailed,
     layoutConfidence: layout.confidence,
     textConfidence: embeddedTextCorrupt ? 0.55 : ocrApplied ? 0.72 : 0.96,
@@ -2824,8 +2919,8 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     ),
     figurePreservation: {
       detected: images.length + vectors.length,
-      preserved: assets.filter((asset) => !/^equation/.test(asset.kind || "")).length,
-      sourceEvidence: assets.filter((asset) => asset.kind === "source-page").length,
+      preserved: visualAssets.filter((asset) => !/^equation/.test(asset.kind || "")).length,
+      sourceEvidence: visualAssets.filter((asset) => asset.kind === "source-page").length,
     },
   };
   documentIR.quality = quality;
@@ -2835,7 +2930,7 @@ export async function pageMarkdown(page, pageNumber, options, ocrPaths) {
     documentIR,
     semanticDocument,
     bodySize,
-    assets,
+    assets: visualAssets,
     edges,
     quality,
     reviewItems: [...new Map(reviewItems.map((item) => [item.id, item])).values()],

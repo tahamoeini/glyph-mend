@@ -1,5 +1,6 @@
 import { assertSafeStructuredValue } from "./security-boundaries.js";
 import { TABLE_IR_SCHEMA, validateTableIR } from "./table-ir.js";
+import { CHART_IR_SCHEMA, VISUAL_IR_SCHEMA, validateChartIR, validateVisualIR } from "./visual-ir.js";
 
 /**
  * Semantic Document IR v2 is the stable, JSON-safe contract between page
@@ -137,6 +138,7 @@ function canonicalSemanticDocumentJson(value) {
   return JSON.stringify(canonicalize(source));
 }
 
+
 function deepClone(value) {
   if (Array.isArray(value)) return value.map(deepClone);
   if (!isRecord(value)) return value;
@@ -272,7 +274,10 @@ function normalizeContent(value, label) {
   if (typeof value === "string") return { markdown: value, text: value };
   const content = assertRecord(value, label);
   assertSafeJsonValue(content, label);
-  return deepClone(content);
+  const output = deepClone(content);
+  if (output.visualIR?.schema === VISUAL_IR_SCHEMA) output.visualIR = validateVisualIR(output.visualIR);
+  if (output.chartIR?.schema === CHART_IR_SCHEMA) output.chartIR = validateChartIR(output.chartIR);
+  return output;
 }
 
 function normalizeSource(value, sourceKind, label = "source") {
@@ -532,6 +537,7 @@ function legacyNode(block, pageNumber, index) {
     ...(block?.caption ? { caption: String(block.caption) } : {}),
     ...(block?.tableIR || block?.table ? { table: deepClone(block.tableIR || block.table) } : {}),
     ...(block?.equationIR ? { equationIR: deepClone(block.equationIR) } : {}),
+    ...(block?.visualIR?.schema === "glyphmend.visual-ir" ? { visualIR: deepClone(block.visualIR) } : {}),
     ...(Array.isArray(block?.inlineEquationIRs) && block.inlineEquationIRs.length
       ? { inlineEquationIRs: deepClone(block.inlineEquationIRs) }
       : {}),
@@ -628,6 +634,7 @@ export function legacyDocumentIRFromSemanticDocument(document) {
         extractionMethod: `semantic-document-ir-v${node.reconstructionVersion}`,
         children: node.children.map((child) => child.id),
         source: deepClone(node.source),
+        ...(node.content.visualIR?.schema === "glyphmend.visual-ir" ? { visualIR: deepClone(node.content.visualIR) } : {}),
       })),
       relationships: deepClone(page.relationships),
       layout: deepClone(page.layout),
@@ -715,6 +722,20 @@ export function semanticDocumentQualityReport(value) {
       mean: values.length ? Number((values.reduce((sum, item) => sum + item, 0) / values.length).toFixed(6)) : null,
     };
   }
+  const visuals = nodes
+    .map((node) => node.content?.visualIR)
+    .filter((visual) => visual?.schema === VISUAL_IR_SCHEMA);
+  const visualConfidence = {};
+  for (const dimension of ["detection", "classification", "structure", "reconstruction", "export"]) {
+    const values = visuals.map((visual) => visual.confidence[dimension]).filter((item) => item !== null);
+    visualConfidence[dimension] = {
+      known: values.length,
+      unknown: visuals.length - values.length,
+      minimum: values.length ? Math.min(...values) : null,
+      maximum: values.length ? Math.max(...values) : null,
+      mean: values.length ? Number((values.reduce((sum, item) => sum + item, 0) / values.length).toFixed(6)) : null,
+    };
+  }
   return {
     schema: SEMANTIC_DOCUMENT_IR_SCHEMA,
     schemaVersion: SEMANTIC_DOCUMENT_IR_SCHEMA_VERSION,
@@ -730,6 +751,14 @@ export function semanticDocumentQualityReport(value) {
       unresolvedCellDiagnostics: tables.reduce((sum, table) => sum + table.unresolvedCellDiagnostics.length, 0),
       dispositions: countBy(tables.map((table) => table.disposition)),
       confidence: tableConfidence,
+    },
+    visuals: {
+      count: visuals.length,
+      classes: countBy(visuals.map((visual) => visual.class)),
+      dispositions: countBy(visuals.map((visual) => visual.disposition)),
+      confidence: visualConfidence,
+      withSourceAsset: visuals.filter((visual) => visual.source.assetId || visual.source.cropIds.length).length,
+      warningCount: visuals.reduce((sum, visual) => sum + visual.warnings.length, 0),
     },
     provenance: {
       nodesWithBbox: nodes.filter((node) => node.bbox).length,

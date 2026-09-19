@@ -60,3 +60,16 @@ Status meanings:
 - Historical notes that refer to external PDFs or prior extraction outputs are not treated as current fixtures because those artifacts are absent from this checkout.
 
 The detailed architecture, loss-point ledger, target pipeline, benchmark plan, and unresolved decisions are in [`docs/extraction-reconstruction-roadmap.md`](extraction-reconstruction-roadmap.md).
+
+
+## 2026-09-19 — VisualIR page-scoped validation regression
+
+Observed production failure: large extraction batches could fail while validating Semantic Document IR pages/nodes/content visual diagnostics details imageCount with "exceeds the structured-data node limit".
+
+Root cause: the VisualIR branch had reverted the earlier page-scoped structured-data validation and passed the complete document through one global transport node counter. Repeated provenance arrays and visual diagnostics were counted cumulatively across pages; the diagnostic field named in the error was only the first path at which the shared budget overflowed.
+
+Fix on the follow-up branch: validate the document envelope separately and validate each page with a fresh bounded structured-data counter. Serialization uses the same page-scoped boundary. No provenance, diagnostic, image count, or visual source evidence is discarded.
+
+Regression coverage: 51 pages with 2,500 source span references and VisualIR diagnostics are created, serialized, deserialized, and checked; a single oversized page remains rejected.
+
+Remaining: this fixes validation-budget exhaustion. It does not by itself prove visual-classification quality or explain why individual pages may have zero preserved visual crops; those remain separate extraction-quality issues.

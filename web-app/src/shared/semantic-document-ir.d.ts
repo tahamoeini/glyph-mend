@@ -160,6 +160,20 @@ export interface SemanticDocumentQualityReport {
       mean: number | null;
     }>;
   };
+  visuals: {
+    count: number;
+    classes: Record<string, number>;
+    dispositions: Record<string, number>;
+    confidence: Record<string, {
+      known: number;
+      unknown: number;
+      minimum: number | null;
+      maximum: number | null;
+      mean: number | null;
+    }>;
+    withSourceAsset: number;
+    warningCount: number;
+  };
   provenance: {
     nodesWithBbox: number;
     nodesWithSourceSpan: number;

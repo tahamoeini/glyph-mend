@@ -1,10 +1,17 @@
 import { parseChartIR } from "./semantic-ir.js";
+import { chartIRToLegacyChartIR } from "./visual-ir.js";
 
 const SUPPORTED_MARK_TYPES = new Set(["bar", "line", "point", "scatter"]);
 const SUPPORTED_CHANNELS = new Set(["x", "y", "color", "size", "shape", "tooltip", "column", "row", "detail", "opacity"]);
 
 function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseRenderableChartIR(value) {
+  return value?.schema === "glyphmend.chart-ir"
+    ? parseChartIR(chartIRToLegacyChartIR(value))
+    : parseChartIR(value);
 }
 
 function normalizeText(value = "") {
@@ -124,7 +131,7 @@ function toCsv(rows, columns) {
 }
 
 export function chartIRToVegaLite(chartIR) {
-  const chart = parseChartIR(chartIR);
+  const chart = parseRenderableChartIR(chartIR);
   const markType = supportedChartKind(chart);
   if (!markType) {
     throw new TypeError("ChartIR export only supports a single bar, line, point, or scatter mark type.");

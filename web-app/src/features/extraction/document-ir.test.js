@@ -7,8 +7,9 @@ import {
   documentIRToMarkdown,
   pageDocumentIR,
 } from "./document-ir.js";
-import { semanticDocumentFromLegacyDocumentIR } from "../../shared/semantic-document-ir.js";
+import { semanticDocumentFromLegacyDocumentIR, semanticDocumentQualityReport } from "../../shared/semantic-document-ir.js";
 import { tableIRFromRows } from "../../shared/table-ir.js";
+import { classifyVisualEvidence } from "../../shared/visual-ir.js";
 
 it("normalizes ordered page blocks into semantic DocumentIR without losing provenance", () => {
   const ir = pageDocumentIR(
@@ -167,6 +168,32 @@ it("carries layout classification, source IDs, and separate structure confidence
     type: "heading",
     source: { spanIds: ["p5-span-1"], objectIds: ["p5-object-1"] },
     confidence: { extraction: 0.98, structure: 0.91 },
+  });
+});
+
+it("carries versioned visual provenance through DocumentIR and Semantic Document IR", () => {
+  const visualIR = classifyVisualEvidence({
+    page: 6,
+    bbox: [40, 100, 300, 240],
+    sourceKind: "raster",
+    assetId: "figure-6",
+    cropId: "crop-6",
+    images: [{ id: "figure-6", bbox: [40, 100, 300, 240] }],
+    caption: "Figure 6. Sample photograph",
+  });
+  const ir = pageDocumentIR(
+    { page: 6, assets: [{ id: "figure-6", kind: "image", bbox: [40, 100, 300, 240], visualIRv2: visualIR }] },
+    { blocks: [{ id: "figure-block", kind: "visual", markdown: '[SOURCE_VISUAL page=6 id="figure-6" kind="image"]', bbox: [40, 100, 300, 240], visualIR }] },
+  );
+  expect(ir.assets[0].visualIR.schemaVersion).toBe(2);
+  expect(ir.blocks[0].visualIR.source.cropIds).toEqual(["crop-6"]);
+  const semantic = semanticDocumentFromLegacyDocumentIR({ pages: [ir] });
+  expect(semantic.pages[0].nodes[0].content.visualIR.class).toBe("ordinary-image");
+  expect(semantic.pages[0].nodes[0].source.cropIds).toEqual(["crop-6"]);
+  expect(semanticDocumentQualityReport(semantic).visuals).toMatchObject({
+    count: 1,
+    classes: { "ordinary-image": 1 },
+    withSourceAsset: 1,
   });
 });
 
