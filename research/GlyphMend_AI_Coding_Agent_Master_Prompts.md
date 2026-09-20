@@ -476,56 +476,302 @@ Acceptance:
 
 ---
 
-## Prompt 7 — Create the optional cross-platform companion foundation
+## Prompt 7 — Design and implement the optional cross-platform companion foundation
 
-You are the senior platform architect for GlyphMend.
+You are the senior platform architect responsible for extending GlyphMend with a safe, optional native companion.
 
-Mission:
+### Mission
 
-Create the foundation for an optional cross-platform Rust/Tauri companion without moving browser extraction into it yet.
+Design and implement the first production-quality foundation for a cross-platform Rust/Tauri companion that can later provide native, multi-threaded, memory-stable, and optional model-backed document processing. In this prompt implement the runtime boundary and its integration contract only. Do not move PDF extraction, OCR, layout analysis, semantic reconstruction, exporters, or model inference out of the browser yet.
 
-The companion is an extension of GlyphMend, not a separate product. The browser version must remain complete, install-free, offline-capable, and useful on Android or any device where the companion is unavailable.
+The companion is an extension of GlyphMend, not a separate product. The browser/PWA remains the complete default product: it must stay install-free, offline-capable, private, usable on mobile, and fully functional when the companion is not installed, not running, unsupported, busy, incompatible, or explicitly declined.
 
-Implement only the foundation:
+### Product behavior and responsibility split
 
-- Rust workspace or clearly isolated engine project;
-- versioned capability protocol;
-- local capability discovery;
-- browser-side bridge seam;
-- version negotiation;
-- job and progress contract;
-- cancellation contract;
-- page-level error contract;
-- IR schema-version negotiation;
-- connection timeout and fallback behavior;
-- security model and local-only restrictions;
-- documentation in docs/companion-engine.md.
+Document and capability ownership must be explicit:
 
-Choose the IPC transport only after checking platform security and packaging constraints. If using loopback HTTP or WebSocket, bind locally and enforce origin/token checks. If using native IPC, document browser integration and packaging implications.
+The browser always owns:
 
-The protocol must never accept arbitrary document-provided network URLs or unrestricted filesystem paths. User-selected files and explicit permissions are required.
+- PDF intake through a user-selected `File`;
+- the current browser extraction pipeline and ordinary OCR fallback;
+- layout, semantic IR, provenance, confidence, cleanup, review state, and exporters;
+- IndexedDB checkpoints and browser-only resume/cancel behavior;
+- the complete mobile experience;
+- safe fallback whenever the companion cannot be used.
 
-Do not duplicate semantic IR definitions. Share or generate a versioned contract so browser and companion cannot silently diverge.
+The companion foundation owns only:
 
-Add tests for:
+- a native runtime host and lifecycle;
+- capability discovery and version negotiation;
+- a local job protocol and bounded event stream;
+- authenticated local communication with the browser or a Tauri-hosted GlyphMend UI;
+- cancellation, timeout, backpressure, job isolation, and clean shutdown;
+- the future provider boundary for native extraction and optional local packs;
+- local diagnostics and privacy-safe logs.
 
-- capability discovery;
-- incompatible protocol versions;
-- unavailable engine;
-- cancellation;
-- malformed messages;
-- timeout;
-- fallback to browser.
+Future companion capabilities may include native PDF/rendering adapters, stronger large-document memory behavior, parallel page processing, local OCR/layout/table/equation providers, and explicit offline model packs. They are not part of this prompt unless required to prove the protocol with a deterministic mock provider.
 
-Do not add telemetry, cloud requests, or model downloads.
+### Non-goals and hard constraints
 
-Acceptance:
+Do not:
 
-- browser behavior is unchanged when no companion exists;
-- the bridge can detect and decline the companion safely;
-- protocol and security boundaries are documented and tested;
-- no extraction logic is moved prematurely.
+- make the companion a required backend or a second product;
+- upload documents, extracted content, logs, or telemetry anywhere;
+- add cloud inference, external AI APIs, remote model downloads, or analytics;
+- silently scan ports, read arbitrary files, follow document URLs, or execute PDF JavaScript/attachments;
+- accept unrestricted filesystem paths, shell commands, network URLs, or arbitrary renderer settings from a document or web page;
+- duplicate the browser Semantic IR, MathIR, TableIR, VisualIR, provenance, or confidence definitions;
+- add native extraction implementation to this milestone;
+- add Playwright or another heavy end-to-end test suite;
+- weaken the browser path, CSP, sanitization, confidence gates, or source-preservation behavior.
 
+If a platform or packaging decision cannot be verified, record it as an explicit decision or blocker in `docs/companion-engine.md`; do not invent support.
+
+### Required technology stack
+
+Use a small, auditable Rust workspace with Tauri 2 as the optional application shell. Keep the protocol and engine usable without a GUI so the browser can connect to a local service and automated tests can run headlessly.
+
+Use the current stable, mutually compatible versions available in the repository environment, pin the verified Rust toolchain, and record exact resolved versions and licenses. Do not guess versions in the prompt implementation.
+
+Required or preferred components:
+
+- Rust workspace with resolver 2 and a pinned `rust-toolchain.toml`;
+- Rust 2021 or newer edition, selected according to the verified Tauri toolchain;
+- `serde` and `serde_json` for protocol DTOs;
+- `thiserror` for typed domain/protocol errors and `anyhow` only at application boundaries;
+- `tokio` for the async runtime;
+- `tokio-util` cancellation tokens and bounded task control;
+- `uuid` for opaque request, session, and job identifiers;
+- `bytes` for bounded binary chunk handling;
+- `tracing` and `tracing-subscriber` for local, structured, privacy-safe diagnostics;
+- `zeroize` and a cryptographically secure randomness crate for short-lived pairing secrets;
+- `axum` plus `tower-http` for the browser-facing loopback HTTP/WebSocket bridge, including request limits and exact CORS handling;
+- Tauri 2 and `@tauri-apps/api` only in the companion shell or its adapter, not as a required dependency of the ordinary browser build;
+- Tauri capabilities/permissions with the smallest possible allowlist; do not enable a broad shell, filesystem, or process plugin;
+- `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test`, and the repository’s existing browser lint/typecheck/test/build commands;
+- dependency/license auditing consistent with the existing repository gates, such as `cargo-deny` or an equivalent documented check, if available.
+
+Do not add a native PDF library, OCR engine, model runtime, or model weights in this prompt. Those choices belong to a later benchmarked capability prompt and must be independently reviewed for license, size, memory, and platform support.
+
+### Repository structure
+
+Use a clearly isolated top-level native area. Adapt names to the repository if an equivalent structure already exists, but preserve these boundaries:
+
+```text
+companion/
+  Cargo.toml                         # workspace manifest
+  rust-toolchain.toml               # verified toolchain pin
+  crates/
+    companion-contract/             # wire DTOs, constants, validation, errors
+    companion-core/                 # capability registry, job state machine, traits
+    companion-service/              # bounded task manager, cancellation, checkpoints
+    companion-bridge/               # loopback HTTP/WebSocket transport and auth
+    companion-cli/                  # headless local host for development/tests
+  apps/
+    companion-tauri/
+      src-tauri/                    # Tauri 2 shell, commands, capabilities, packaging
+      web/                          # only if a packaged companion UI is needed
+  schemas/companion/v1/             # checked-in protocol schemas and examples
+web-app/src/features/companion/
+  bridge.js                          # browser adapter and state machine
+  protocol.js                        # generated/validated protocol constants
+  companion.test.js                  # browser-side contract and fallback tests
+docs/companion-engine.md             # architecture, protocol, threat model, packaging
+```
+
+The Rust crates must not import browser UI code. The browser adapter must not import Tauri APIs on the normal web path. The Tauri shell may reuse `companion-core` and `companion-contract`, but it must not create a second implementation of the job or security rules.
+
+### Architecture and dependency direction
+
+Implement these layers and keep dependencies flowing inward:
+
+1. `companion-contract`: versioned protocol types, schema identifiers, capability identifiers, size limits, error codes, and validation. It has no transport, filesystem, PDF, UI, or Tauri dependency.
+2. `companion-core`: pure state machines and traits for capability providers, job lifecycle, progress, cancellation, and checkpoint metadata. It must be testable with a deterministic mock provider.
+3. `companion-service`: owns bounded async jobs, concurrency limits, backpressure, cancellation propagation, page-level isolation, and local checkpoint metadata. It must never trust a client-provided path or URL.
+4. `companion-bridge`: exposes the contract through a local transport, authenticates each session, validates every message, and translates transport disconnects into job cancellation or resumable failure.
+5. `companion-cli`: starts the local service without a GUI and is the test/development host.
+6. `companion-tauri`: packages the service and provides a user-visible lifecycle/pairing/status surface. Tauri commands call the same core/service APIs; they must not duplicate them.
+7. `web-app/src/features/companion`: provides a feature-detected adapter. It must be tree-shakeable or dynamically loaded so the ordinary browser build has no required native dependency.
+
+Define provider interfaces now, but implement only a mock/no-op provider. A future provider must receive an explicit job input and return the same versioned Semantic IR and provenance contract as the browser. It must not emit trusted HTML, SVG, Markdown, Mermaid, DOCX, or executable content directly.
+
+### Browser and web-platform integration
+
+Support two integration modes with one browser-facing abstraction:
+
+#### A. Ordinary web browser/PWA
+
+Use an explicit, user-initiated local bridge based on loopback HTTP for control and WebSocket for bounded progress/events. The companion must:
+
+- bind only to `127.0.0.1`/`::1`, never `0.0.0.0` or a LAN interface;
+- use a configurable port and expose the selected endpoint only through the companion’s local UI/CLI output or an explicit user setting;
+- avoid background port scans and avoid probing the companion merely because a PDF was opened;
+- require a one-time pairing flow before accepting jobs;
+- enforce an exact allowlist of production and development web origins; never use wildcard CORS;
+- use a short-lived pairing code to mint a scoped session token, bind the session to the browser origin, expire idle sessions, and invalidate tokens on shutdown;
+- accept JSON control envelopes and bounded binary PDF chunks only after a valid session is established;
+- use sequence numbers, declared lengths, maximum chunk/document sizes, backpressure, and a final digest so truncated or reordered input is rejected;
+- expose no arbitrary file path. The normal web path sends bytes from the user-selected `File`; a future native file handoff must require a separate explicit user action and OS permission.
+
+The browser adapter must expose a small interface such as:
+
+```text
+detect(): Promise<CompanionAvailability>
+connect(userSuppliedEndpoint): Promise<CompanionSession>
+getCapabilities(): Promise<Capabilities>
+createJob(request): Promise<JobHandle>
+subscribe(jobId, onEvent): Unsubscribe
+cancel(jobId): Promise<void>
+disconnect(): Promise<void>
+```
+
+The adapter must distinguish `unavailable`, `pairing-required`, `connected`, `busy`, `protocol-incompatible`, `security-rejected`, `timed-out`, and `failed`. It must return control to the browser pipeline immediately on any non-success state.
+
+#### B. Tauri-hosted GlyphMend UI
+
+When the same web application is packaged inside the optional Tauri companion, use a direct Tauri command adapter (`invoke`) instead of routing through loopback. Keep the command names and payloads mapped to the same contract and service layer. Restrict the Tauri webview origin, capabilities, filesystem scope, and commands to the minimum required set. The ordinary deployed web app must never import or require this adapter.
+
+Keep the core platform-neutral so the Tauri shell can target Windows, macOS, and Linux first and remain eligible for Tauri 2 mobile targets later. Do not claim Android or iOS packaging is complete unless the toolchain builds and a smoke test verifies it. Mobile browser use must not depend on the companion.
+
+### Protocol contract
+
+Create a versioned protocol, with `v1` schemas checked into `companion/schemas/companion/v1/` and generated or validated browser constants under `web-app/src/features/companion/`. There must be one source of truth for every wire field. If the existing Semantic IR schema already has a canonical location, reference and validate that schema rather than copying it.
+
+Every envelope must contain:
+
+- `protocolVersion` with major/minor semantics;
+- `messageType`;
+- opaque `requestId` and, when applicable, `sessionId` and `jobId`;
+- `engineVersion` and `irSchemaVersion` where applicable;
+- a bounded payload validated against the message schema;
+- a monotonic sequence number for ordered job events.
+
+Define at least these messages:
+
+- `hello` / `hello-ack` for protocol and origin negotiation;
+- `pair` / `pair-ack` for explicit user-authorized pairing;
+- `capabilities-request` / `capabilities-response`;
+- `job-create` with input metadata, requested capabilities, limits, and client idempotency key;
+- `job-input-chunk` and `job-input-complete` with length/sequence/digest validation;
+- `job-cancel` and `job-cancelled`;
+- `job-resume-request` with an opaque checkpoint identifier, never an arbitrary path;
+- `job-progress`, `page-started`, `page-completed`, `page-failed`, `diagnostic`, `job-completed`, and `job-failed`;
+- `error` with stable machine-readable codes and safe user-facing detail.
+
+Define explicit compatibility behavior:
+
+- same major protocol and supported minor range: negotiate the highest mutually supported minor;
+- different major protocol: decline with `protocol-incompatible` and preserve browser operation;
+- unsupported IR schema: decline the requested capability; do not silently downgrade or reinterpret nodes;
+- unavailable capability: return a structured capability response and let the browser choose its existing path;
+- unknown message or field: reject according to the version policy without panicking or terminating unrelated jobs.
+
+Define a finite job state machine such as `created → receiving → queued → running → cancelling → completed|cancelled|failed`. Invalid transitions must be rejected deterministically. Jobs must be isolated so a malformed or failed page/job cannot terminate the service or corrupt another job.
+
+Progress must be bounded and meaningful: page/job counters, phase, bytes received, and optional timing. Do not stream unbounded logs or PDF content. Cancellation must propagate within a documented latency bound, be idempotent, and leave a resumable or explicitly failed checkpoint state. Reconnects must not duplicate a completed event or silently lose the final result.
+
+### Security and privacy model
+
+Document the threat model and implement the following minimum controls:
+
+- loopback-only binding and exact origin validation;
+- explicit pairing with short-lived, single-use secrets and constant-time comparison;
+- session expiration, revocation, request authentication, rate limits, and body/message size limits;
+- strict JSON/schema validation before state changes;
+- no wildcard CORS, no arbitrary redirects, no remote resource fetching, and no document-controlled network access;
+- no arbitrary filesystem access, process execution, shell invocation, or path traversal;
+- canonicalize and constrain any future native file/model paths to user-approved application directories;
+- never log document text, PDF bytes, tokens, pairing codes, absolute user paths, or model contents;
+- keep temporary input/checkpoint data in an application-owned directory with cleanup policy and clear user controls;
+- do not expose service health or capability details beyond what is needed for the paired client;
+- use restrictive Tauri CSP and capabilities; do not enable broad `shell`, `fs`, `process`, or updater permissions for convenience;
+- treat all future native output as untrusted derived data and preserve the existing sanitization/source-evidence rules.
+
+Add a short security review checklist and record any unresolved platform-specific issue as a release blocker rather than weakening a control.
+
+### Implementation sequence
+
+Work in this order and keep each step verifiable:
+
+1. Inspect the current browser IR, checkpoint version, UI source of truth, build scripts, license gates, and existing docs. Check the worktree and preserve unrelated edits.
+2. Establish the Rust workspace, toolchain pin, crate boundaries, formatting/lint/test configuration, and dependency/license report. Do not add extraction dependencies.
+3. Define `companion-contract` and `v1` schemas, examples, error codes, limits, and compatibility rules. Add a browser-side validator or equivalent defensive validation.
+4. Implement `companion-core` and `companion-service` with a deterministic mock provider, bounded job manager, cancellation, timeout, backpressure, event ordering, and checkpoint metadata.
+5. Implement the loopback bridge with exact-origin pairing/authentication, control endpoints, WebSocket event delivery, body limits, and safe shutdown. Add a CLI host for manual and automated tests.
+6. Implement the Tauri 2 shell and least-privilege capabilities. Add the direct command adapter while keeping the ordinary web build independent of Tauri.
+7. Add the browser adapter, explicit connection affordance, capability/status states, timeout handling, and browser fallback. Follow the Stitch source of truth for any UI changes.
+8. Write `docs/companion-engine.md` with the architecture, responsibility split, transport decision, protocol examples, lifecycle, security model, packaging matrix, known limitations, and future extraction-provider boundary.
+9. Run focused Rust and browser tests, then the existing browser lint/typecheck/test/build and applicable repository checks. Inspect generated artifacts and the complete diff.
+
+### Required tests
+
+Add deterministic unit and integration tests without Playwright:
+
+Protocol and compatibility:
+
+- valid handshake and capability discovery;
+- same-major minor negotiation;
+- incompatible major protocol rejection;
+- unsupported IR schema rejection;
+- unknown/malformed messages and invalid state transitions;
+- oversized payload, invalid sequence, truncated input, and digest mismatch.
+
+Lifecycle and reliability:
+
+- unavailable companion and connection timeout;
+- explicit pairing success, expired code, wrong origin, replayed token, and revoked session;
+- job creation, bounded progress, cancellation, idempotent cancellation, shutdown, and reconnect;
+- page/job failure isolation and deterministic mock-provider output;
+- fallback to browser with no change to browser results or IndexedDB checkpoints.
+
+Security:
+
+- reject non-loopback binding configuration;
+- reject wildcard/unauthorized origins;
+- reject arbitrary paths, URLs, shell/process requests, and path traversal;
+- verify logs and errors do not contain document content, tokens, pairing secrets, or user paths;
+- verify Tauri capabilities do not grant unneeded filesystem, shell, process, or network privileges.
+
+Packaging and compatibility:
+
+- headless CLI startup and clean shutdown;
+- Tauri development/build configuration for each verified desktop target;
+- ordinary `web-app` build/test/typecheck/lint without Tauri installed;
+- protocol schema and generated browser artifact consistency;
+- dependency/license/security checks pass or are recorded with a specific blocker.
+
+### Required documentation and acceptance criteria
+
+Create or update:
+
+- `docs/companion-engine.md`;
+- `docs/remaining-work.md` or the applicable `docs/upgrade/` ledger;
+- repository build/license/security documentation when new commands or dependencies are introduced.
+
+The prompt is complete only when all of the following are true:
+
+- browser-only extraction remains the default and behaves unchanged when no companion exists;
+- the companion can start headlessly, advertise capabilities, pair explicitly, negotiate versions, accept a bounded mock job, emit ordered progress, cancel safely, and shut down cleanly;
+- ordinary web mode uses the authenticated loopback bridge and packaged Tauri mode uses direct commands over the same contract;
+- no remote service, telemetry, implicit download, arbitrary path, or unrestricted native privilege exists;
+- Semantic IR and provenance remain single-source/versioned and cannot silently diverge;
+- protocol, security, fallback, lifecycle, and packaging behavior are tested and documented;
+- no extraction logic or model pack was moved prematurely;
+- exact verification commands, results, unresolved decisions, and any failure are recorded.
+
+At the end of this prompt:
+
+1. Run the narrowest relevant tests first, then all applicable existing checks.
+2. Inspect the complete diff and generated files.
+3. Update the remaining-work ledger.
+4. Report what was actually verified. If anything failed, use:
+
+```text
+FAILED: Create the optional cross-platform companion foundation
+Reason: [specific evidence]
+Remaining: [unfinished work]
+Blocking: [yes/no and why]
+```
 ---
 
 ## Prompt 8 — Evaluate and integrate optional local extraction packs
