@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/protocol",
+  "title": "GlyphMend Companion protocol v1",
+  "type": "object",
+  "required": ["protocolVersion", "messageType", "requestId", "engineVersion", "sequence", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": { "type": "object", "additionalProperties": false, "required": ["major", "minor"], "properties": { "major": { "const": 1 }, "minor": { "type": "integer", "minimum": 0 } } },
+    "messageType": { "enum": ["hello", "hello-ack", "pair", "pair-ack", "capabilities-request", "capabilities-response", "job-create", "job-input-chunk", "job-input-complete", "job-cancel", "job-cancelled", "job-resume-request", "job-progress", "page-started", "page-completed", "page-failed", "diagnostic", "job-completed", "job-failed", "error"] },
+    "requestId": { "type": "string", "format": "uuid" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "jobId": { "type": "string", "format": "uuid" },
+    "engineVersion": { "type": "string", "maxLength": 64 },
+    "irSchemaVersion": { "type": "integer", "const": 2 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "payload": { "type": "object" }
+  }
+}

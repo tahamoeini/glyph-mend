@@ -1546,11 +1546,32 @@ function syncWorkspaceLayoutState() {
   setInspectorExpanded(compact && document.body.classList.contains("inspector-open"));
   syncSheetAccessibility();
 }
+function bindCompanionControl(buttonId, endpointId, codeId, statusId) {
+  const button = $(buttonId), status = $(statusId);
+
+  button.onclick = async () => {
+    const endpoint = $(endpointId).value.trim();
+    const pairingCode = $(codeId).value.trim();
+    status.textContent = "Connecting to the optional local companion…";
+    try {
+      const { createCompanionBridge } = await import("./features/companion/bridge.js");
+      const bridge = await createCompanionBridge();
+      const connection = await bridge.connect(endpoint, pairingCode);
+      status.textContent = connection.status === "connected"
+        ? "Optional companion connected. Browser extraction remains the default."
+        : `Companion ${connection.status}; browser processing remains available.`;
+    } catch {
+      status.textContent = "Companion unavailable; browser processing remains available.";
+    }
+  };
+}
 function bind() {
-  syncAdaptivePreferences();
   syncThemePreference();
+  syncAdaptivePreferences();
   restoreSidebarPreference();
   requestAnimationFrame(() => syncTabIndicator());
+  bindCompanionControl("welcomeCompanionButton", "welcomeCompanionEndpoint", "welcomeCompanionCode", "welcomeCompanionStatus");
+  bindCompanionControl("settingsCompanionButton", "settingsCompanionEndpoint", "settingsCompanionCode", "settingsCompanionStatus");
   $("pdfInput").onchange = (e) => openFile(e.target.files[0]);
   const dz = $("dropZone");
   ["dragenter", "dragover"].forEach((n) =>

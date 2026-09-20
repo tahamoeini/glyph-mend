@@ -1,0 +1,12 @@
+[package]
+name = "companion-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+companion-contract = { path = "../companion-contract" }
+thiserror.workspace = true
+tokio-util.workspace = true
+uuid.workspace = true

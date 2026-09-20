@@ -1,0 +1,17 @@
+[package]
+name = "companion-tauri"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = "2.5.1"
+
+[dependencies]
+companion-contract = { path = "../../../crates/companion-contract" }
+companion-service = { path = "../../../crates/companion-service" }
+serde.workspace = true
+tauri = { version = "2.11.6", default-features = false, features = ["wry"] }
+tokio.workspace = true
+uuid.workspace = true

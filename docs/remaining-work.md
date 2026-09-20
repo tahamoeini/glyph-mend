@@ -73,3 +73,11 @@ Fix on the follow-up branch: validate the document envelope separately and valid
 Regression coverage: 51 pages with 2,500 source span references and VisualIR diagnostics are created, serialized, deserialized, and checked; a single oversized page remains rejected.
 
 Remaining: this fixes validation-budget exhaustion. It does not by itself prove visual-classification quality or explain why individual pages may have zero preserved visual crops; those remain separate extraction-quality issues.
+
+## 2026-09-20 — Optional companion foundation
+
+GM-REM-018 is no longer a decision-only blocker: an optional Rust/Tauri runtime
+boundary, versioned contract, loopback pairing bridge, headless CLI, Tauri
+adapter skeleton, browser fallback adapter, and diagnostic mock capability are
+now tracked in `docs/companion-engine.md`. Native extraction, OCR, models,
+benchmark-based provider selection, and a production packaging claim remain
