@@ -6,8 +6,18 @@
   "required": ["protocolVersion", "messageType", "requestId", "engineVersion", "sequence", "payload"],
   "additionalProperties": false,
   "properties": {
-    "protocolVersion": { "type": "object", "additionalProperties": false, "required": ["major", "minor"], "properties": { "major": { "const": 1 }, "minor": { "type": "integer", "minimum": 0 } } },
-    "messageType": { "enum": ["hello", "hello-ack", "pair", "pair-ack", "capabilities-request", "capabilities-response", "job-create", "job-input-chunk", "job-input-complete", "job-cancel", "job-cancelled", "job-resume-request", "job-progress", "page-started", "page-completed", "page-failed", "diagnostic", "job-completed", "job-failed", "error"] },
+    "protocolVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["major", "minor"],
+      "properties": {
+        "major": { "const": 1 },
+        "minor": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "messageType": {
+      "enum": ["hello", "hello-ack", "pair", "pair-ack", "capabilities-request", "capabilities-response", "job-create", "job-input-chunk", "job-input-complete", "job-cancel", "job-cancelled", "job-resume-request", "job-progress", "page-started", "page-completed", "page-failed", "diagnostic", "job-completed", "job-failed", "error"]
+    },
     "requestId": { "type": "string", "format": "uuid" },
     "sessionId": { "type": "string", "format": "uuid" },
     "jobId": { "type": "string", "format": "uuid" },

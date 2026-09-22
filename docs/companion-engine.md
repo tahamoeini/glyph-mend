@@ -1,100 +1,98 @@
 # GlyphMend optional companion engine
 
-## Status and ownership
+The Companion is an optional local capability runtime, not a second product and
+not an AI prerequisite. The Browser remains the owner of PDF intake, MuPDF or
+PDF.js extraction, OCR, provenance, confidence, review, canonical IRs,
+cancellation, checkpoints, fallback decisions, and exports.
 
-The companion is an optional local runtime, not a backend or a second product.
-The browser continues to own selected `File` intake, MuPDF/PDF.js extraction,
-OCR, Semantic Document IR, provenance, confidence, review, IndexedDB
-checkpoints, cancellation, exports, mobile use, and every fallback decision.
-The only implemented companion capability is `glyphmend.diagnostic.mock.v1`.
-It is diagnostic-only and is never requested by browser extraction.
+## Provider model
 
-The companion owns lifecycle, protocol negotiation, paired local transport,
-bounded jobs, cancellation, local checkpoint metadata, and privacy-safe logs.
-Future providers receive explicit bytes and may return only a bounded,
-version-tagged `glyphmend.semantic-document-ir` v2 artifact; the browser's
-existing canonical validator remains the source of truth. Providers may not
-emit trusted HTML, SVG, Markdown, Mermaid, DOCX, executable content, paths,
-URLs, shell commands, or renderer options.
+Companion and Browser providers share a provider-neutral capability contract.
+A capability declares its id, version, provider kind, input/output schemas,
+execution locations, determinism, model requirement, confidence calibration,
+and privacy class.
 
-## Architecture and protocol
+Provider kinds are:
 
-`companion-contract` is transport-free DTOs, limits, errors, and negotiation.
-`companion-core` contains the finite job state machine and provider trait.
-`companion-service` owns bounded job/event lifecycle. `companion-bridge` is
-the local HTTP/WebSocket adapter, while `companion-cli` is the headless host.
-The Tauri shell delegates to the same service rather than reimplementing it.
+- `deterministic`: reproducible native or Browser logic;
+- `hybrid-local`: the existing local hybrid recognition model or an adapter;
+- `ml`: an optional future local model provider.
 
-The checked-in v1 envelope requires protocol version, message type, opaque
-request ID, optional session/job IDs, engine version, optional IR schema
-version, sequence, and bounded payload. Same-major peers negotiate the lower
-minor version. Different majors return `protocol-incompatible`; unsupported IR
-versions return `ir-schema-unsupported`; unknown fields/messages are rejected.
+The current Browser recognition seams remain authoritative for local visual and
+mathematical recognition. No model is downloaded implicitly, and no model is
+required for the Browser or Companion to operate.
 
-The service accepts only the ordered flow `created → receiving → queued →
-running → cancelling → completed|cancelled|failed`. Input chunks are at most
-1 MiB, ordered, length-declared, capped at 512 MiB per document, and finalized
-with SHA-256. Events are bounded to 128 per job. The mock accepts a bounded job
-and emits deterministic page start/progress/completion events only.
+Provider output is `glyphmend.provider-result.v1`. It contains source region,
+observations, provider metadata, optional model metadata, warnings, and
+diagnostics. It is evidence only. Providers cannot directly replace
+`SemanticIR`, `VisualIR`, `TableIR`, `EquationIR`, or `ChartIR`.
 
-## Local transport and security
+## Runtime and transport
 
-The bridge binds only `127.0.0.1` or `::1`; LAN bindings fail. It has no port
-scan or automatic discovery. The browser calls it only after a user explicitly
-enters a loopback endpoint and pairing code. Control is JSON over HTTP; input
-is bounded binary HTTP chunks; progress is a paired WebSocket stream.
+The portable `glyphmend-companion` binary (built from `companion-cli`) starts a loopback-only HTTP service. Pairing
+uses a single-use random code and an origin-bound bearer session. The CLI emits
+a connection URL with endpoint and pairing data in the fragment and supports
+`--no-open` for development and tests.
 
-Pairing codes are generated from OS randomness, 128 bits, single-use, and
-expire after five minutes. Pairing uses constant-time comparison and zeroizes
-the retained secret. A paired session is origin-bound, token-authenticated,
-kept only in memory, expires after 15 idle minutes, and is revoked at shutdown.
-The bridge rate/size limits requests, validates origin before state changes,
-and never logs source text, bytes, secrets, tokens, or user paths.
+The authenticated API is:
 
-Approved origins are the exact current production origin
-`https://glyphmend.negar.team` and listed local development origins. A future
-production origin requires an explicit local user approval in the companion UI
-or CLI; there is no wildcard CORS, remote configuration, telemetry, document
-upload, remote resource fetch, or model download. The browser CSP permits only
-loopback HTTP hosts with a user-selected port. This exception is necessary for
-the explicit configurable local endpoint and does not enable automatic probing.
+```text
+POST /v1/session
+POST /v1/jobs
+PUT  /v1/jobs/:id/chunks/:sequence
+POST /v1/jobs/:id/complete
+GET  /v1/jobs/:id/events?after=17&limit=64&waitMs=15000
+GET  /v1/jobs/:id/result
+POST /v1/jobs/:id/cancel
+```
 
-Temporary data must stay under an application-owned companion directory,
-cleaned on cancel/completion or checkpoint expiry (24 hours). A future native
-file handoff is out of scope and must require a separate user action plus OS
-permission.
+Events are bounded, replayable, and monotonically sequenced. The Browser uses
+long polling with `after` for reconnects; WebSocket is not part of the runtime.
+Jobs accept `document` or `region` input. Region jobs allow future visual,
+equation, OCR, or layout providers to receive only the relevant crop and
+metadata instead of a full PDF.
 
-## Packaged Tauri mode
+Input is persisted only inside the Companion-owned job directory. Chunks are
+limited to 1 MiB, documents to 512 MiB, identical retries are idempotent, and
+conflicting sequence reuse is rejected. Completion validates total bytes and
+SHA-256. Terminal job data is retained for the configured cleanup window.
 
-The `apps/companion-tauri` shell exposes only capabilities, create-job, and
-cancel-job commands. It grants `core:default` only: no filesystem, shell,
-process, updater, or broad network plugin. Its CSP is local-asset-only.
-The packaged web adapter must inject a narrow `globalThis.GlyphMendCompanion`
-surface; only that adapter imports `@tauri-apps/api`. The ordinary browser build
-has no Tauri dependency and dynamically imports only its browser bridge when a
-user requests connection.
+## Routing policy
 
-## Verification and release blockers
+The Browser runs deterministic extraction first. If a capability is uncertain,
+the existing Browser-local hybrid provider is preferred. Companion is used only
+when it advertises a suitable deterministic or hybrid-local capability and the
+routing policy allows the input to leave the Browser process. If no provider is
+available, the result remains reviewable or unresolved and deterministic output
+is preserved.
 
-The workspace pins Rust 1.97.0. Resolved direct dependencies are recorded in
-`companion/Cargo.lock`; `deny.toml` is the license/advisory policy. Run:
+The visual worker records Companion results as provider evidence when the
+provider does not return a canonical VisualIR candidate. It never invents
+content or silently overwrites canonical IR.
+
+## Tauri
+
+Tauri is an optional shell over the same service and provider contracts. Its
+commands delegate to the shared JobManager for capabilities, job creation,
+chunk input, completion, event polling, result retrieval, and cancellation. It
+grants only `core:default`; it has no filesystem, shell, process, updater, or
+broad network capability.
+
+## Verification
 
 ```text
 cd companion
-cargo fmt --check
+cargo fmt --all -- --check
 cargo clippy --workspace --exclude companion-tauri -- -D warnings
 cargo test --workspace --exclude companion-tauri
 cargo deny check
 cd ../web-app
-npm run lint && npm run typecheck && npm test && npm run build
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
-This environment resolved the lockfile but cannot compile Rust or Tauri because
-the MSVC linker `link.exe` is absent. Windows build, WebView2 smoke test,
-macOS signing/WebKit smoke test, Linux WebKitGTK smoke test, and all mobile
-claims are release blockers until run on their actual supported targets.
-
-Security review before release: verify loopback-only bind; exact allowed origin;
-pair replay/expiry/revocation; body/message limits; digest/sequence rejection;
-redacted logs; cleanup; no arbitrary path/URL/process interface; least-privilege
-Tauri capability file; and browser fallback with no checkpoint changes.
+Native provider selection, model licensing, model packs, and production
+benchmark gates remain separate follow-up work. The first milestone must pass
+with all model providers disabled.

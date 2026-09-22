@@ -25,7 +25,7 @@ it("keeps a restrictive browser CSP around reconstructed content", () => {
   expect(directives["object-src"]).toEqual(["'none'"]);
   expect(directives["frame-src"]).toEqual(["'none'"]);
   expect(directives["form-action"]).toEqual(["'none'"]);
-  expect(directives["connect-src"]).toEqual(["'self'"]);
+  expect(directives["connect-src"]).toEqual(["'self'", "http://127.0.0.1:*", "http://[::1]:*"]);
   expect(directives["script-src"]).toContain("'self'");
   expect(directives["script-src"]).not.toContain("'unsafe-eval'");
   expect(directives["script-src"]).not.toContain("*");

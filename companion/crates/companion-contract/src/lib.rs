@@ -6,10 +6,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub const PROTOCOL_MAJOR: u16 = 1;
-pub const PROTOCOL_MINOR: u16 = 0;
+pub const PROTOCOL_MINOR: u16 = 1;
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const IR_SCHEMA_ID: &str = "glyphmend.semantic-document-ir";
 pub const IR_SCHEMA_VERSION: u16 = 2;
+pub const PROVIDER_RESULT_SCHEMA: &str = "glyphmend.provider-result.v1";
 pub const MAX_CONTROL_BYTES: usize = 64 * 1024;
 pub const MAX_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAX_DOCUMENT_BYTES: u64 = 512 * 1024 * 1024;
@@ -18,7 +19,7 @@ pub const MAX_CONCURRENT_JOBS: usize = 2;
 pub const CONTROL_TIMEOUT_SECS: u64 = 30;
 pub const SESSION_IDLE_SECS: u64 = 15 * 60;
 pub const PAIRING_TTL_SECS: u64 = 5 * 60;
-pub const CHECKPOINT_TTL_SECS: u64 = 24 * 60 * 60;
+pub const JOB_RETENTION_SECS: u64 = 24 * 60 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -61,8 +62,24 @@ pub enum ErrorCode {
     Busy,
     TimedOut,
     NotFound,
+    Conflict,
     Cancelled,
     Internal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProviderKind {
+    Deterministic,
+    HybridLocal,
+    Ml,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InputKind {
+    Document,
+    Region,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -131,27 +148,21 @@ impl<T> Envelope<T> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct Hello {
-    pub origin: String,
-    pub client_name: String,
-    pub supported_protocol: ProtocolVersion,
+pub struct SessionRequest {
+    pub protocol_version: ProtocolVersion,
     pub ir_schema_version: u16,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct Pair {
     pub pairing_code: String,
-    pub origin: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct JobCreate {
     pub document_name: String,
+    pub capability_id: String,
+    pub input_kind: InputKind,
     pub declared_bytes: u64,
     pub page_count: u32,
-    pub requested_capabilities: Vec<String>,
+    pub metadata: serde_json::Value,
     pub idempotency_key: Uuid,
 }
 
@@ -160,18 +171,11 @@ impl JobCreate {
         if self.document_name.len() > 255 {
             return Err(ContractError::Limit("documentName"));
         }
+        if self.capability_id.is_empty() || self.capability_id.len() > 96 {
+            return Err(ContractError::Limit("capabilityId"));
+        }
         if self.declared_bytes > MAX_DOCUMENT_BYTES {
             return Err(ContractError::Code(ErrorCode::PayloadTooLarge));
-        }
-        if self.requested_capabilities.len() > 16 {
-            return Err(ContractError::Limit("requestedCapabilities"));
-        }
-        if self
-            .requested_capabilities
-            .iter()
-            .any(|capability| capability.len() > 96)
-        {
-            return Err(ContractError::Limit("requestedCapabilities"));
         }
         Ok(())
     }
@@ -200,12 +204,81 @@ pub struct InputComplete {
     pub total_bytes: u64,
 }
 
+impl InputComplete {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        if self.total_bytes > MAX_DOCUMENT_BYTES || self.sha256_hex.len() != 64 {
+            return Err(ContractError::Code(ErrorCode::DigestMismatch));
+        }
+        if !self.sha256_hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(ContractError::Code(ErrorCode::DigestMismatch));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Capability {
     pub id: String,
+    pub version: String,
+    pub provider_kind: ProviderKind,
+    pub input_schema: String,
+    pub output_schema: String,
+    pub execution_locations: Vec<String>,
+    pub deterministic: bool,
+    pub requires_model: bool,
+    pub confidence_calibrated: bool,
+    pub privacy_class: String,
     pub diagnostic_only: bool,
     pub ir_schema_version: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProviderSource {
+    pub page: u32,
+    pub bbox: Vec<f32>,
+    pub content_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProviderObservation {
+    #[serde(rename = "type")]
+    pub observation_type: String,
+    pub value: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProviderMetadata {
+    pub id: String,
+    pub kind: ProviderKind,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ModelMetadata {
+    pub id: String,
+    pub revision: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct ProviderResult {
+    pub schema: String,
+    pub capability: String,
+    pub source: ProviderSource,
+    pub observations: Vec<ProviderObservation>,
+    pub provider: ProviderMetadata,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelMetadata>,
+    pub warnings: Vec<String>,
+    pub diagnostics: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +293,7 @@ pub struct Progress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn negotiates_minor_versions_and_rejects_major_versions() {
         assert_eq!(
@@ -227,25 +301,51 @@ mod tests {
                 .negotiate(ProtocolVersion { major: 1, minor: 9 })
                 .unwrap()
                 .minor,
-            0
+            PROTOCOL_MINOR
         );
         assert!(matches!(
             ProtocolVersion::CURRENT.negotiate(ProtocolVersion { major: 2, minor: 0 }),
             Err(ContractError::IncompatibleProtocol { .. })
         ));
     }
+
     #[test]
     fn rejects_oversized_job_declarations() {
         let job = JobCreate {
             document_name: "x.pdf".into(),
+            capability_id: "glyphmend.diagnostic.mock.v1".into(),
+            input_kind: InputKind::Document,
             declared_bytes: MAX_DOCUMENT_BYTES + 1,
             page_count: 1,
-            requested_capabilities: vec![],
+            metadata: serde_json::json!({}),
             idempotency_key: Uuid::new_v4(),
         };
         assert_eq!(
             job.validate(),
             Err(ContractError::Code(ErrorCode::PayloadTooLarge))
         );
+    }
+
+    #[test]
+    fn validates_provider_results_without_requiring_model_metadata() {
+        let result = ProviderResult {
+            schema: PROVIDER_RESULT_SCHEMA.into(),
+            capability: "glyphmend.visual.classify.v1".into(),
+            source: ProviderSource {
+                page: 1,
+                bbox: vec![0.0, 0.0, 1.0, 1.0],
+                content_hash: "sha256:test".into(),
+            },
+            observations: vec![],
+            provider: ProviderMetadata {
+                id: "local".into(),
+                kind: ProviderKind::HybridLocal,
+                version: "1".into(),
+            },
+            model: None,
+            warnings: vec![],
+            diagnostics: serde_json::json!({}),
+        };
+        assert!(serde_json::to_value(result).unwrap().get("model").is_none());
     }
 }

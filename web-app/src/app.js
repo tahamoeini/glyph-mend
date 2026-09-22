@@ -1557,6 +1557,7 @@ function bindCompanionControl(buttonId, endpointId, codeId, statusId) {
       const { createCompanionBridge } = await import("./features/companion/bridge.js");
       const bridge = await createCompanionBridge();
       const connection = await bridge.connect(endpoint, pairingCode);
+      if (connection.status === "connected") globalThis.glyphMendCompanionBridge = bridge;
       status.textContent = connection.status === "connected"
         ? "Optional companion connected. Browser extraction remains the default."
         : `Companion ${connection.status}; browser processing remains available.`;
@@ -1565,6 +1566,24 @@ function bindCompanionControl(buttonId, endpointId, codeId, statusId) {
     }
   };
 }
+async function connectCompanionFromFragment() {
+  try {
+    const { createCompanionBridge, readCompanionFragment } = await import("./features/companion/bridge.js");
+    const connectionData = readCompanionFragment();
+    if (!connectionData) return;
+    const bridge = await createCompanionBridge();
+    const connection = await bridge.connect(connectionData.endpoint, connectionData.pairingCode);
+    if (connection.status !== "connected") return;
+    globalThis.glyphMendCompanionBridge = bridge;
+    history.replaceState(null, "", `${location.pathname}${location.search}`);
+    for (const id of ["welcomeCompanionStatus", "settingsCompanionStatus"]) {
+      const status = $(id);
+      if (status) status.textContent = "Optional companion connected. Browser extraction remains the default.";
+    }
+  } catch {
+    // Fragment pairing is optional; the manual connection controls remain available.
+  }
+}
 function bind() {
   syncThemePreference();
   syncAdaptivePreferences();
@@ -1572,6 +1591,7 @@ function bind() {
   requestAnimationFrame(() => syncTabIndicator());
   bindCompanionControl("welcomeCompanionButton", "welcomeCompanionEndpoint", "welcomeCompanionCode", "welcomeCompanionStatus");
   bindCompanionControl("settingsCompanionButton", "settingsCompanionEndpoint", "settingsCompanionCode", "settingsCompanionStatus");
+  void connectCompanionFromFragment();
   $("pdfInput").onchange = (e) => openFile(e.target.files[0]);
   const dz = $("dropZone");
   ["dragenter", "dragover"].forEach((n) =>

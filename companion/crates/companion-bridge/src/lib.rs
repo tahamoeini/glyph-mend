@@ -1,19 +1,19 @@
-//! Authenticated, loopback-only HTTP/WebSocket bridge.
+//! Authenticated, loopback-only HTTP bridge.
 #![forbid(unsafe_code)]
 
-use axum::extract::ws::Message;
 use axum::{
     body::Bytes,
-    extract::{Path, State, WebSocketUpgrade},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use companion_contract::{
-    ContractError, ErrorCode, InputChunk, JobCreate, PAIRING_TTL_SECS, SESSION_IDLE_SECS,
+    ContractError, ErrorCode, InputChunk, InputComplete, JobCreate, ProtocolVersion,
+    SessionRequest, IR_SCHEMA_VERSION, PAIRING_TTL_SECS, SESSION_IDLE_SECS,
 };
-use companion_service::{JobEvent, JobManager};
+use companion_service::{JobManager, JobResultResponse};
 use getrandom::fill;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -47,6 +47,7 @@ pub struct BridgeConfig {
     pub bind: SocketAddr,
     pub approved_origins: HashSet<String>,
 }
+
 impl Default for BridgeConfig {
     fn default() -> Self {
         Self {
@@ -70,12 +71,14 @@ struct AppState {
     approved_origins: Arc<HashSet<String>>,
     auth: Arc<Mutex<AuthState>>,
 }
+
 struct AuthState {
     pairing_code: Zeroizing<Vec<u8>>,
     pairing_expires: Instant,
     used: bool,
     sessions: HashMap<Uuid, Session>,
 }
+
 struct Session {
     token: Zeroizing<Vec<u8>>,
     origin: String,
@@ -87,6 +90,7 @@ pub struct BridgeHandle {
     pub pairing_code: String,
     shutdown: Option<oneshot::Sender<()>>,
 }
+
 impl BridgeHandle {
     pub async fn shutdown(mut self) {
         if let Some(sender) = self.shutdown.take() {
@@ -96,23 +100,23 @@ impl BridgeHandle {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct PairRequest {
-    pairing_code: String,
-    origin: String,
+#[serde(rename_all = "camelCase")]
+struct EventQuery {
+    after: Option<u64>,
+    limit: Option<usize>,
+    wait_ms: Option<u64>,
 }
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CompleteRequest {
-    sha256_hex: String,
-}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionResponse {
+    protocol_version: ProtocolVersion,
+    ir_schema_version: u16,
     session_id: Uuid,
     session_token: String,
     expires_in_seconds: u64,
 }
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ErrorResponse {
@@ -146,14 +150,14 @@ pub async fn start(
         })),
     };
     let app = Router::new()
-        .route("/v1/hello", post(hello))
-        .route("/v1/pair", post(pair))
+        .route("/v1/session", post(session))
         .route("/v1/capabilities", get(capabilities))
         .route("/v1/jobs", post(create_job))
-        .route("/v1/jobs/{job_id}/input/{sequence}", post(input_chunk))
+        .route("/v1/jobs/{job_id}/chunks/{sequence}", put(input_chunk))
         .route("/v1/jobs/{job_id}/complete", post(complete_input))
         .route("/v1/jobs/{job_id}/cancel", post(cancel_job))
         .route("/v1/jobs/{job_id}/events", get(events))
+        .route("/v1/jobs/{job_id}/result", get(result))
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(
             companion_contract::MAX_CHUNK_BYTES,
@@ -162,7 +166,7 @@ pub async fn start(
         .layer(
             CorsLayer::new()
                 .allow_origin(AllowOrigin::list(headers))
-                .allow_methods([Method::GET, Method::POST])
+                .allow_methods([Method::GET, Method::POST, Method::PUT])
                 .allow_headers([
                     header::AUTHORIZATION,
                     header::CONTENT_TYPE,
@@ -184,26 +188,20 @@ pub async fn start(
     })
 }
 
-async fn hello(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if let Err(response) = trusted_origin(&state, &headers) {
-        return response;
-    }
-    Json(serde_json::json!({ "protocolVersion": { "major": 1, "minor": 0 }, "engineVersion": companion_contract::ENGINE_VERSION, "irSchemaVersion": companion_contract::IR_SCHEMA_VERSION })).into_response()
-}
-async fn pair(
+async fn session(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<PairRequest>,
+    Json(request): Json<SessionRequest>,
 ) -> Response {
     if let Err(response) = trusted_origin(&state, &headers) {
         return response;
     }
-    let header_origin = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default();
-    if header_origin != request.origin {
-        return reject(ErrorCode::SecurityRejected);
+    if request.ir_schema_version != IR_SCHEMA_VERSION
+        || ProtocolVersion::CURRENT
+            .negotiate(request.protocol_version)
+            .is_err()
+    {
+        return reject(ErrorCode::ProtocolIncompatible);
     }
     let mut auth = state.auth.lock().await;
     let valid = !auth.used
@@ -218,29 +216,38 @@ async fn pair(
     }
     auth.used = true;
     auth.pairing_code.zeroize();
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
     let session_id = Uuid::new_v4();
     let token = new_secret(32);
     auth.sessions.insert(
         session_id,
         Session {
             token: Zeroizing::new(token.as_bytes().to_vec()),
-            origin: request.origin,
+            origin,
             last_used: Instant::now(),
         },
     );
     Json(SessionResponse {
+        protocol_version: ProtocolVersion::CURRENT,
+        ir_schema_version: IR_SCHEMA_VERSION,
         session_id,
         session_token: token,
         expires_in_seconds: SESSION_IDLE_SECS,
     })
     .into_response()
 }
+
 async fn capabilities(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if let Err(response) = authenticated(&state, &headers).await {
         return response;
     }
     Json(state.service.capabilities()).into_response()
 }
+
 async fn create_job(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -254,6 +261,7 @@ async fn create_job(
         Err(error) => contract_response(error),
     }
 }
+
 async fn input_chunk(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -267,7 +275,7 @@ async fn input_chunk(
         .get("x-glyphmend-chunk-length")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(u32::MAX);
+        .unwrap_or(body.len() as u32);
     match state
         .service
         .append_chunk(
@@ -284,20 +292,17 @@ async fn input_chunk(
         Err(error) => contract_response(error),
     }
 }
+
 async fn complete_input(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(job_id): Path<Uuid>,
-    Json(request): Json<CompleteRequest>,
+    Json(request): Json<InputComplete>,
 ) -> Response {
     if let Err(response) = authenticated(&state, &headers).await {
         return response;
     }
-    if let Err(error) = state
-        .service
-        .complete_input(job_id, &request.sha256_hex)
-        .await
-    {
+    if let Err(error) = state.service.complete_input(job_id, request).await {
         return contract_response(error);
     }
     let service = Arc::clone(&state.service);
@@ -306,6 +311,7 @@ async fn complete_input(
     });
     StatusCode::ACCEPTED.into_response()
 }
+
 async fn cancel_job(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -319,37 +325,42 @@ async fn cancel_job(
         Err(error) => contract_response(error),
     }
 }
+
 async fn events(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(job_id): Path<Uuid>,
-    websocket: WebSocketUpgrade,
+    Query(query): Query<EventQuery>,
 ) -> Response {
     if let Err(response) = authenticated(&state, &headers).await {
         return response;
     }
-    let receiver = match state.service.subscribe(job_id).await {
-        Ok(receiver) => receiver,
-        Err(error) => return contract_response(error),
-    };
-    websocket.on_upgrade(move |mut socket| async move {
-        let mut receiver = receiver;
-        while let Ok(event) = receiver.recv().await {
-            let payload = serde_json::json!({ "messageType": event_name(&event), "sequence": 0, "payload": event });
-            if socket.send(Message::Text(payload.to_string().into())).await.is_err() { break; }
-        }
-    })
-}
-fn event_name(event: &JobEvent) -> &'static str {
-    match event {
-        JobEvent::Progress(_) => "job-progress",
-        JobEvent::PageStarted { .. } => "page-started",
-        JobEvent::PageCompleted { .. } => "page-completed",
-        JobEvent::Cancelled => "job-cancelled",
-        JobEvent::Completed => "job-completed",
-        JobEvent::Failed { .. } => "job-failed",
+    let after = query.after.unwrap_or(0);
+    let limit = query
+        .limit
+        .unwrap_or(64)
+        .min(companion_contract::MAX_EVENT_QUEUE);
+    let wait = Duration::from_millis(query.wait_ms.unwrap_or(15_000).min(15_000));
+    match state.service.events_after(job_id, after, limit, wait).await {
+        Ok(page) => Json(page).into_response(),
+        Err(error) => contract_response(error),
     }
 }
+
+async fn result(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<Uuid>,
+) -> Response {
+    if let Err(response) = authenticated(&state, &headers).await {
+        return response;
+    }
+    match state.service.result(job_id).await {
+        Ok(value) => Json::<JobResultResponse>(value).into_response(),
+        Err(error) => contract_response(error),
+    }
+}
+
 fn trusted_origin(state: &AppState, headers: &HeaderMap) -> Result<(), Response> {
     let origin = headers
         .get(header::ORIGIN)
@@ -361,6 +372,7 @@ fn trusted_origin(state: &AppState, headers: &HeaderMap) -> Result<(), Response>
         .then_some(())
         .ok_or_else(|| reject(ErrorCode::SecurityRejected))
 }
+
 async fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<(), Response> {
     trusted_origin(state, headers)?;
     let value = headers
@@ -368,11 +380,11 @@ async fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<(), Resp
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
         .unwrap_or_default();
-    let mut auth = state.auth.lock().await;
     let origin = headers
         .get(header::ORIGIN)
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
+    let mut auth = state.auth.lock().await;
     let session = auth.sessions.values_mut().find(|session| {
         session.token.as_slice().ct_eq(value.as_bytes()).into()
             && session.origin == origin
@@ -385,11 +397,13 @@ async fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<(), Resp
         Err(reject(ErrorCode::SessionExpired))
     }
 }
+
 fn new_secret(bytes: usize) -> String {
     let mut value = vec![0_u8; bytes];
     fill(&mut value).expect("OS randomness unavailable");
     hex::encode(value)
 }
+
 fn reject(code: ErrorCode) -> Response {
     (
         StatusCode::FORBIDDEN,
@@ -400,14 +414,23 @@ fn reject(code: ErrorCode) -> Response {
     )
         .into_response()
 }
+
 fn contract_response(error: ContractError) -> Response {
     let code = match error {
         ContractError::Code(code) => code,
         ContractError::IncompatibleProtocol { .. } => ErrorCode::ProtocolIncompatible,
         ContractError::Limit(_) => ErrorCode::PayloadTooLarge,
     };
+    let status = match code {
+        ErrorCode::NotFound => StatusCode::NOT_FOUND,
+        ErrorCode::Conflict => StatusCode::CONFLICT,
+        ErrorCode::SessionExpired | ErrorCode::PairingRequired | ErrorCode::SecurityRejected => {
+            StatusCode::FORBIDDEN
+        }
+        _ => StatusCode::BAD_REQUEST,
+    };
     (
-        StatusCode::BAD_REQUEST,
+        status,
         Json(ErrorResponse {
             code,
             detail: "The companion rejected the request.",
@@ -419,20 +442,16 @@ fn contract_response(error: ContractError) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use companion_service::JobManager;
+
     #[tokio::test]
     async fn rejects_non_loopback_bindings() {
         let config = BridgeConfig {
-            bind: SocketAddr::new(std::net::IpAddr::from([127, 0, 0, 2]), 0),
-            approved_origins: HashSet::new(),
-        };
-        // 127/8 is loopback and is intentionally accepted; a LAN address is not.
-        assert!(start(config, Arc::new(JobManager::default())).await.is_ok());
-        let blocked = BridgeConfig {
             bind: "192.168.1.2:0".parse().unwrap(),
             approved_origins: HashSet::new(),
         };
         assert!(matches!(
-            start(blocked, Arc::new(JobManager::default())).await,
+            start(config, Arc::new(JobManager::default())).await,
             Err(BridgeError::NonLoopbackBinding)
         ));
     }

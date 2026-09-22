@@ -4,6 +4,7 @@ export const VISUAL_PROVIDER_KIND = Object.freeze({
   mock: "mock",
   local: "local",
   external: "external",
+  hybridLocal: "hybrid-local",
 });
 
 function isPlainObject(value) {
@@ -118,6 +119,17 @@ export function createVisualRecognizerProvider({ provider, name, kind, runtime, 
     modelHash: recognizer.modelHash || modelHash || null,
     async recognize(input, context = {}) {
       const result = await recognizer.recognize(input, context);
+      if (result?.schema === "glyphmend.provider-result.v1") {
+        return {
+          ...result,
+          provider: {
+            ...(result.provider || {}),
+            id: result.provider?.id || this.name,
+            kind: result.provider?.kind || this.kind,
+            version: result.provider?.version || this.version,
+          },
+        };
+      }
       return visualProviderResult({
         ...result,
         name: this.name,

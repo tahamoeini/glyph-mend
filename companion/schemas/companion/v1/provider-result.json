@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/provider-result",
+  "title": "GlyphMend provider result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "capability", "source", "observations", "provider", "warnings", "diagnostics"],
+  "properties": {
+    "schema": { "const": "glyphmend.provider-result.v1" },
+    "capability": { "type": "string", "minLength": 1, "maxLength": 96 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "bbox", "contentHash"],
+      "properties": {
+        "page": { "type": "integer", "minimum": 1 },
+        "bbox": { "type": "array", "items": { "type": "number" }, "maxItems": 8 },
+        "contentHash": { "type": "string", "maxLength": 128 }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "value"],
+        "properties": {
+          "type": { "type": "string", "maxLength": 96 },
+          "value": {},
+          "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "version"],
+      "properties": {
+        "id": { "type": "string", "maxLength": 96 },
+        "kind": { "enum": ["deterministic", "hybrid-local", "ml"] },
+        "version": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "model": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "revision", "sha256"],
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "revision": { "type": "string", "maxLength": 128 },
+        "sha256": { "type": "string", "maxLength": 128 }
+      }
+    },
+    "warnings": { "type": "array", "items": { "type": "string", "maxLength": 512 } },
+    "diagnostics": { "type": "object" }
+  }
+}
