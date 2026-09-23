@@ -11,7 +11,7 @@
         "predev": "npm run brand:sync && npm run native:deps",
         "dev": "vite",
         "prebuild": "npm run brand:sync && npm run native:deps",
-        "build": "vite build",
+        "build": "vite build && node ./scripts/verify-mupdf-assets.mjs",
         "lint": "node ./scripts/quality-check.mjs lint",
         "prepreview": "npm run brand:sync && npm run native:deps",
         "preview": "vite preview",

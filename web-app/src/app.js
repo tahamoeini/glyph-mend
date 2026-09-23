@@ -43,6 +43,7 @@ import {
   validateExtractionRequest,
   validateExtractionWorkerMessage,
 } from "./shared/security-boundaries.js";
+import { createWorkerStartupWatchdog } from "./features/extraction/worker-startup.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
@@ -567,25 +568,31 @@ function runBatch(batch, wanted) {
     );
     state.worker = worker;
     let settled = false;
+    let startupWatchdog;
     const failedPages = new Set();
     const finish = (error, result = { failedPages: [...failedPages] }) => {
       if (settled) return;
       settled = true;
-      clearTimeout(startupTimeout);
+      startupWatchdog?.clear();
       worker.terminate();
       state.worker = null;
       state.abortBatch = null;
       error ? reject(error) : resolve(result);
     };
-    const startupTimeout = setTimeout(
-      () =>
-        finish(
-          new Error(
-            "The extraction engine did not start within 45 seconds. Verify that /mupdf/mupdf.js and /mupdf/mupdf-wasm.wasm are deployed and reload the application.",
-          ),
-        ),
-      45000,
-    );
+    startupWatchdog = createWorkerStartupWatchdog(({ stage, elapsedMs }) => {
+      const phase = stage === "worker-boot" ? "Extraction worker" : "MuPDF WebAssembly";
+      const action = stage === "worker-boot"
+        ? "Check browser worker errors and available memory."
+        : "Check that mupdf.js, mupdf-wasm.js, and mupdf-wasm.wasm load successfully under /mupdf/.";
+      const seconds = Math.round(elapsedMs / 1000);
+      const error = Object.assign(
+        new Error(phase + " startup timed out after " + seconds + " seconds (phase: " + stage + "; elapsed: " + elapsedMs + " ms). " + action),
+        { startupStage: stage, elapsedMs },
+      );
+      log("startup-timeout", error.message, { stage, elapsedMs }, "error");
+      finish(error);
+    });
+    startupWatchdog.start();
     state.abortBatch = (reason) =>
       finish(Object.assign(new Error(reason), { aborted: true }));
     worker.onmessage = ({ data: rawData }) => {
@@ -599,12 +606,24 @@ function runBatch(batch, wanted) {
         return;
       }
       if (data.type === "worker-started") {
-        log("worker-start", "Extraction worker started", {}, "debug");
+        const elapsedMs = startupWatchdog.workerStarted();
+        log("worker-start", "Extraction worker started", { stage: "worker-boot", elapsedMs }, "debug");
+        return;
+      }
+      if (data.type === "engine-loading") {
+        log("engine-loading", "MuPDF WebAssembly initialization started", {
+          stage: data.stage,
+          elapsedMs: data.elapsedMs,
+        }, "debug");
         return;
       }
       if (data.type === "engine-ready") {
-        clearTimeout(startupTimeout);
-        log("engine-ready", "MuPDF WebAssembly engine loaded", {}, "debug");
+        const observedElapsedMs = startupWatchdog.engineReady();
+        log("engine-ready", "MuPDF WebAssembly engine loaded", {
+          stage: data.stage,
+          elapsedMs: data.elapsedMs,
+          observedElapsedMs,
+        }, "debug");
         return;
       }
       if (data.type === "page-start") {
@@ -678,17 +697,42 @@ function runBatch(batch, wanted) {
         );
       }
       if (data.type === "done") finish();
-      if (data.type === "error") finish(new Error(data.message));
+      if (data.type === "error") {
+        const message = data.stage === "mupdf-load"
+          ? "MuPDF WebAssembly startup failed after " + data.elapsedMs + " ms: " + data.message
+          : data.message;
+        finish(Object.assign(new Error(message), {
+          startupStage: data.stage,
+          elapsedMs: data.elapsedMs,
+        }));
+      }
     };
-    worker.onerror = (event) =>
-      finish(
-        Object.assign(
-          new Error(
-            event.message || "The extraction worker stopped unexpectedly.",
-          ),
-          { workerCrash: true, filename: event.filename, lineno: event.lineno },
-        ),
-      );
+    worker.onerror = (event) => {
+      const phase = startupWatchdog.snapshot();
+      const detail = phase.stage
+        ? " (phase: " + phase.stage + "; elapsed: " + phase.elapsedMs + " ms)"
+        : "";
+      finish(Object.assign(
+        new Error((event.message || "The extraction worker stopped unexpectedly.") + detail),
+        {
+          workerCrash: true,
+          filename: event.filename,
+          lineno: event.lineno,
+          startupStage: phase.stage,
+          elapsedMs: phase.elapsedMs,
+        },
+      ));
+    };
+    worker.onmessageerror = () => {
+      const phase = startupWatchdog.snapshot();
+      const detail = phase.stage
+        ? " (phase: " + phase.stage + "; elapsed: " + phase.elapsedMs + " ms)"
+        : "";
+      finish(Object.assign(
+        new Error("The extraction worker returned a message that could not be deserialized." + detail),
+        { startupStage: phase.stage, elapsedMs: phase.elapsedMs },
+      ));
+    };
     const bytes = state.pdfBytes.slice(0);
     let request;
     try {
@@ -711,7 +755,18 @@ function runBatch(batch, wanted) {
       finish(new Error(`Rejected extraction request: ${error.message}`));
       return;
     }
-    worker.postMessage(request, [bytes]);
+    try {
+      worker.postMessage(request, [bytes]);
+    } catch (cause) {
+      const phase = startupWatchdog.snapshot();
+      const message = "Could not send the extraction request to its worker"
+        + (phase.stage ? " (phase: " + phase.stage + "; elapsed: " + phase.elapsedMs + " ms)" : "")
+        + ": " + (cause?.message || String(cause));
+      finish(Object.assign(new Error(message), {
+        startupStage: phase.stage,
+        elapsedMs: phase.elapsedMs,
+      }));
+    }
   });
 }
 async function extract() {
@@ -816,7 +871,12 @@ async function extract() {
       log(
         error.workerCrash ? "worker-crash" : "fatal",
         error.message,
-        { filename: error.filename, lineno: error.lineno },
+        {
+          filename: error.filename,
+          lineno: error.lineno,
+          stage: error.startupStage,
+          elapsedMs: error.elapsedMs,
+        },
         "error",
       );
       toast(error.message, true);

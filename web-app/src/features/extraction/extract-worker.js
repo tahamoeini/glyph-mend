@@ -1,4 +1,5 @@
 import { createWorker as createOcrWorker } from "tesseract.js";
+import { loadMuPdfWithTiming } from "./worker-startup.js";
 import { headingFor, normalizeText } from "./cleanup.js";
 import { ocrLines, ocrMarkdownEntries } from "./ocr-layout.js";
 import { coalesceStructuredBlocks } from "./structured-lines.js";
@@ -2959,8 +2960,25 @@ if (typeof self !== "undefined")
     let document;
     try {
       self.postMessage({ type: "worker-started" });
-      await loadMupdf();
-      self.postMessage({ type: "engine-ready", engine: "mupdf-wasm" });
+      self.postMessage({ type: "engine-loading", stage: "mupdf-load", elapsedMs: 0 });
+      let mupdfLoad;
+      try {
+        mupdfLoad = await loadMuPdfWithTiming(loadMupdf);
+      } catch (error) {
+        self.postMessage({
+          type: "error",
+          stage: error.stage,
+          elapsedMs: error.elapsedMs,
+          message: (error?.message || String(error)).slice(0, 2048),
+        });
+        return;
+      }
+      self.postMessage({
+        type: "engine-ready",
+        engine: "mupdf-wasm",
+        stage: mupdfLoad.stage,
+        elapsedMs: mupdfLoad.elapsedMs,
+      });
       document = mupdf.Document.openDocument(
         new Uint8Array(data.buffer),
         "application/pdf",
