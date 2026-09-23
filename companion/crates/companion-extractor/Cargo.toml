@@ -1,0 +1,19 @@
+[package]
+name = "companion-extractor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+companion-contract = { path = "../companion-contract", version = "0.1.0" }
+companion-core = { path = "../companion-core", version = "0.1.0" }
+anyhow.workspace = true
+hex.workspace = true
+image.workspace = true
+leptess.workspace = true
+pdfium-render.workspace = true
+rayon.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio-util.workspace = true

@@ -3,7 +3,7 @@
 
 use companion_contract::{
     Capability, ContractError, ErrorCode, InputKind, Progress, ProviderKind, ProviderMetadata,
-    ProviderObservation, ProviderResult, ProviderSource, PROVIDER_RESULT_SCHEMA,
+    ProviderObservation, ProviderResult, ProviderSource, JobResult, PROVIDER_RESULT_SCHEMA,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -75,8 +75,10 @@ pub struct ProviderInput {
 #[derive(Debug, Clone)]
 pub struct ProviderOutput {
     pub progress: Vec<Progress>,
-    pub result: Option<ProviderResult>,
+    pub result: Option<JobResult>,
 }
+
+pub type ProgressSender = tokio::sync::mpsc::UnboundedSender<Progress>;
 
 pub trait CapabilityProvider: Send + Sync {
     fn capability(&self) -> Capability;
@@ -84,6 +86,7 @@ pub trait CapabilityProvider: Send + Sync {
         &self,
         input: ProviderInput,
         cancellation: CancellationToken,
+        progress: ProgressSender,
     ) -> Result<ProviderOutput, CoreError>;
 }
 
@@ -112,6 +115,7 @@ impl CapabilityProvider for DiagnosticMockProvider {
         &self,
         input: ProviderInput,
         cancellation: CancellationToken,
+        _progress: ProgressSender,
     ) -> Result<ProviderOutput, CoreError> {
         if cancellation.is_cancelled() {
             return Err(CoreError::Contract(ContractError::Code(
@@ -155,7 +159,7 @@ impl CapabilityProvider for DiagnosticMockProvider {
         };
         Ok(ProviderOutput {
             progress,
-            result: Some(result),
+            result: Some(JobResult::Provider(result)),
         })
     }
 }
@@ -190,9 +194,10 @@ mod tests {
     fn mock_is_diagnostic_only_and_returns_provider_evidence() {
         let provider = DiagnosticMockProvider;
         assert!(provider.capability().diagnostic_only);
-        let output = provider.run(input(), CancellationToken::new()).unwrap();
+        let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
+        let output = provider.run(input(), CancellationToken::new(), sender).unwrap();
         assert_eq!(output.progress.len(), 2);
-        let result = output.result.unwrap();
+        let JobResult::Provider(result) = output.result.unwrap() else { panic!("expected provider result") };
         assert_eq!(result.provider.kind, ProviderKind::Deterministic);
         assert!(result.validate().is_ok());
     }

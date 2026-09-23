@@ -3,69 +3,33 @@
   "$id": "glyphmend.companion/v1/job-create",
   "title": "Job creation request",
   "type": "object",
-  "required": [
-    "documentName",
-    "capabilityId",
-    "inputKind",
-    "declaredBytes",
-    "pageCount",
-    "metadata",
-    "idempotencyKey"
-  ],
+  "required": ["documentName", "capabilityId", "inputKind", "declaredBytes", "pageCount", "metadata", "idempotencyKey"],
   "additionalProperties": false,
   "properties": {
-    "documentName": {
-      "type": "string",
-      "maxLength": 255
-    },
-    "capabilityId": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128
-    },
-    "inputKind": {
-      "enum": [
-        "document",
-        "region"
-      ]
-    },
-    "declaredBytes": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 536870912
-    },
-    "pageCount": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 4294967295
-    },
+    "documentName": { "type": "string", "maxLength": 255 },
+    "capabilityId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "inputKind": { "enum": ["document", "region"] },
+    "declaredBytes": { "type": "integer", "minimum": 0, "maximum": 536870912 },
+    "pageCount": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
     "metadata": {
       "type": "object",
-      "description": "At most 16 KiB serialized. For inputKind=region, must match region-input.json."
+      "description": "At most 16 KiB serialized. Region and document-extraction inputs use their versioned schemas."
     },
-    "idempotencyKey": {
-      "type": "string",
-      "format": "uuid"
-    }
+    "idempotencyKey": { "type": "string", "format": "uuid" }
   },
   "allOf": [
     {
-      "if": {
-        "properties": {
-          "inputKind": {
-            "const": "region"
-          }
-        },
-        "required": [
-          "inputKind"
-        ]
-      },
+      "if": { "properties": { "inputKind": { "const": "region" } }, "required": ["inputKind"] },
+      "then": { "properties": { "metadata": { "$ref": "./region-input.json" } } }
+    },
+    {
+      "if": { "properties": { "capabilityId": { "const": "glyphmend.document.extract.v2" } }, "required": ["capabilityId"] },
       "then": {
         "properties": {
-          "metadata": {
-            "$ref": "./region-input.json"
-          }
-        }
+          "inputKind": { "const": "document" },
+          "metadata": { "$ref": "../../document-extraction-options/v2/schema.json" }
+        },
+        "required": ["inputKind", "metadata"]
       }
     }
   ]

@@ -6,11 +6,13 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub const PROTOCOL_MAJOR: u16 = 1;
-pub const PROTOCOL_MINOR: u16 = 1;
+pub const PROTOCOL_MINOR: u16 = 2;
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const IR_SCHEMA_ID: &str = "glyphmend.semantic-document-ir";
 pub const IR_SCHEMA_VERSION: u16 = 2;
 pub const PROVIDER_RESULT_SCHEMA: &str = "glyphmend.provider-result.v1";
+pub const DOCUMENT_EXTRACTION_CAPABILITY: &str = "glyphmend.document.extract.v2";
+pub const DOCUMENT_INPUT_SCHEMA: &str = "glyphmend.document-extraction-options.v2";
 pub const MAX_CONTROL_BYTES: usize = 64 * 1024;
 pub const MAX_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAX_DOCUMENT_BYTES: u64 = 512 * 1024 * 1024;
@@ -24,6 +26,7 @@ pub const MAX_WARNINGS: usize = 64;
 pub const MAX_METADATA_BYTES: usize = 16 * 1024;
 pub const MAX_DIAGNOSTICS_BYTES: usize = 32 * 1024;
 pub const MAX_PROVIDER_RESULT_BYTES: usize = 64 * 1024;
+pub const MAX_IR_RESULT_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_IDENTIFIER_BYTES: usize = 128;
 pub const CONTROL_TIMEOUT_SECS: u64 = 30;
 pub const SESSION_IDLE_SECS: u64 = 15 * 60;
@@ -175,7 +178,7 @@ pub struct JobCreate {
 
 impl JobCreate {
     pub fn validate(&self) -> Result<(), ContractError> {
-        if self.document_name.len() > 255 {
+        if self.document_name.len() > 255 || self.document_name.contains([char]47) || self.document_name.contains([char]92) || self.document_name.contains([char]58) || self.document_name.contains("://") || self.document_name.contains([char]0) {
             return Err(ContractError::Limit("documentName"));
         }
         if self.capability_id.is_empty() || self.capability_id.len() > MAX_IDENTIFIER_BYTES {
@@ -203,6 +206,57 @@ impl JobCreate {
             let region: RegionInputMetadata = serde_json::from_value(self.metadata.clone())
                 .map_err(|_| ContractError::Code(ErrorCode::InvalidRequest))?;
             region.validate()?;
+        }
+        if self.capability_id == DOCUMENT_EXTRACTION_CAPABILITY {
+            if self.input_kind != InputKind::Document || self.page_count == 0 || self.page_count > 2000 {
+                return Err(ContractError::Code(ErrorCode::InvalidRequest));
+            }
+            let options: DocumentExtractionOptions = serde_json::from_value(self.metadata.clone())
+                .map_err(|_| ContractError::Code(ErrorCode::InvalidRequest))?;
+            options.validate(self.page_count)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OcrAccuracy {
+    Fast,
+    HighAccuracy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct DocumentExtractionOptions {
+    pub schema: String,
+    pub selected_pages: Vec<u32>,
+    pub ocr_accuracy: OcrAccuracy,
+    #[serde(default = "default_true")]
+    pub use_ocr: bool,
+    #[serde(default)]
+    pub force_ocr: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+}
+
+fn default_true() -> bool { true }
+
+impl DocumentExtractionOptions {
+    pub fn validate(&self, page_count: u32) -> Result<(), ContractError> {
+        if self.schema != DOCUMENT_INPUT_SCHEMA
+            || self.selected_pages.is_empty()
+            || self.selected_pages.len() > 2000
+            || self.selected_pages.iter().any(|page| *page == 0 || *page > page_count)
+            || self.password.as_ref().is_some_and(|password| password.len() > 4096)
+        {
+            return Err(ContractError::Code(ErrorCode::InvalidRequest));
+        }
+        let mut pages = self.selected_pages.clone();
+        pages.sort_unstable();
+        pages.dedup();
+        if pages.len() != self.selected_pages.len() {
+            return Err(ContractError::Code(ErrorCode::InvalidRequest));
         }
         Ok(())
     }
@@ -393,6 +447,39 @@ impl ProviderResult {
             return Err(ContractError::Code(ErrorCode::PayloadTooLarge));
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JobResult {
+    Provider(ProviderResult),
+    SemanticDocument(serde_json::Value),
+}
+
+impl JobResult {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        match self {
+            Self::Provider(result) => result.validate(),
+            Self::SemanticDocument(document) => {
+                let valid = document.get("schema").and_then(serde_json::Value::as_str)
+                    == Some(IR_SCHEMA_ID)
+                    && document.get("schemaVersion").and_then(serde_json::Value::as_u64)
+                        == Some(IR_SCHEMA_VERSION as u64)
+                    && document.get("documentId").and_then(serde_json::Value::as_str)
+                        .is_some_and(|value| !value.is_empty() && value.len() <= 256)
+                    && document.get("pages").and_then(serde_json::Value::as_array)
+                        .is_some_and(|pages| !pages.is_empty() && pages.len() <= 2000)
+                    && document.get("diagnostics").and_then(serde_json::Value::as_array).is_some();
+                if !valid {
+                    return Err(ContractError::Code(ErrorCode::InvalidRequest));
+                }
+                if serde_json::to_vec(document).map_or(true, |bytes| bytes.len() > MAX_IR_RESULT_BYTES) {
+                    return Err(ContractError::Code(ErrorCode::PayloadTooLarge));
+                }
+                Ok(())
+            }
+        }
     }
 }
 

@@ -3,9 +3,9 @@
 
 use bytes::Bytes;
 use companion_contract::{
-    Capability, ContractError, ErrorCode, InputChunk, InputComplete, JobCreate, ProviderResult,
+    Capability, ContractError, ErrorCode, InputChunk, InputComplete, JobCreate, JobResult,
     ABANDONED_JOB_TTL_SECS, JOB_RETENTION_SECS, MAX_ACTIVE_JOBS, MAX_CONCURRENT_JOBS,
-    MAX_CONTROL_BYTES, MAX_DOCUMENT_BYTES, MAX_EVENT_QUEUE, MAX_RUNTIME_BYTES, MAX_SESSION_BYTES,
+    MAX_CONTROL_BYTES, MAX_DOCUMENT_BYTES, MAX_EVENT_QUEUE, MAX_IR_RESULT_BYTES, MAX_RUNTIME_BYTES, MAX_SESSION_BYTES,
     PROVIDER_TIMEOUT_SECS,
 };
 use companion_core::{
@@ -63,7 +63,7 @@ pub struct JobResultResponse {
     pub job_id: Uuid,
     pub status: JobState,
     pub terminal: bool,
-    pub result: Option<ProviderResult>,
+    pub result: Option<JobResult>,
 }
 
 struct JobRecord {
@@ -82,7 +82,7 @@ struct JobRecord {
     event_sequence: u64,
     events: Vec<SequencedJobEvent>,
     notify: Arc<Notify>,
-    result: Option<ProviderResult>,
+    result: Option<JobResult>,
     last_touched: Instant,
 }
 
@@ -132,6 +132,12 @@ impl JobManager {
             storage_dir,
             Duration::from_secs(JOB_RETENTION_SECS),
         )
+    }
+
+    pub fn with_default_storage_providers(
+        providers: Vec<Arc<dyn CapabilityProvider>>,
+    ) -> Result<Self, std::io::Error> {
+        Self::with_providers(providers, default_storage_dir())
     }
 
     pub fn with_providers(
@@ -430,14 +436,29 @@ impl JobManager {
             )
         };
         let worker_cancellation = cancellation.clone();
-        let mut worker =
-            tokio::task::spawn_blocking(move || provider.run(input, worker_cancellation));
+        let (progress_sender, mut progress_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let progress_jobs = Arc::clone(&self.jobs);
+        let progress_monitor = tokio::spawn(async move {
+            while let Some(progress) = progress_receiver.recv().await {
+                let mut jobs = progress_jobs.lock().await;
+                if let Some(job) = jobs.get_mut(&job_id) {
+                    let page = progress.completed_pages;
+                    append_event(job_id, job, JobEvent::PageStarted { page });
+                    append_event(job_id, job, JobEvent::Progress(progress));
+                    append_event(job_id, job, JobEvent::PageCompleted { page });
+                }
+            }
+        });
+        let mut worker = tokio::task::spawn_blocking(move || {
+            provider.run(input, worker_cancellation, progress_sender)
+        });
         let completed = tokio::time::timeout(self.provider_timeout, &mut worker).await;
         let joined = match completed {
             Ok(result) => result,
             Err(_) => {
                 let cancelled_by_user = cancellation.is_cancelled();
                 cancellation.cancel();
+                progress_monitor.abort();
                 let code = if cancelled_by_user {
                     ErrorCode::Cancelled
                 } else {
@@ -481,6 +502,7 @@ impl JobManager {
                 return Ok(());
             }
         };
+        let _ = progress_monitor.await;
         drop(permit);
         let output = match joined {
             Ok(Ok(output)) => {
@@ -497,7 +519,7 @@ impl JobManager {
                                     result: Some(result.clone()),
                                 };
                                 serde_json::to_vec(&response)
-                                    .map_or(true, |bytes| bytes.len() > MAX_CONTROL_BYTES)
+                                    .map_or(true, |bytes| bytes.len() > MAX_IR_RESULT_BYTES + 1024)
                                     .then_some(ErrorCode::PayloadTooLarge)
                             }
                             Err(ContractError::Code(code)) => Some(code),
@@ -690,7 +712,7 @@ impl JobManager {
             terminal: is_terminal(job.state),
             result: job.result.clone(),
         };
-        if serde_json::to_vec(&response).map_or(true, |bytes| bytes.len() > MAX_CONTROL_BYTES) {
+        if serde_json::to_vec(&response).map_or(true, |bytes| bytes.len() > MAX_IR_RESULT_BYTES + 1024) {
             return Err(ContractError::Code(ErrorCode::PayloadTooLarge));
         }
         Ok(response)
@@ -1146,9 +1168,10 @@ mod tests {
             &self,
             input: ProviderInput,
             cancellation: CancellationToken,
+            _progress: companion_core::ProgressSender,
         ) -> Result<companion_core::ProviderOutput, CoreError> {
             std::thread::sleep(Duration::from_millis(50));
-            DiagnosticMockProvider.run(input, cancellation)
+            DiagnosticMockProvider.run(input, cancellation, _progress)
         }
     }
 
@@ -1165,13 +1188,14 @@ mod tests {
             &self,
             input: ProviderInput,
             cancellation: CancellationToken,
+            _progress: companion_core::ProgressSender,
         ) -> Result<companion_core::ProviderOutput, CoreError> {
             use std::sync::atomic::Ordering;
             let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
             self.maximum.fetch_max(active, Ordering::SeqCst);
             std::thread::sleep(Duration::from_millis(50));
             self.active.fetch_sub(1, Ordering::SeqCst);
-            DiagnosticMockProvider.run(input, cancellation)
+            DiagnosticMockProvider.run(input, cancellation, _progress)
         }
     }
 
@@ -1219,6 +1243,7 @@ mod tests {
             &self,
             input: ProviderInput,
             cancellation: CancellationToken,
+            _progress: companion_core::ProgressSender,
         ) -> Result<companion_core::ProviderOutput, CoreError> {
             self.started
                 .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -1227,7 +1252,7 @@ mod tests {
                 cancellation.is_cancelled(),
                 std::sync::atomic::Ordering::SeqCst,
             );
-            DiagnosticMockProvider.run(input, cancellation)
+            DiagnosticMockProvider.run(input, cancellation, _progress)
         }
     }
 

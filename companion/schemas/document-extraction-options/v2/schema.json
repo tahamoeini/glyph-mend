@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.document-extraction-options.v2",
+  "title": "Document extraction options v2",
+  "type": "object",
+  "required": ["schema", "selectedPages", "ocrAccuracy"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "glyphmend.document-extraction-options.v2" },
+    "selectedPages": {
+      "type": "array", "minItems": 1, "maxItems": 2000, "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 1, "maximum": 2000 }
+    },
+    "ocrAccuracy": { "enum": ["fast", "high-accuracy"] },
+    "useOcr": { "type": "boolean", "default": true },
+    "forceOcr": { "type": "boolean", "default": false },
+    "password": { "type": "string", "maxLength": 4096 }
+  }
+}

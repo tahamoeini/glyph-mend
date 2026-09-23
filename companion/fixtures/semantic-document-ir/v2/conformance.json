@@ -1,0 +1,64 @@
+{
+  "schema": "glyphmend.semantic-document-ir",
+  "schemaVersion": 2,
+  "documentId": "fixture-companion-conformance-v2",
+  "metadata": {
+    "engine": { "id": "glyphmend.pdfium-tesseract", "version": "0.1.0" },
+    "fixture": "cross-runtime"
+  },
+  "pages": [
+    {
+      "id": "companion-page-1",
+      "pageNumber": 1,
+      "sourcePage": 1,
+      "bbox": [0, 0, 612, 792],
+      "coordinateSpace": "page-points",
+      "nodes": [
+        {
+          "id": "companion-page-1-segment-0",
+          "type": "paragraph",
+          "content": { "markdown": "A shared conformance sentence.", "text": "A shared conformance sentence." },
+          "sourcePage": 1,
+          "bbox": [72, 72, 310, 90],
+          "coordinateSpace": "page-points",
+          "sourceKind": "native-text",
+          "source": {
+            "spanIds": ["pdfium-span-1-0"],
+            "extra": {
+              "engine": "glyphmend.pdfium-tesseract",
+              "engineVersion": "0.1.0",
+              "fallbackReason": "native-text-present"
+            }
+          },
+          "confidence": { "extraction": null, "structure": null, "reconstruction": null, "export": null },
+          "disposition": "reconstructed",
+          "reconstructionVersion": 2,
+          "diagnostics": []
+        }
+      ],
+      "relationships": [],
+      "diagnostics": [],
+      "layout": {
+        "engine": "glyphmend.pdfium-tesseract",
+        "engineVersion": "0.1.0",
+        "pageObjectCount": 1,
+        "pageObjectTypes": { "Text": 1 }
+      },
+      "source": {
+        "engine": "glyphmend.pdfium-tesseract",
+        "engineVersion": "0.1.0",
+        "fallback": {
+          "reason": "native-text-present",
+          "ocrRequested": true,
+          "ocrAttempted": false,
+          "ocrApplied": false,
+          "ocrAccuracy": "fast",
+          "ocrModel": null,
+          "ocrConfidence": null,
+          "ocrError": null
+        }
+      }
+    }
+  ],
+  "diagnostics": []
+}

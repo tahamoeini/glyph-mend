@@ -3,41 +3,19 @@
   "$id": "glyphmend.companion/v1/job-result",
   "title": "Job result response",
   "type": "object",
-  "required": [
-    "jobId",
-    "status",
-    "terminal",
-    "result"
-  ],
+  "required": ["jobId", "status", "terminal", "result"],
   "additionalProperties": false,
   "properties": {
-    "jobId": {
-      "type": "string",
-      "format": "uuid"
-    },
+    "jobId": { "type": "string", "format": "uuid" },
     "status": {
-      "enum": [
-        "created",
-        "receiving",
-        "queued",
-        "running",
-        "cancelling",
-        "completed",
-        "cancelled",
-        "failed"
-      ]
+      "enum": ["created", "receiving", "queued", "running", "cancelling", "completed", "cancelled", "failed"]
     },
-    "terminal": {
-      "type": "boolean"
-    },
+    "terminal": { "type": "boolean" },
     "result": {
       "oneOf": [
-        {
-          "$ref": "./provider-result.json"
-        },
-        {
-          "type": "null"
-        }
+        { "$ref": "./provider-result.json" },
+        { "$ref": "../../semantic-document-ir/v2/schema.json" },
+        { "type": "null" }
       ]
     }
   }

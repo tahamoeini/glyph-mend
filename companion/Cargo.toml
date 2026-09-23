@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/companion-contract",
   "crates/companion-core",
+  "crates/companion-extractor",
   "crates/companion-service",
   "crates/companion-bridge",
   "crates/companion-cli",
@@ -11,6 +12,7 @@ members = [
 default-members = [
   "crates/companion-contract",
   "crates/companion-core",
+  "crates/companion-extractor",
   "crates/companion-service",
   "crates/companion-bridge",
   "crates/companion-cli",
@@ -30,6 +32,10 @@ getrandom = "0.3"
 hex = "0.4"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+pdfium-render = { version = "0.9.4", features = ["thread_safe", "image_latest", "pdfium_latest"] }
+leptess = "0.14.0"
+image = { version = "0.25.9", default-features = false, features = ["tiff"] }
+rayon = "1.11.0"
 sha2 = "0.11.0"
 subtle = "2.6"
 thiserror = "2.0.20"

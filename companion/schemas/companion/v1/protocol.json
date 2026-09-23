@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "GlyphMend Companion REST API",
-    "version": "1.1",
+    "version": "1.2",
     "description": "REST is the sole active protocol. The negotiated protocol is the highest mutually supported minor within major version 1. IR schema incompatibility has its own error. Control requests are limited to 64 KiB; binary chunks are limited to 1 MiB."
   },
   "servers": [
@@ -529,7 +529,7 @@
           "minor": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 1
+            "maximum": 2
           }
         }
       },
@@ -565,6 +565,12 @@
       },
       "JobResult": {
         "$ref": "./job-result.json"
+      },
+      "DocumentExtractionOptions": {
+        "$ref": "../../document-extraction-options/v2/schema.json"
+      },
+      "SemanticDocumentIRV2": {
+        "$ref": "../../semantic-document-ir/v2/schema.json"
       },
       "Error": {
         "$ref": "./error.json"
