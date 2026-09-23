@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-companion-contract = { path = "../companion-contract" }
+companion-contract = { path = "../companion-contract", version = "0.1.0" }
 serde.workspace = true
 thiserror.workspace = true
 tokio-util.workspace = true

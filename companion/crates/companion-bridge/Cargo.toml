@@ -6,8 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-companion-contract = { path = "../companion-contract" }
-companion-service = { path = "../companion-service" }
+companion-contract = { path = "../companion-contract", version = "0.1.0" }
+companion-service = { path = "../companion-service", version = "0.1.0" }
 axum.workspace = true
 bytes.workspace = true
 getrandom.workspace = true

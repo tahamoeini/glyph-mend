@@ -173,6 +173,7 @@ pub async fn start(
             sessions: HashMap::new(),
         })),
     };
+    let cleanup_service = Arc::clone(&state.service);
     let control_routes = Router::new()
         .route("/v1/session", post(session))
         .route("/v1/capabilities", get(capabilities))
@@ -205,7 +206,7 @@ pub async fn start(
         );
     let (shutdown, receiver) = oneshot::channel();
     let cleanup_cancellation = CancellationToken::new();
-    tokio::spawn(Arc::clone(&state.service).cleanup_loop(cleanup_cancellation.clone()));
+    tokio::spawn(cleanup_service.cleanup_loop(cleanup_cancellation.clone()));
     tokio::spawn(async move {
         let _ = axum::serve(listener, app)
             .with_graceful_shutdown(async {

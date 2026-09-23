@@ -9,8 +9,8 @@ license.workspace = true
 tauri-build = "2.5.1"
 
 [dependencies]
-companion-contract = { path = "../../../crates/companion-contract" }
-companion-service = { path = "../../../crates/companion-service" }
+companion-contract = { path = "../../../crates/companion-contract", version = "0.1.0" }
+companion-service = { path = "../../../crates/companion-service", version = "0.1.0" }
 serde.workspace = true
 tauri = { version = "2.11.6", default-features = false, features = ["wry"] }
 tokio.workspace = true
