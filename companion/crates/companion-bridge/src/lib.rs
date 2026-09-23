@@ -278,7 +278,7 @@ async fn session(
 
 async fn capabilities(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if let Err(response) = authenticated(&state, &headers).await {
-        return reject(code);
+        return response;
     }
     match state.service.capabilities() {
         Ok(capabilities) => Json(capabilities).into_response(),
