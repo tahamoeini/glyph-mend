@@ -37,10 +37,13 @@ export function createVisualWorkerCapability({
   enableMl = false,
   cvProvider,
   mlProvider,
+  companionProvider,
   featureFlag = true,
   version = "1",
 } = {}) {
-  const visualProvider = provider || (supportsLocalML({ enableMl, provider: mlProvider }) ? createVisualRecognizerProvider({ provider: mlProvider || createMockVisualProvider() }) : null);
+  const browserProvider = provider || (supportsLocalML({ enableMl, provider: mlProvider }) ? createVisualRecognizerProvider({ provider: mlProvider || createMockVisualProvider() }) : null);
+  const nativeProvider = companionProvider ? createVisualRecognizerProvider({ provider: companionProvider }) : null;
+  const visualProvider = browserProvider || nativeProvider;
   const localWorkerFactory = workerFactory || (async () => ({
     async run(input = {}, context = {}) {
       const deterministic = visualWorkerRecognize(input, context);
@@ -54,22 +57,59 @@ export function createVisualWorkerCapability({
         edges: deterministicIR.edges,
       };
 
-      const localMlAllowed = supportsLocalML({ enableMl, provider: visualProvider });
-      if (!localMlAllowed) {
+      const localMlAllowed = !!visualProvider && (supportsLocalML({ enableMl, provider: browserProvider }) || !!nativeProvider);
+      if (!localMlAllowed || deterministicTopology.nodes.length < 2 || deterministicTopology.edges.length < 1) {
         return buildVisualWorkerResult(deterministicIR, {});
       }
 
-      const providerResult = await visualProvider.recognize(
-        {
-          deterministic: deterministicTopology,
-          candidate: deterministicIR,
-          page: input.page,
-          bbox: input.bbox,
-          raster: input.raster,
-          ocrTextRegions: input.ocrTextRegions,
-        },
-        context,
-      );
+      let providerResult;
+      try {
+        providerResult = await visualProvider.recognize(
+          {
+            deterministic: deterministicTopology,
+            candidate: deterministicIR,
+            page: input.page,
+            bbox: input.bbox,
+            raster: input.raster,
+            ocrTextRegions: input.ocrTextRegions,
+          },
+          context,
+        );
+      } catch (error) {
+        return buildVisualWorkerResult({
+          ...deterministicIR,
+          disposition: "review",
+          warnings: [
+            ...(deterministicIR.warnings || []),
+            "Optional provider failed; deterministic visual evidence was preserved.",
+          ],
+          provenance: {
+            ...deterministicIR.provenance,
+            providerFailure: {
+              name: error?.name || "Error",
+              message: error?.message || String(error),
+            },
+            featureFlag,
+          },
+        }, {});
+      }
+      if (!Array.isArray(providerResult?.candidates) || providerResult.candidates.length === 0) {
+        return buildVisualWorkerResult({
+          ...deterministicIR,
+          disposition: "review",
+          warnings: [
+            ...(deterministicIR.warnings || []),
+            ...(providerResult?.warnings || []),
+            "Companion provider returned evidence without a canonical VisualIR candidate.",
+          ],
+          provenance: {
+            ...deterministicIR.provenance,
+            providerEvidence: providerResult,
+            featureFlag,
+          },
+        }, {});
+      }
+
       const candidate = providerResult?.candidates?.[0] || {};
       const mlIr = candidateToVisualIR(candidate);
       const comparison = compareVisualTopology(deterministicTopology, mlIr);
@@ -127,6 +167,8 @@ export function createVisualWorkerCapability({
       provider: visualProvider?.name || null,
       providerKind: visualProvider?.kind || null,
       modelHash: visualProvider?.modelHash || null,
+      browserProvider: browserProvider?.name || null,
+      companionProvider: nativeProvider?.name || null,
     },
   });
 }

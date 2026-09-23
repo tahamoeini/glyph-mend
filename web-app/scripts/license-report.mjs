@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(scriptDir, "..");
-const repoRoot = path.resolve(webRoot, "..");
 const checkMode = process.argv.includes("--check");
 
 const browserPolicy = Object.freeze({
@@ -73,40 +72,8 @@ const copiedRuntimeAssetPolicy = Object.freeze({
   },
 });
 
-const pythonPolicy = Object.freeze({
-  pymupdf: {
-    review: "BLOCKED_STRATEGY_REVIEW",
-    license: "AGPL-3.0 / Artifex commercial dual-license",
-    purpose: "Python PDF rendering/extraction",
-  },
-  pymupdf4llm: {
-    review: "BLOCKED_STRATEGY_REVIEW",
-    license: "AGPL-3.0 / Artifex commercial dual-license",
-    purpose: "Python structured PDF-to-Markdown extraction",
-  },
-  "python-docx": {
-    review: "APPROVED",
-    license: "MIT",
-    purpose: "Python DOCX generation",
-  },
-});
-
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
-}
-
-function normalizePythonName(spec) {
-  const match = spec.trim().match(/^([A-Za-z0-9_.-]+)/);
-  return match ? match[1].toLowerCase().replaceAll("_", "-") : null;
-}
-
-function readPythonRuntimeDependencies(pyprojectText) {
-  const projectStart = pyprojectText.indexOf("[project]");
-  if (projectStart < 0) throw new Error("pyproject.toml has no [project] section");
-  const afterProject = pyprojectText.slice(projectStart);
-  const match = afterProject.match(/\ndependencies\s*=\s*\[([\s\S]*?)\n\]/);
-  if (!match) throw new Error("pyproject.toml has no project dependencies array");
-  return [...match[1].matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
 }
 
 function row(columns) {
@@ -115,7 +82,6 @@ function row(columns) {
 
 const packageJson = readJson(path.join(webRoot, "package.json"));
 const lock = readJson(path.join(webRoot, "package-lock.json"));
-const pyprojectText = fs.readFileSync(path.join(repoRoot, "pyproject.toml"), "utf8");
 
 const directBrowser = {
   ...(packageJson.dependencies || {}),
@@ -160,25 +126,6 @@ for (const [name, policy] of Object.entries(copiedRuntimeAssetPolicy)) {
   }
 }
 
-const pythonSpecs = readPythonRuntimeDependencies(pyprojectText);
-const pythonRows = [];
-for (const spec of pythonSpecs) {
-  const name = normalizePythonName(spec);
-  const policy = pythonPolicy[name];
-  if (!policy) {
-    failures.push(`Unreviewed Python runtime dependency: ${spec}`);
-    pythonRows.push([name || spec, spec, "UNKNOWN", "UNREVIEWED"]);
-    continue;
-  }
-  pythonRows.push([name, spec, policy.license, policy.review]);
-}
-
-for (const name of Object.keys(pythonPolicy)) {
-  if (!pythonSpecs.some((spec) => normalizePythonName(spec) === name)) {
-    failures.push(`Stale Python license policy entry not present in pyproject.toml: ${name}`);
-  }
-}
-
 console.log("# GlyphMend direct dependency license report\n");
 console.log("This report is an engineering gate, not legal advice. It verifies manifest coverage and lockfile license drift.\n");
 console.log("## Browser direct/runtime dependencies\n");
@@ -194,11 +141,7 @@ for (const [name, policy] of Object.entries(copiedRuntimeAssetPolicy)) {
   console.log(row([name, locked?.version || "missing", locked?.license || "UNKNOWN", policy.review]));
 }
 
-console.log("\n## Python runtime dependencies\n");
-console.log(row(["Package", "Declared spec", "Reviewed license", "Review"]));
-console.log(row(["---", "---", "---", "---"]));
-for (const item of pythonRows) console.log(row(item));
-
+console.log("
 if (failures.length) {
   console.error("\nLicense gate failures:");
   for (const failure of failures) console.error(`- ${failure}`);

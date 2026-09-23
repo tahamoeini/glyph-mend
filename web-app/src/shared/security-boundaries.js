@@ -243,9 +243,22 @@ export function validateExtractionWorkerMessage(value, { limits = ACTIVE_FORMAT_
   switch (value.type) {
     case "worker-started":
       return { type: value.type };
+    case "engine-loading":
+      if (value.stage !== "mupdf-load") throw new TypeError("Extraction worker reported an unsupported startup stage.");
+      return {
+        type: value.type,
+        stage: value.stage,
+        elapsedMs: finiteInteger(value.elapsedMs, "Worker startup elapsed time", 0, 120_000),
+      };
     case "engine-ready":
       if (value.engine !== "mupdf-wasm") throw new TypeError("Extraction worker reported an unsupported engine.");
-      return { type: value.type, engine: value.engine };
+      if (value.stage !== "mupdf-load") throw new TypeError("Extraction worker reported an unsupported startup stage.");
+      return {
+        type: value.type,
+        engine: value.engine,
+        stage: value.stage,
+        elapsedMs: finiteInteger(value.elapsedMs, "Worker startup elapsed time", 0, 120_000),
+      };
     case "page-start":
       return { type: value.type, page: finiteInteger(value.page, "Worker page", 1, limits.maxPageNumber) };
     case "ocr-progress":
@@ -271,10 +284,20 @@ export function validateExtractionWorkerMessage(value, { limits = ACTIVE_FORMAT_
         engine: value.engine === "mupdf-wasm" ? value.engine : "mupdf-wasm",
       };
     case "error":
-      return {
-        type: value.type,
-        message: boundedString(value.message || "Extraction worker failed.", "Worker error message", 2048),
-      };
+      {
+        const message = {
+          type: value.type,
+          message: boundedString(value.message || "Extraction worker failed.", "Worker error message", 2048),
+        };
+        if (value.stage !== undefined) {
+          if (value.stage !== "mupdf-load") throw new TypeError("Extraction worker reported an unsupported error stage.");
+          message.stage = value.stage;
+          message.elapsedMs = finiteInteger(value.elapsedMs, "Worker startup elapsed time", 0, 120_000);
+        } else if (value.elapsedMs !== undefined) {
+          throw new TypeError("Worker startup elapsed time requires a startup stage.");
+        }
+        return message;
+      }
     default:
       throw new TypeError(`Unsupported extraction worker message type: ${value.type}.`);
   }

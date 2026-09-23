@@ -95,3 +95,32 @@ it("rejects unknown or malformed worker messages", () => {
   expect(() => validateExtractionWorkerMessage({ type: "run-code", code: "alert(1)" })).toThrow(/unsupported.*message type/i);
   expect(() => validateExtractionWorkerMessage({ type: "ocr-progress", page: 1, status: "x", progress: 2 })).toThrow(/OCR progress/i);
 });
+
+it("validates bounded MuPDF startup stages and elapsed times", () => {
+  expect(validateExtractionWorkerMessage({
+    type: "engine-loading",
+    stage: "mupdf-load",
+    elapsedMs: 0,
+  })).toEqual({ type: "engine-loading", stage: "mupdf-load", elapsedMs: 0 });
+  expect(validateExtractionWorkerMessage({
+    type: "engine-ready",
+    engine: "mupdf-wasm",
+    stage: "mupdf-load",
+    elapsedMs: 46_000,
+  }).elapsedMs).toBe(46_000);
+  expect(validateExtractionWorkerMessage({
+    type: "error",
+    stage: "mupdf-load",
+    elapsedMs: 12_000,
+    message: "Unable to fetch WASM",
+  }).stage).toBe("mupdf-load");
+  expect(() => validateExtractionWorkerMessage({
+    type: "engine-ready", engine: "mupdf-wasm", stage: "document-open", elapsedMs: 1,
+  })).toThrow(/startup stage/i);
+  expect(() => validateExtractionWorkerMessage({
+    type: "error", stage: "mupdf-load", elapsedMs: 120_001, message: "timeout",
+  })).toThrow(/elapsed time/i);
+  expect(() => validateExtractionWorkerMessage({
+    type: "error", elapsedMs: 4, message: "missing stage",
+  })).toThrow(/requires a startup stage/i);
+});

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/input-complete",
+  "title": "Input completion request",
+  "type": "object",
+  "required": [
+    "sha256Hex",
+    "totalBytes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "sha256Hex": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "totalBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 536870912
+    }
+  }
+}

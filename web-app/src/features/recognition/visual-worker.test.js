@@ -73,6 +73,7 @@ it("uses the optional ML provider only after deterministic evidence exists", asy
       lines: [{ id: "l1" }, { id: "l2" }],
       contours: [{ id: "c1" }, { id: "c2" }],
       density: 0.5,
+      density: 0.5,
       shapes: [
         { id: "start", bbox: [20, 20, 90, 60], label: "Start" },
         { id: "end", bbox: [150, 20, 220, 60], label: "End" },
@@ -145,6 +146,7 @@ it("downgrades contradictory ML topology to review instead of trusting it", asyn
     raster: {
       lines: [{ id: "l1" }, { id: "l2" }],
       contours: [{ id: "c1" }, { id: "c2" }],
+      density: 0.5,
       density: 0.6,
       shapes: [
         { id: "start", bbox: [20, 20, 90, 60], label: "Start" },
@@ -203,4 +205,85 @@ it("keeps ML disabled without affecting deterministic extraction", async () => {
   expect(result.meta.mlEnabled).toBe(false);
   expect(result.result.nodes).toHaveLength(2);
   expect(result.result.edges).toHaveLength(1);
+});
+it("keeps provider-neutral Companion evidence without replacing canonical VisualIR", async () => {
+  const capability = createVisualWorkerCapability({
+    companionProvider: {
+      name: "glyphmend-companion",
+      kind: "hybrid-local",
+      runtime: "companion",
+      version: "1",
+      async recognize() {
+        return {
+          schema: "glyphmend.provider-result.v1",
+          capability: "glyphmend.visual.classify.v1",
+          source: { page: 7, bbox: [0, 0, 240, 160], contentHash: "a".repeat(64) },
+          observations: [{ type: "class-candidate", value: "diagram", confidence: 0.91 }],
+          provider: { id: "glyphmend-companion", kind: "hybrid-local", version: "1" },
+          model: null,
+          warnings: [],
+          diagnostics: {},
+        };
+      },
+    },
+  });
+  const result = await capability.run({
+    page: 7,
+    bbox: [0, 0, 240, 160],
+    raster: {
+      lines: [{ id: "l1" }, { id: "l2" }],
+      contours: [{ id: "c1" }, { id: "c2" }],
+      density: 0.5,
+      shapes: [
+        { id: "start", bbox: [20, 20, 90, 60], label: "Start" },
+        { id: "end", bbox: [150, 20, 220, 60], label: "End" },
+      ],
+      connectors: [{ id: "edge-1", bbox: [80, 34, 160, 48], endpoints: [{ x: 90, y: 40 }, { x: 180, y: 40 }], arrowheads: { end: true } }],
+    },
+    ocrTextRegions: [
+      { id: "ocr-start", text: "Start", bbox: [20, 20, 90, 60] },
+      { id: "ocr-end", text: "End", bbox: [150, 20, 220, 60] },
+    ],
+  });
+  expect(result.ok).toBe(true);
+  expect(result.result.disposition).toBe("review");
+  expect(result.result.provenance.providerEvidence.provider.kind).toBe("hybrid-local");
+  expect(result.result.nodes).toHaveLength(2);
+});
+
+it("preserves deterministic visual evidence when the optional provider fails", async () => {
+  const capability = createVisualWorkerCapability({
+    companionProvider: {
+      name: "failing-companion",
+      kind: "hybrid-local",
+      runtime: "companion",
+      version: "1",
+      async recognize() {
+        throw new Error("provider offline");
+      },
+    },
+  });
+  const result = await capability.run({
+    page: 8,
+    bbox: [0, 0, 240, 160],
+    raster: {
+      lines: [{ id: "l1" }, { id: "l2" }],
+      contours: [{ id: "c1" }, { id: "c2" }],
+      density: 0.5,
+      shapes: [
+        { id: "start", bbox: [20, 20, 90, 60], label: "Start" },
+        { id: "end", bbox: [150, 20, 220, 60], label: "End" },
+      ],
+      connectors: [{ id: "edge-1", bbox: [80, 34, 160, 48], endpoints: [{ x: 90, y: 40 }, { x: 180, y: 40 }], arrowheads: { end: true } }],
+    },
+    ocrTextRegions: [
+      { id: "ocr-start", text: "Start", bbox: [20, 20, 90, 60] },
+      { id: "ocr-end", text: "End", bbox: [150, 20, 220, 60] },
+    ],
+  });
+  expect(result.ok).toBe(true);
+  expect(result.result.nodes).toHaveLength(2);
+  expect(result.result.edges).toHaveLength(1);
+  expect(result.result.provenance.providerFailure.message).toBe("provider offline");
+  expect(result.result.warnings.join(" ")).toContain("deterministic visual evidence was preserved");
 });

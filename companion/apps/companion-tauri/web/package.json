@@ -1,0 +1,8 @@
+{
+  "name": "glyphmend-companion-tauri-web-adapter",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1"
+  }
+}

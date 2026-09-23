@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/job-created",
+  "title": "Job creation response",
+  "type": "object",
+  "required": [
+    "jobId"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    }
+  }
+}

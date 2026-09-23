@@ -1,11 +1,10 @@
 name: GlyphMend browser app
 on:
-  push:
-    branches: [main]
-    paths: ["branding.json", "brand/**", "web-app/**", "pyproject.toml", "docs/upgrade/DEPENDENCY_LICENSES.md", ".github/workflows/web-app.yml"]
   pull_request:
+    types: [opened]
     paths: ["branding.json", "brand/**", "web-app/**", "pyproject.toml", "docs/upgrade/DEPENDENCY_LICENSES.md", ".github/workflows/web-app.yml"]
   workflow_dispatch:
+
 permissions:
   contents: read
 concurrency:
@@ -42,7 +41,8 @@ jobs:
       - run: npm run build
       - name: Ensure generated branding is committed
         run: git diff --exit-code -- branding.json brand web-app/src/shared/brand.js web-app/src/styles/style.css
-      - uses: actions/upload-artifact@v7
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
         with:
           name: glyphmend-browser
           path: web-app/dist

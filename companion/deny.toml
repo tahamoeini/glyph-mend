@@ -1,0 +1,35 @@
+[advisories]
+version = 2
+yanked = "deny"
+# These unmaintained crates only enter through the optional, non-distributed Tauri shell.
+# Keep the findings visible here until that shell's dependency tree is updated or retired.
+ignore = [
+  "RUSTSEC-2024-0370", # proc-macro-error via tauri-macros
+  "RUSTSEC-2025-0075", # unic-char-range via urlpattern/tauri-utils
+  "RUSTSEC-2025-0080", # unic-common via urlpattern/tauri-utils
+  "RUSTSEC-2025-0081", # unic-char-property via urlpattern/tauri-utils
+  "RUSTSEC-2025-0098", # unic-ucd-version via urlpattern/tauri-utils
+  "RUSTSEC-2025-0100", # unic-ucd-ident via urlpattern/tauri-utils
+]
+
+[licenses]
+version = 2
+# Technical SPDX allowlist for current dependency-policy CI; this is not approval
+# for public distribution. The licensing decision remains blocked pending review.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0"]
+exceptions = [
+  { crate = "cssparser", allow = ["MPL-2.0"] },
+  { crate = "cssparser-macros", allow = ["MPL-2.0"] },
+  { crate = "dtoa-short", allow = ["MPL-2.0"] },
+  { crate = "option-ext", allow = ["MPL-2.0"] },
+  { crate = "selectors", allow = ["MPL-2.0"] },
+  { crate = "foldhash", allow = ["Zlib"] },
+  { crate = "matchit", allow = ["BSD-3-Clause"] },
+  { crate = "subtle", allow = ["BSD-3-Clause"] },
+  { crate = "target-lexicon", allow = ["Apache-2.0 WITH LLVM-exception"] },
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"

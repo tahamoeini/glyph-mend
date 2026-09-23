@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/error",
+  "title": "Companion error response",
+  "type": "object",
+  "required": [
+    "code",
+    "detail"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "enum": [
+        "protocol-incompatible",
+        "capability-unsupported",
+        "invalid-request",
+        "invalid-state",
+        "invalid-sequence",
+        "payload-too-large",
+        "digest-mismatch",
+        "pairing-required",
+        "security-rejected",
+        "session-expired",
+        "event-history-gap",
+        "busy",
+        "timed-out",
+        "not-found",
+        "conflict",
+        "cancelled",
+        "internal",
+        "ir-schema-unsupported"
+      ]
+    },
+    "detail": {
+      "type": "string",
+      "maxLength": 512
+    },
+    "earliestSequence": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

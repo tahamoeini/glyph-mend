@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob: https://api.producthunt.com; style-src 'self' 'unsafe-inline'; font-src 'self'; manifest-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' http://127.0.0.1:* http://[::1]:*; img-src 'self' data: blob: https://api.producthunt.com; style-src 'self' 'unsafe-inline'; font-src 'self'; manifest-src 'self'">
   <meta name="theme-color" content="#eef1f5">
   <meta name="description" content="Faithful document reconstruction from PDF to structured Markdown.">
   <meta name="author" content="Taha Moeini">
@@ -144,6 +144,12 @@
           <label class="quiet file-button">Import workspace<input id="workspaceInput" type="file" accept="application/json,.json"></label>
           <label class="quiet file-button">Open Markdown<input id="markdownInput" type="file" accept="text/markdown,.md,.markdown"></label>
         </div>
+        <div class="welcome-actions" aria-label="Optional native companion">
+          <button id="welcomeCompanionButton" class="quiet" type="button">Connect optional companion</button>
+          <label class="field-label" for="welcomeCompanionEndpoint">Companion endpoint<input id="welcomeCompanionEndpoint" type="url" inputmode="url" placeholder="http://127.0.0.1:port"></label>
+          <label class="field-label" for="welcomeCompanionCode">Pairing code<input id="welcomeCompanionCode" type="password" autocomplete="off"></label>
+          <small id="welcomeCompanionStatus" aria-live="polite">Browser processing stays the default.</small>
+        </div>
         <div class="welcome-storage"><span><i aria-hidden="true"></i> Local store ready</span><button id="resetClientStorageButton" class="text-button danger-text" type="button">Reset local data</button></div>
       </div>
       <div class="welcome-footer">
@@ -224,6 +230,12 @@
                 <label class="field-label" for="checkpointPages">Checkpoint every<input id="checkpointPages" type="number" min="1" max="100" value="20"><small>Pages per processing batch</small></label>
                 <label class="control-row compact"><span><strong>Strict mode</strong><small>Stop on the first page error</small></span><span class="switch"><input id="strict" type="checkbox"><i aria-hidden="true"></i></span></label>
                 <p class="technical-note">MuPDF WebAssembly and the bundled English OCR model run locally. Bounded batches release memory between checkpoints.</p>
+              </fieldset>
+              <fieldset class="advanced-group">
+                <legend>Optional companion</legend>
+                <label class="field-label" for="settingsCompanionEndpoint">Local endpoint<input id="settingsCompanionEndpoint" type="url" inputmode="url" placeholder="http://127.0.0.1:port"></label>
+                <label class="field-label" for="settingsCompanionCode">Pairing code<input id="settingsCompanionCode" type="password" autocomplete="off"></label>
+                <button id="settingsCompanionButton" class="quiet" type="button">Connect companion</button><small id="settingsCompanionStatus" aria-live="polite">Only use an endpoint and code shown by your local companion.</small>
               </fieldset>
             </div>
           </details>

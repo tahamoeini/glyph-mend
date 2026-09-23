@@ -21,13 +21,14 @@ See [branding.md](branding.md) for the full configuration contract.
 - Start with 20 checkpoint pages. Lower it when browser memory is tight; raise it only after a representative run is stable.
 - Keep **strict** off for exploratory runs. It records a skipped page as `needs-review` instead of discarding the rest of the batch.
 
-For a fully scanned long book, OCR can take substantially longer than native-text extraction. Completed batches are checkpointed, so pausing and resuming is safe after the current page operation completes.
+For a fully scanned long book, OCR can take substantially longer than native-text extraction. Completed batches are checkpointed, so pausing and resuming is safe after the current page operation completes. A startup failure leaves the document open and existing checkpoints intact; start extraction again manually after addressing the reported phase. Startup failures are not retried automatically.
 
 ## Reading the activity log
 
 ```text
-worker-start      → browser worker is running
-engine-ready      → MuPDF WebAssembly loaded
+worker-start      → browser worker is running; includes worker-boot elapsed time
+engine-loading    → MuPDF WebAssembly initialization started
+engine-ready      → MuPDF WebAssembly loaded; includes initialization elapsed time
 page-complete     → a page was extracted and queued for its checkpoint
 checkpoint-write  → the batch is safely persisted
 complete          → extraction and document-level cleanup finished
@@ -39,8 +40,9 @@ complete          → extraction and document-level cleanup finished
 
 | Symptom | Action |
 | --- | --- |
-| Stops after `batch-start` | Rebuild/redeploy. If neither `worker-start` nor `engine-ready` appears, inspect browser developer-console errors. |
-| Engine startup timeout | Confirm the deployment serves the copied MuPDF JS and WASM assets under `/mupdf/`. |
+| Stops after batch-start | Rebuild/redeploy. Use the last activity stage (worker-boot or mupdf-load) and browser console/network errors to identify where startup stopped. |
+| Worker boot timeout (worker-boot) | The extraction worker did not report worker-start within 30 seconds. Inspect browser console errors and available memory. The open document and checkpoints remain available for a manual retry. |
+| MuPDF startup timeout (mupdf-load) | MuPDF did not initialize within 90 seconds after worker-start. In the Network panel, verify mupdf.js, mupdf-wasm.js, and mupdf-wasm.wasm return HTTP 200 under /mupdf/; the WASM response must use application/wasm. A loader rejection reports the same phase and elapsed time. |
 | Tesseract `importScripts` error | Rebuild/redeploy so `/tesseract/worker.min.js`, `/tesseract-core/`, and `/tessdata/` are present. |
 | A run reports an extraction version below 14 | Reload with browser cache bypassed or unregister the old service worker, then reopen the PDF. The current restoration branch uses extraction version 14 and invalidates incompatible older browser checkpoints. |
 | OCR-only output loses source evidence | Confirm the current build is loaded, then retry with **Preserve visual content** enabled. OCR pages retain source evidence conservatively rather than claiming editable reconstruction of raster tables or formulas. |
@@ -50,9 +52,9 @@ complete          → extraction and document-level cleanup finished
 
 ## Deployment checklist
 
-1. Run `npm ci`, `npm test`, and `npm run build` in `web-app/`.
+1. Run npm ci, npm test, and npm run build in web-app/. The build verifies the three copied MuPDF files, checks that the service worker precaches them, and fetches them from a local production preview.
 2. Deploy the contents of `web-app/dist/` over HTTPS.
 3. Verify `branding.json`, the configured logo, MuPDF, OCR, PDF.js WASM, and service-worker assets return HTTP 200.
-4. Test one native-text PDF and one scanned PDF in the target browser.
+4. Test one native-text PDF and one scanned PDF in the target browser. Confirm the MuPDF requests succeed and extraction reaches engine-ready.
 5. Test the configured name/slogan/logo online, then reload offline to verify the cached-brand fallback.
 6. Review the MuPDF AGPL/commercial licensing obligation before distributing the app.

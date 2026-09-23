@@ -1,0 +1,100 @@
+name: GlyphMend Companion
+
+on:
+  pull_request:
+    types: [opened]
+    paths: ["companion/**", "docs/**", "README.md", ".github/workflows/companion.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+
+concurrency:
+  group: companion-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.97.0
+          components: rustfmt, clippy
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --exclude companion-tauri -- -D warnings
+      - run: cargo test --workspace --exclude companion-tauri
+      - run: cargo build -p companion-cli
+      - run: node tests/browser-runtime-e2e.mjs
+
+  dependency-policy:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.97.0
+          cache: false
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check
+
+  release-artifacts:
+    if: github.event_name == 'workflow_dispatch'
+    name: Portable artifact (${{ matrix.os }})
+    needs: [verify, dependency-policy]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: glyphmend-companion-windows-x64
+            binary: glyphmend-companion.exe
+          - os: ubuntu-latest
+            artifact: glyphmend-companion-linux-x64
+            binary: glyphmend-companion
+          - os: macos-latest
+            artifact: glyphmend-companion-macos-arm64
+            binary: glyphmend-companion
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.97.0
+          cache: false
+      - run: cargo build --release -p companion-cli
+      - name: Rename portable runtime
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/release/companion-cli.exe target/release/glyphmend-companion.exe
+          else
+            cp target/release/companion-cli target/release/glyphmend-companion
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: companion/target/release/${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 14

@@ -4,11 +4,13 @@
 
 | Guide | Use it for |
 | --- | --- |
-| [Branding](branding.md) | Product name, slogan, logo, runtime overrides, and compatibility policy. |
-| [Browser edition](browser.md) | Local browser extraction, OCR, recovery, deployment, and troubleshooting. |
-| [Architecture](architecture.md) | Repository layout, module boundaries, tests, and automation. |
-| [Desktop GUI](gui.md) | The Python/Tkinter interface. |
-| [Project README](../README.md) | Product overview, Python CLI reference, and semantic-output contract. |
-| [Browser README](../web-app/README.md) | Browser build commands, verification, configuration, and licensing. |
+| [Browser operations](browser.md) | Local extraction, OCR, recovery, deployment, and troubleshooting. |
+| [Browser application](../web-app/README.md) | Browser build, behavior, exports, and licensing. |
+| [Companion engine](companion-engine.md) | Loopback connection, extraction API, fallback, OCR choices, and packaging. |
+| [Architecture](architecture.md) | Product boundaries, data flow, and repository layout. |
+| [CI and releases](ci.md) | Browser/Rust checks and manual Companion releases. |
+| [Branding](branding.md) | Runtime name, slogan, logo, and PWA metadata. |
+| [Active roadmap](roadmap.md) | Benchmarks and release readiness. |
+| [Project README](../README.md) | Product overview and quick start. |
 
-The browser edition is the primary GlyphMend product surface. The Python CLI and desktop GUI remain supported for native workflows and share the same reconstruction core. The historical `pdf-sanitizer` command and `pdf_sanitizer` module remain compatibility aliases; new integrations should use `glyphmend`.
+The browser platform is the complete default product. The Rust Companion is optional and is selected per extraction job.

@@ -3658,6 +3658,7 @@
 }
 
 
+@layer components {
 .creator-attribution {
   position: fixed;
   right: 14px;
@@ -3689,4 +3690,6 @@
     bottom: 8px;
     font-size: 10px;
   }
+}
+
 }

@@ -1,0 +1,580 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "GlyphMend Companion REST API",
+    "version": "1.2",
+    "description": "REST is the sole active protocol. The negotiated protocol is the highest mutually supported minor within major version 1. IR schema incompatibility has its own error. Control requests are limited to 64 KiB; binary chunks are limited to 1 MiB."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1"
+    }
+  ],
+  "security": [
+    {
+      "BearerSession": []
+    }
+  ],
+  "paths": {
+    "/v1/session": {
+      "post": {
+        "security": [],
+        "summary": "Pair and negotiate a session",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./session-request.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Paired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./session-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Protocol or IR schema mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Pairing or exact-origin rejection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "summary": "List capabilities",
+        "responses": {
+          "200": {
+            "description": "Available providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "./capability.json"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs": {
+      "post": {
+        "summary": "Create or retrieve an idempotent job",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./job-create.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created or idempotently reused job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./job-created.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key reused for different request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Control or resource limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Active job quota exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{jobId}/chunks/{sequence}": {
+      "put": {
+        "summary": "Upload a binary chunk",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "sequence",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "x-glyphmend-chunk-length",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1048576
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "$ref": "./input-chunk.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Chunk accepted; identical retry is idempotent"
+          },
+          "400": {
+            "description": "Sequence or digest metadata rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not owned by session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicting chunk retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Chunk exceeds 1 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Storage quota exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{jobId}/complete": {
+      "post": {
+        "summary": "Verify upload and queue provider work",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "./input-complete.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Digest or state rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not owned by session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Completion conflicts with accepted digest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Control body exceeds 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Input queued; queued false denotes an identical retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./input-completion.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{jobId}/events": {
+      "get": {
+        "summary": "Read ordered events with long polling",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 128
+            }
+          },
+          {
+            "name": "waitMs",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 15000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./events-page.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not owned by session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cursor predates retained history; restart at earliestSequence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{jobId}/result": {
+      "get": {
+        "summary": "Retrieve provider result",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current job state and optional result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./job-result.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not owned by session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{jobId}/cancel": {
+      "post": {
+        "summary": "Cancel job and signal provider",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cancellation accepted"
+          },
+          "404": {
+            "description": "Job not owned by session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerSession": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "ProtocolVersion": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "glyphmend.companion/v1/protocol-version",
+        "title": "Protocol version",
+        "type": "object",
+        "required": [
+          "major",
+          "minor"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "major": {
+            "const": 1
+          },
+          "minor": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "NegotiatedProtocolVersion": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "glyphmend.companion/v1/negotiated-protocol-version",
+        "title": "Negotiated protocol version",
+        "type": "object",
+        "required": [
+          "major",
+          "minor"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "major": {
+            "const": 1
+          },
+          "minor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          }
+        }
+      },
+      "SessionRequest": {
+        "$ref": "./session-request.json"
+      },
+      "SessionResponse": {
+        "$ref": "./session-response.json"
+      },
+      "Capability": {
+        "$ref": "./capability.json"
+      },
+      "JobCreate": {
+        "$ref": "./job-create.json"
+      },
+      "RegionInput": {
+        "$ref": "./region-input.json"
+      },
+      "InputChunk": {
+        "$ref": "./input-chunk.json"
+      },
+      "InputComplete": {
+        "$ref": "./input-complete.json"
+      },
+      "JobEvent": {
+        "$ref": "./job-event.json"
+      },
+      "EventsPage": {
+        "$ref": "./events-page.json"
+      },
+      "ProviderResult": {
+        "$ref": "./provider-result.json"
+      },
+      "JobResult": {
+        "$ref": "./job-result.json"
+      },
+      "DocumentExtractionOptions": {
+        "$ref": "../../document-extraction-options/v2/schema.json"
+      },
+      "SemanticDocumentIRV2": {
+        "$ref": "../../semantic-document-ir/v2/schema.json"
+      },
+      "Error": {
+        "$ref": "./error.json"
+      }
+    }
+  }
+}
