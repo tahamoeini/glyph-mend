@@ -227,8 +227,8 @@ async fn session(
     headers: HeaderMap,
     Json(request): Json<SessionRequest>,
 ) -> Response {
-    if let Err(response) = trusted_origin(&state, &headers) {
-        return response;
+    if let Err(code) = trusted_origin(&state, &headers) {
+        return reject(code);
     }
     let negotiated = match request.validate() {
         Ok(version) => version,
@@ -278,7 +278,7 @@ async fn session(
 
 async fn capabilities(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if let Err(response) = authenticated(&state, &headers).await {
-        return response;
+        return reject(code);
     }
     match state.service.capabilities() {
         Ok(capabilities) => Json(capabilities).into_response(),
@@ -421,7 +421,7 @@ async fn result(
     }
 }
 
-fn trusted_origin(state: &AppState, headers: &HeaderMap) -> Result<(), Response> {
+fn trusted_origin(state: &AppState, headers: &HeaderMap) -> Result<(), ErrorCode> {
     let origin = headers
         .get(header::ORIGIN)
         .and_then(|value| value.to_str().ok())
@@ -430,11 +430,11 @@ fn trusted_origin(state: &AppState, headers: &HeaderMap) -> Result<(), Response>
         .approved_origins
         .contains(origin)
         .then_some(())
-        .ok_or_else(|| reject(ErrorCode::SecurityRejected))
+        .ok_or(ErrorCode::SecurityRejected)
 }
 
 async fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<Uuid, Response> {
-    trusted_origin(state, headers)?;
+    trusted_origin(state, headers).map_err(reject)?;
     let value = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
