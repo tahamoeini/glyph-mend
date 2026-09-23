@@ -1,3 +1,5 @@
+> Historical record from the September 2026 upgrade. This file is archived for context and is not an active backlog or current implementation guidance. See [the active roadmap](../../roadmap.md).
+
 # Remaining work: extraction reconstruction audit ledger
 
 Status: live pre-implementation ledger. This file records concrete work needed after the audit; it is not a claim that extraction quality has improved.

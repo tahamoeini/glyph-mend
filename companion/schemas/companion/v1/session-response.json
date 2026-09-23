@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/session-response",
+  "title": "Session response",
+  "type": "object",
+  "required": [
+    "protocolVersion",
+    "irSchemaVersion",
+    "sessionId",
+    "sessionToken",
+    "expiresInSeconds"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "$ref": "./negotiated-protocol-version.json"
+    },
+    "irSchemaVersion": {
+      "const": 2
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sessionToken": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "expiresInSeconds": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

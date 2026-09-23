@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/job-event",
+  "title": "Sequenced job event",
+  "type": "object",
+  "required": [
+    "schema",
+    "sequence",
+    "jobId",
+    "eventType",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "glyphmend.companion-event.v1"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "eventType": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "payload": {
+      "description": "Serde-encoded event payload for the eventType.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object"
+        }
+      ]
+    }
+  }
+}

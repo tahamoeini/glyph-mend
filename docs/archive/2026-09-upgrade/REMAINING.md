@@ -1,3 +1,5 @@
+> Historical record from the September 2026 upgrade. This file is archived for context and is not an active backlog or current implementation guidance. See [the active roadmap](../../roadmap.md).
+
 # Remaining work ledger
 
 Append-only unresolved-work ledger for GlyphMend upgrade prompts.

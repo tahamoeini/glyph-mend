@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/input-chunk",
+  "title": "Binary input chunk",
+  "type": "string",
+  "contentEncoding": "binary",
+  "description": "application/octet-stream body; at most 1 MiB. Sequence is in the path and exact byte length is in x-glyphmend-chunk-length."
+}

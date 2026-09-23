@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use anyhow::Result;
-use companion_bridge::{start, BridgeConfig};
+use companion_bridge::{start, BridgeConfig, DEFAULT_WEB_ORIGIN};
 use companion_service::JobManager;
 use std::{process::Command, sync::Arc};
 
@@ -12,12 +12,17 @@ async fn main() -> Result<()> {
         .with_target(false)
         .without_time()
         .init();
-    let no_open = std::env::args().any(|argument| argument == "--no-open");
-    let self_test = std::env::args().any(|argument| argument == "--self-test");
-    let handle = start(BridgeConfig::default(), Arc::new(JobManager::default())).await?;
+    let arguments = std::env::args().collect::<Vec<_>>();
+    let no_open = arguments.iter().any(|argument| argument == "--no-open");
+    let self_test = arguments.iter().any(|argument| argument == "--self-test");
+    let web_origin = parse_web_origin(&arguments)?;
+    let config = BridgeConfig::for_web_origin(&web_origin)?;
+    let handle = start(config, Arc::new(JobManager::default())).await?;
     let connection_url = format!(
-        "https://glyphmend.negar.team/#companionEndpoint={}&companionCode={}",
-        handle.endpoint, handle.pairing_code
+        "{}/#companionEndpoint={}&companionCode={}",
+        web_origin.trim_end_matches('/'),
+        handle.endpoint,
+        handle.pairing_code
     );
 
     println!("GlyphMend Companion ready.");
@@ -36,6 +41,25 @@ async fn main() -> Result<()> {
     tokio::signal::ctrl_c().await?;
     handle.shutdown().await;
     Ok(())
+}
+
+fn parse_web_origin(arguments: &[String]) -> Result<String> {
+    let occurrences = arguments
+        .iter()
+        .enumerate()
+        .filter(|(_, argument)| argument.as_str() == "--web-origin")
+        .collect::<Vec<_>>();
+    if occurrences.len() > 1 {
+        anyhow::bail!("--web-origin may be specified only once");
+    }
+    let Some((index, _)) = occurrences.first() else {
+        return Ok(DEFAULT_WEB_ORIGIN.to_string());
+    };
+    arguments
+        .get(*index + 1)
+        .filter(|value| !value.starts_with("--"))
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("--web-origin requires an exact http or https origin"))
 }
 
 fn open_browser(url: &str) -> std::io::Result<()> {

@@ -3,9 +3,9 @@ name: GlyphMend Companion
 on:
   push:
     branches: [main]
-    paths: ["companion/**", "docs/companion-engine.md", ".github/workflows/companion.yml"]
+    paths: ["companion/**", "docs/**", "README.md", ".github/workflows/companion.yml"]
   pull_request:
-    paths: ["companion/**", "docs/companion-engine.md", ".github/workflows/companion.yml"]
+    paths: ["companion/**", "docs/**", "README.md", ".github/workflows/companion.yml"]
   workflow_dispatch:
 
 permissions:
@@ -33,9 +33,14 @@ jobs:
         with:
           toolchain: 1.97.0
           components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --exclude companion-tauri -- -D warnings
       - run: cargo test --workspace --exclude companion-tauri
+      - run: cargo build -p companion-cli
+      - run: node tests/browser-runtime-e2e.mjs
 
   dependency-policy:
     name: Dependency policy
@@ -53,7 +58,7 @@ jobs:
 
   release-artifacts:
     name: Portable artifact (${{ matrix.os }})
-    needs: verify
+    needs: [verify, dependency-policy]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:

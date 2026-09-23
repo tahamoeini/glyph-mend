@@ -1,27 +1,40 @@
 # GlyphMend architecture and repository layout
 
+## Product boundary
+
+GlyphMend is a local-first document reconstruction toolkit. Its Browser and Python editions are separate implementations with different runtimes and adapters; they do not share one extraction core. They follow the same product principles: preserve source evidence, prefer deterministic reconstruction, expose uncertainty, and keep provider output separate from canonical document data.
+
+The core flow is:
+
+```text
+PDF intake
+  → recover text, layout, and source evidence
+  → deterministic reconstruction
+  → quality gate and review when uncertain
+  → canonical internal document representation
+  → Markdown output, with optional DOCX or reconstructable bundle
+```
+
+Semantic Document IR, VisualIR, TableIR, EquationIR, and ChartIR describe internal reconstruction data. Markdown is the primary user-facing text artifact. Provider output is evidence and cannot directly replace canonical IR.
+
 ## Top-level layout
 
 ```text
-branding.json          Canonical product identity and logo configuration
+branding.json          Product identity and logo configuration
 brand/                 Source brand assets
-src/glyphmend/         Canonical Python public package
-src/pdf_sanitizer/     Core implementation + compatibility namespace
+src/glyphmend/         Python public package
+src/pdf_sanitizer/     Python implementation and compatibility namespace
 web-app/               Browser-first application
+companion/             Optional local diagnostic runtime and provider seam
 tests/                 Python tests grouped by responsibility
-docs/                  Product and operations documentation
-.github/workflows/     Python, browser, and release automation
+docs/                  Current product and operations documentation
+docs/archive/          Historical upgrade and roadmap records
+.github/workflows/     Python, browser, Companion, and release automation
 ```
-
-## Branding boundary
-
-Brand identity is intentionally separate from extraction configuration. `branding.json` contains the default name, slogan, CLI name, description, and logo path. Python resolves it through `pdf_sanitizer.branding` / `glyphmend.branding`; the browser synchronizes it into public assets and then loads `branding.json` at runtime.
-
-Changing branding must not alter extraction fingerprints or invalidate checkpoints.
 
 ## Python edition
 
-`glyphmend` is the canonical public package. The long-standing `pdf_sanitizer` namespace remains as a compatibility surface so existing integrations can migrate without a forced breaking release.
+`glyphmend` is the canonical Python public package. The long-standing `pdf_sanitizer` namespace remains a compatibility surface. The Python and Browser editions use separate extraction implementations; neither is a wrapper around the other's core.
 
 | Area | Modules |
 | --- | --- |
@@ -35,90 +48,45 @@ Changing branding must not alter extraction fingerprints or invalidate checkpoin
 | Cleanup and validation | `sanitize.py`, `document_cleanup.py`, `running_matter.py`, `quality.py` |
 | Word export | `docx_export.py`, `word_math.py` |
 
-Canonical installed commands:
-
-```text
-glyphmend              PDF extraction and workspace operations
-glyphmend-gui          Tkinter desktop GUI
-md-to-docx              Markdown-to-Word export
-```
-
-Compatibility commands retained for existing scripts:
-
-```text
-pdf-sanitizer
-pdf-sanitizer-gui
-```
-
 ## Browser edition
 
 ```text
 web-app/src/
   app.js                    UI state and extraction orchestration
-  brand-bootstrap.js        Runtime brand initialization
-  shared/brand.js           Brand loading, caching, validation, and DOM application
-  mupdf-vite.js             MuPDF static-asset adapter for Vite
-  features/extraction/      OCR worker and Markdown reconstruction
-    document-ir.js          Versioned PageIR/BlockIR semantic representation
-  features/export/          DOCX export
+  features/extraction/      Browser PDF/OCR extraction and reconstruction
+  features/recognition/     Optional local visual and math providers
+  features/companion/       REST client and provider adapter
+  shared/                   Semantic IR, review, security, and export utilities
   storage/                  IndexedDB workspace persistence
-  shared/                   Shared browser utilities
   styles/                   UI styles
-web-app/scripts/
-  sync-brand.mjs            Build/dev synchronization of brand config and PWA metadata
-web-app/public/             PWA manifest, runtime branding JSON, logo, and native assets
 ```
 
-Runtime-only MuPDF, PDF.js, and Tesseract files are copied by `vite.config.js` into the production build. They remain static deployable assets because nested browser workers cannot safely depend on Vite's internal dependency URLs.
+Browser extraction retains page provenance, commits bounded batches to IndexedDB, and preserves source visuals when structure cannot be validated. See [the Browser guide](browser.md) for current data flow and operations.
 
-### Browser extraction data flow
+## Companion diagnostic runtime
 
-PDF coordinates are retained as source provenance, not used as the final
-document order. Each page worker result is normalized into a bounded
-DocumentIR page with semantic blocks (paragraphs, headings, lists, tables,
-figures, equations, captions, and footnotes). Every BlockIR carries its source
-page, nullable bounding box, confidence, extraction method, and child IDs;
-caption relationships are explicit and table cells retain span metadata. The
-cleanup pipeline classifies running matter as REMOVE, KEEP, or MERGE before
-applying decisions to the IR, so repeated headers do not erase structural
-chapter content. Markdown and DOCX exporters consume the ordered block stream.
-Assets remain page-level references with local bytes and a source image is kept
-whenever semantic reconstruction is not validated.
+`companion/` contains a loopback-only Rust HTTP service, shared job service, diagnostic provider, portable CLI, and optional Tauri adapter. REST v1 is its only active wire protocol. Pairing creates an origin-bound session; each job is scoped to its creating session. Binary region crops, bounded results, storage quotas, and cancellation protect the provider seam.
 
-Image XObject recovery is conservative: adjacent same-line equation fragments
-may be coalesced, but vertically stacked source images remain separate assets.
-Stable PDF rule grids can produce a TableIR with cell bounding boxes; sparse or
-merged grids fail closed to a preserved source crop because Markdown cannot
-faithfully express those spans. Labelled vector figures remain source crops
-even when their text overlaps the extracted text region.
+Companion currently reports diagnostic provider evidence. The main extraction pipeline does not route work to it, and Companion is not an extraction accelerator. Capability routing, evidence reconciliation, model integration, and capability-specific result schemas remain planned. See [the Companion guide](companion-engine.md) and the [active roadmap](roadmap.md).
 
-The browser contract is versioned (`DocumentIR` schema 2). Changing the
-semantic block shape increments the extraction checkpoint version so old
-IndexedDB pages cannot be mistaken for results from the current pipeline.
+## Branding and compatibility
 
-Extraction runs in bounded page batches. Each completed page is committed to
-IndexedDB before the next batch, and a page error is retried once in a fresh
-worker. A page that still fails is reported in the quality audit while other
-pages continue, preserving deterministic page order at finalization.
+Brand identity is separate from extraction configuration. Branding changes must not alter extraction fingerprints or invalidate checkpoints. Historical command aliases remain documented in the Python interface guides.
 
-The runtime brand JSON and brand assets are deliberately excluded from Workbox precaching. The browser loads the current configuration with `cache: no-store` and stores the last successful brand locally as an offline fallback. PWA install metadata is generated during brand synchronization and therefore requires a rebuild when the installed-app name or icon changes.
-
-## Tests
+## Tests and automation
 
 ```text
-tests/
-  unit/                     Deterministic Python module tests
-  integration/              Pipeline and end-to-end workflow tests
-  interfaces/               CLI, GUI-helper, and reporting tests
-web-app/src/**/**.test.js   Browser unit tests beside their modules
+tests/                         Python unit, integration, and interface tests
+web-app/src/**/*.test.js       Browser unit and contract tests
+companion/crates/**/tests      Rust contract, service, and bridge tests
+companion/tests/               Browser-client to runtime end-to-end checks
 ```
-
-Branding tests verify canonical defaults, JSON/environment overrides, runtime browser loading, safe DOM application, and compatibility imports.
-
-## Automation
 
 | Workflow | Responsibility |
 | --- | --- |
-| `test.yml` | Python lint, matrix tests, package build, canonical/legacy command smoke tests |
-| `web-app.yml` | Browser brand sync, unit tests, production build, and dependency/security gates |
-| `release.yml` | Version/tag validation, GlyphMend distribution build, wheel validation, GitHub release |
+| `test.yml` | Python lint, matrix tests, package build, command smoke tests |
+| `web-app.yml` | Browser tests, production build, and dependency/security gates |
+| `companion.yml` | REST contract, Rust verification, browser-to-runtime E2E on Windows/Linux/macOS, dependency policy, portable artifacts |
+| `release.yml` | Version/tag validation and GlyphMend distribution build |
+
+Current unresolved work is tracked only in [docs/roadmap.md](roadmap.md). Historical upgrade and backlog snapshots live in [docs/archive/2026-09-upgrade/](archive/2026-09-upgrade/).

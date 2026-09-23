@@ -27,7 +27,9 @@ Chunking, embeddings, RAG, article generation, and other downstream concerns sta
 - [Branding and configuration](docs/branding.md): change the name, slogan, CLI identity, and logo without editing application logic.
 - [Browser operations guide](docs/browser.md): local processing, OCR settings, checkpoints, deployment, and troubleshooting.
 - [Browser application guide](web-app/README.md): install, build, verification, and browser-specific licensing.
-- [Architecture guide](docs/architecture.md): repository layout, Python module boundaries, tests, and CI workflows.
+- [Architecture guide](docs/architecture.md): current product boundaries, repository layout, and CI workflows.
+- [Companion runtime](docs/companion-engine.md): optional diagnostic layer and provider seam; not an extraction accelerator.
+- [Active roadmap](docs/roadmap.md): the sole active backlog.
 - [Desktop GUI guide](docs/gui.md): Python desktop interface.
 
 ## Semantic output contract

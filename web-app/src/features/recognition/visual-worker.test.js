@@ -217,7 +217,7 @@ it("keeps provider-neutral Companion evidence without replacing canonical Visual
         return {
           schema: "glyphmend.provider-result.v1",
           capability: "glyphmend.visual.classify.v1",
-          source: { page: 7, bbox: [0, 0, 240, 160], contentHash: "sha256:test" },
+          source: { page: 7, bbox: [0, 0, 240, 160], contentHash: "a".repeat(64) },
           observations: [{ type: "class-candidate", value: "diagram", confidence: 0.91 }],
           provider: { id: "glyphmend-companion", kind: "hybrid-local", version: "1" },
           model: null,

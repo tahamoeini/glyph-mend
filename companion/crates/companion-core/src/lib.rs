@@ -132,7 +132,7 @@ impl CapabilityProvider for DiagnosticMockProvider {
             capability: input.capability_id,
             source: ProviderSource {
                 page: 1,
-                bbox: vec![],
+                bbox: vec![0.0, 0.0, 1.0, 1.0],
                 content_hash: input.content_hash,
             },
             observations: vec![ProviderObservation {
@@ -171,7 +171,7 @@ mod tests {
             capability_id: "glyphmend.diagnostic.mock.v1".into(),
             page_count: 2,
             bytes_received: 3,
-            content_hash: "sha256:test".into(),
+            content_hash: "a".repeat(64),
             input_path: PathBuf::from("fixture.pdf"),
             metadata: serde_json::json!({}),
         }
@@ -192,9 +192,8 @@ mod tests {
         assert!(provider.capability().diagnostic_only);
         let output = provider.run(input(), CancellationToken::new()).unwrap();
         assert_eq!(output.progress.len(), 2);
-        assert_eq!(
-            output.result.unwrap().provider.kind,
-            ProviderKind::Deterministic
-        );
+        let result = output.result.unwrap();
+        assert_eq!(result.provider.kind, ProviderKind::Deterministic);
+        assert!(result.validate().is_ok());
     }
 }

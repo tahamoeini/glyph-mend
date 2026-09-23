@@ -1,3 +1,5 @@
+> Historical record from the September 2026 upgrade. This file is archived for context and is not an active backlog or current implementation guidance. See [the active roadmap](../../roadmap.md).
+
 # GlyphMend dependency, model, and redistribution inventory
 
 _Last reviewed: 2026-09-11 — Step 24_

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/protocol-version",
+  "title": "Protocol version",
+  "type": "object",
+  "required": [
+    "major",
+    "minor"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "major": {
+      "const": 1
+    },
+    "minor": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

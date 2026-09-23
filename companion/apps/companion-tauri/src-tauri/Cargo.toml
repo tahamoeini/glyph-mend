@@ -14,4 +14,5 @@ companion-service = { path = "../../../crates/companion-service" }
 serde.workspace = true
 tauri = { version = "2.11.6", default-features = false, features = ["wry"] }
 tokio.workspace = true
+tokio-util.workspace = true
 uuid.workspace = true

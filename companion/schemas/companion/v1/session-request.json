@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/session-request",
+  "title": "Session request",
+  "type": "object",
+  "required": [
+    "protocolVersion",
+    "irSchemaVersion",
+    "pairingCode"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "$ref": "./protocol-version.json"
+    },
+    "irSchemaVersion": {
+      "const": 2
+    },
+    "pairingCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  }
+}

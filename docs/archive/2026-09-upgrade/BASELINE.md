@@ -1,3 +1,5 @@
+> Historical record from the September 2026 upgrade. This file is archived for context and is not an active backlog or current implementation guidance. See [the active roadmap](../../roadmap.md).
+
 # Step 01 Baseline Snapshot
 
 This document captures the repository baseline observed during Step 01 without changing application behavior.

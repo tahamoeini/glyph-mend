@@ -1,57 +1,166 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "glyphmend.companion/v1/provider-result",
-  "title": "GlyphMend provider result v1",
+  "title": "Provider result v1",
   "type": "object",
+  "required": [
+    "schema",
+    "capability",
+    "source",
+    "observations",
+    "provider",
+    "warnings",
+    "diagnostics"
+  ],
   "additionalProperties": false,
-  "required": ["schema", "capability", "source", "observations", "provider", "warnings", "diagnostics"],
   "properties": {
-    "schema": { "const": "glyphmend.provider-result.v1" },
-    "capability": { "type": "string", "minLength": 1, "maxLength": 96 },
+    "schema": {
+      "const": "glyphmend.provider-result.v1"
+    },
+    "capability": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
     "source": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "glyphmend.companion/v1/provider-source",
+      "title": "Provider source",
       "type": "object",
+      "required": [
+        "page",
+        "bbox",
+        "contentHash"
+      ],
       "additionalProperties": false,
-      "required": ["page", "bbox", "contentHash"],
       "properties": {
-        "page": { "type": "integer", "minimum": 1 },
-        "bbox": { "type": "array", "items": { "type": "number" }, "maxItems": 8 },
-        "contentHash": { "type": "string", "maxLength": 128 }
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bbox": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        }
       }
     },
     "observations": {
       "type": "array",
+      "maxItems": 256,
       "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "glyphmend.companion/v1/provider-observation",
+        "title": "Provider observation",
         "type": "object",
+        "required": [
+          "type",
+          "value"
+        ],
         "additionalProperties": false,
-        "required": ["type", "value"],
         "properties": {
-          "type": { "type": "string", "maxLength": 96 },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
           "value": {},
-          "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          }
         }
       }
     },
     "provider": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "glyphmend.companion/v1/provider-metadata",
+      "title": "Provider metadata",
       "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "version"
+      ],
       "additionalProperties": false,
-      "required": ["id", "kind", "version"],
       "properties": {
-        "id": { "type": "string", "maxLength": 96 },
-        "kind": { "enum": ["deterministic", "hybrid-local", "ml"] },
-        "version": { "type": "string", "maxLength": 64 }
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "kind": {
+          "enum": [
+            "deterministic",
+            "hybrid-local",
+            "ml"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
       }
     },
     "model": {
-      "type": ["object", "null"],
-      "additionalProperties": false,
-      "required": ["id", "revision", "sha256"],
-      "properties": {
-        "id": { "type": "string", "maxLength": 128 },
-        "revision": { "type": "string", "maxLength": 128 },
-        "sha256": { "type": "string", "maxLength": 128 }
+      "oneOf": [
+        {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "$id": "glyphmend.companion/v1/model-metadata",
+          "title": "Model metadata",
+          "type": "object",
+          "required": [
+            "id",
+            "revision",
+            "sha256"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "revision": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-fA-F0-9]{64}$"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "maxLength": 512
       }
     },
-    "warnings": { "type": "array", "items": { "type": "string", "maxLength": 512 } },
-    "diagnostics": { "type": "object" }
-  }
+    "diagnostics": {
+      "type": "object",
+      "description": "At most 32 KiB serialized."
+    }
+  },
+  "description": "The complete serialized envelope is limited to 64 KiB."
 }

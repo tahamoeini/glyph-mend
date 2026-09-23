@@ -1,3 +1,5 @@
+> Historical record from the September 2026 upgrade. This file is archived for context and is not an active backlog or current implementation guidance. See [the active roadmap](../../roadmap.md).
+
 # GlyphMend extraction and reconstruction roadmap
 
 Status: architecture/audit record updated with the conservative TableIR and evidence-driven EquationIR implementation slices. This document does not claim improved extraction quality; no independent real-PDF corpus measurement has been run.

@@ -1552,14 +1552,15 @@ function bindCompanionControl(buttonId, endpointId, codeId, statusId) {
   button.onclick = async () => {
     const endpoint = $(endpointId).value.trim();
     const pairingCode = $(codeId).value.trim();
+    $(codeId).value = "";
     status.textContent = "Connecting to the optional local companion…";
     try {
       const { createCompanionBridge } = await import("./features/companion/bridge.js");
       const bridge = await createCompanionBridge();
       const connection = await bridge.connect(endpoint, pairingCode);
-      if (connection.status === "connected") globalThis.glyphMendCompanionBridge = bridge;
+      if (connection.status === "connected") state.companionBridge = bridge;
       status.textContent = connection.status === "connected"
-        ? "Optional companion connected. Browser extraction remains the default."
+        ? "Companion connected for diagnostics; it does not accelerate extraction yet."
         : `Companion ${connection.status}; browser processing remains available.`;
     } catch {
       status.textContent = "Companion unavailable; browser processing remains available.";
@@ -1567,18 +1568,21 @@ function bindCompanionControl(buttonId, endpointId, codeId, statusId) {
   };
 }
 async function connectCompanionFromFragment() {
+  const fragment = location.hash;
+  const parameters = new URLSearchParams(fragment.replace(/^#/, ""));
+  if (!parameters.has("companionCode")) return;
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
   try {
     const { createCompanionBridge, readCompanionFragment } = await import("./features/companion/bridge.js");
-    const connectionData = readCompanionFragment();
+    const connectionData = readCompanionFragment(fragment);
     if (!connectionData) return;
     const bridge = await createCompanionBridge();
     const connection = await bridge.connect(connectionData.endpoint, connectionData.pairingCode);
     if (connection.status !== "connected") return;
-    globalThis.glyphMendCompanionBridge = bridge;
-    history.replaceState(null, "", `${location.pathname}${location.search}`);
+    state.companionBridge = bridge;
     for (const id of ["welcomeCompanionStatus", "settingsCompanionStatus"]) {
       const status = $(id);
-      if (status) status.textContent = "Optional companion connected. Browser extraction remains the default.";
+      if (status) status.textContent = "Companion connected for diagnostics; it does not accelerate extraction yet.";
     }
   } catch {
     // Fragment pairing is optional; the manual connection controls remain available.

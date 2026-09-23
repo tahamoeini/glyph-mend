@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/job-result",
+  "title": "Job result response",
+  "type": "object",
+  "required": [
+    "jobId",
+    "status",
+    "terminal",
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jobId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "status": {
+      "enum": [
+        "created",
+        "receiving",
+        "queued",
+        "running",
+        "cancelling",
+        "completed",
+        "cancelled",
+        "failed"
+      ]
+    },
+    "terminal": {
+      "type": "boolean"
+    },
+    "result": {
+      "oneOf": [
+        {
+          "$ref": "./provider-result.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glyphmend.companion/v1/input-completion",
+  "title": "Input completion response",
+  "type": "object",
+  "required": [
+    "queued"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "queued": {
+      "type": "boolean",
+      "description": "False means an identical completion retry was accepted."
+    }
+  }
+}
