@@ -1,29 +1,36 @@
-# CI and local verification
+# CI and Companion releases
 
-## When GitHub Actions runs
+## Browser checks
 
-The web platform and Companion workflows run only when a pull request is opened (subject to their path filters) or when manually dispatched. Pushes do not start workflows. Python checks and release builds are manual-only, so they do not consume hosted minutes during normal web or Companion work. Select the release tag as the workflow ref when manually dispatching a release. Artifact uploads and portable Companion builds are also manual-only.
+From `web-app/`:
 
-## Run Linux checks locally with Docker
-
-From the repository root in PowerShell:
-
-```powershell
-pwsh -NoProfile -File tools/ci/run-docker.ps1
+```bash
+npm ci
+npm run license:check
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
-The runner focuses on the web platform first, then Companion: it runs browser licensing/security checks, lint, type checks, tests, production build, Companion formatting, Clippy, Rust tests, dependency policy, and browser-to-runtime E2E. It builds a reusable tool image once, then runs checks in disposable containers. The repository is mounted read-only and copied inside each container, so generated files do not alter the checkout. Containers are removed automatically after each run, including failure paths. Dependency and build caches live in five dedicated Docker volumes to speed up later runs; the runner serializes local executions and removes stale containers it owns at startup.
+The `web-app.yml` workflow runs the browser checks and production build for pull requests.
 
-The image and package caches are kept to avoid reinstalling toolchains and dependencies on each run. Use `-RebuildImage` after changing the Dockerfile. To remove the image after the checks:
+## Rust checks
 
-```powershell
-pwsh -NoProfile -File tools/ci/run-docker.ps1 -RemoveImage
+From `companion/`:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
 
-To remove the five local CI cache volumes after a run:
+Companion CI verifies the shared contract and browser client against the local API. OCR development builds require the Tesseract and Leptonica development libraries; release jobs install the platform toolchain and package the runtime libraries.
 
-```powershell
-pwsh -NoProfile -File tools/ci/run-docker.ps1 -ClearCache
-```
+## Manual Companion release
 
-Python packaging checks remain available through manual dispatch of the Python workflow and are outside this focused local path. Docker validates Linux behavior only. Windows and macOS verification for the web platform and Companion still requires the hosted workflow, which runs when a pull request is opened or when manually dispatched.
+Run `Companion Release` from GitHub Actions and provide a SemVer version such as `0.1.0-beta.1`. The workflow builds Windows x64, macOS x64/arm64, and Linux x64/arm64 packages, includes PDFium/Tesseract runtime files and both English OCR model sets, and produces third-party notices, SHA-256 checksums, an SBOM, workflow artifacts, provenance attestations, and GitHub Release assets.
+
+Windows code signing and Apple Developer ID signing/notarization are required. Missing credentials and signing failures stop publication. Versions containing a prerelease identifier are published as prereleases. Stable promotion is a separate maintainer decision after repeatable benchmark improvements and a browser regression review.
+
+No historical Python release or tag is rewritten by the current workflows.

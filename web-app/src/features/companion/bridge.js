@@ -171,10 +171,14 @@ export class LoopbackCompanionBridge {
   }
 
   async getResult(jobId, { signal } = {}) {
-    return responseJson(await this.fetch(this.endpoint + "/v1/jobs/" + jobId + "/result", {
+    const result = await responseJson(await this.fetch(this.endpoint + "/v1/jobs/" + jobId + "/result", {
       headers: this.headers(),
       signal: requestSignal(signal),
     }));
+    if (result.result && encodedSize(result.result) > COMPANION_LIMITS.maxIrResultBytes) {
+      throw Object.assign(new Error("Companion IR result exceeds its size limit."), { code: "payload-too-large" });
+    }
+    return result;
   }
 
   subscribe(jobId, onEvent, { signal, waitMs = COMPANION_LIMITS.eventWaitMs } = {}) {

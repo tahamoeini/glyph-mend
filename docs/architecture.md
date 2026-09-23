@@ -2,91 +2,52 @@
 
 ## Product boundary
 
-GlyphMend is a local-first document reconstruction toolkit. Its Browser and Python editions are separate implementations with different runtimes and adapters; they do not share one extraction core. They follow the same product principles: preserve source evidence, prefer deterministic reconstruction, expose uncertainty, and keep provider output separate from canonical document data.
+The browser platform is the complete default product. It owns PDF intake, resumable workspace storage, extraction settings, review, Semantic Document IR v2 validation, and Markdown/DOCX exports. The optional Rust Companion is a locally running extraction engine selected for an individual job. It returns the same versioned IR, including engine/version metadata and per-page fallback details.
 
-The core flow is:
+The browser can complete an extraction without a Companion. Connection denial, unsupported APIs, an unavailable Companion, or a failed Companion job falls back to the browser engine unless the user cancelled the job.
+
+## Data flow
 
 ```text
-PDF intake
-  → recover text, layout, and source evidence
-  → deterministic reconstruction
-  → quality gate and review when uncertain
-  → canonical internal document representation
-  → Markdown output, with optional DOCX or reconstructable bundle
+PDF bytes in browser
+  → selected engine for this job
+      ├─ Browser: MuPDF WASM + browser OCR
+      └─ Companion: loopback API → PDFium + English Tesseract OCR
+  → validate Semantic Document IR v2
+  → browser checkpoint and review state
+  → shared Markdown renderer
+  → shared DOCX exporter
 ```
 
-Semantic Document IR, VisualIR, TableIR, EquationIR, and ChartIR describe internal reconstruction data. Markdown is the primary user-facing text artifact. Provider output is evidence and cannot directly replace canonical IR.
+The Companion is contacted only after a user connects it and chooses it for a job. Requests contain PDF bytes and bounded extraction options. The API rejects paths and remote URLs; it accepts only the local PDF payload.
 
 ## Top-level layout
 
 ```text
-branding.json          Product identity and logo configuration
-brand/                 Source brand assets
-src/glyphmend/         Python public package
-src/pdf_sanitizer/     Python implementation and compatibility namespace
-web-app/               Browser-first application
-companion/             Optional local diagnostic runtime and provider seam
-tests/                 Python tests grouped by responsibility
-docs/                  Current product and operations documentation
-docs/archive/          Historical upgrade and roadmap records
-.github/workflows/     Python, browser, Companion, and release automation
+branding.json              Product identity and browser configuration
+brand/                     Source brand assets
+web-app/                   Complete browser platform and exports
+companion/                 Rust loopback API, PDF extraction, packaging, schemas
+docs/                      Current product and operations documentation
+docs/archive/              Historical upgrade and roadmap records
+research/archive/          Archived research
+.github/workflows/         Browser CI, Companion CI, and manual Companion release
 ```
 
-## Python edition
+## Browser platform
 
-`glyphmend` is the canonical Python public package. The long-standing `pdf_sanitizer` namespace remains a compatibility surface. The Python and Browser editions use separate extraction implementations; neither is a wrapper around the other's core.
+`web-app/src/app.js` owns the interface and job orchestration. Browser extraction runs in bounded page batches, commits completed pages to IndexedDB, and uses the shared Semantic Document IR v2 validation and export path. The browser engine remains usable offline after the application and its bundled OCR runtime are available.
 
-| Area | Modules |
-| --- | --- |
-| Public compatibility | `src/glyphmend/`, `src/pdf_sanitizer/__init__.py` |
-| Branding | `branding.py` |
-| Interfaces | `cli.py`, `gui.py`, `__main__.py` |
-| Configuration and progress | `config.py`, `progress.py`, `reporting.py` |
-| Extraction orchestration | `pipeline.py`, `workflow.py`, `workspace.py` |
-| Native PDF adapters | `extractor.py`, `native.py`, `native_stderr.py`, `renderer.py` |
-| Semantic reconstruction | `semantics.py`, `structure.py`, `tables.py`, `graphics.py`, `equation_quality.py` |
-| Cleanup and validation | `sanitize.py`, `document_cleanup.py`, `running_matter.py`, `quality.py` |
-| Word export | `docx_export.py`, `word_math.py` |
+## Rust Companion
 
-## Browser edition
+The Rust workspace contains the loopback bridge, bounded job service, shared protocol contracts, and portable executable. PDFium calls are serialized through the thread-safe binding. OCR and semantic work are bounded and can run concurrently. The Companion uses bundled English Fast and Best Tesseract data in release packages.
 
-```text
-web-app/src/
-  app.js                    UI state and extraction orchestration
-  features/extraction/      Browser PDF/OCR extraction and reconstruction
-  features/recognition/     Optional local visual and math providers
-  features/companion/       REST client and provider adapter
-  shared/                   Semantic IR, review, security, and export utilities
-  storage/                  IndexedDB workspace persistence
-  styles/                   UI styles
-```
+The connection is user initiated and bound to an exact web origin and a one-use pairing code. Endpoints are loopback-only, session authenticated, size limited, and time bounded. See [the Companion API guide](companion-engine.md).
 
-Browser extraction retains page provenance, commits bounded batches to IndexedDB, and preserves source visuals when structure cannot be validated. See [the Browser guide](browser.md) for current data flow and operations.
+## Checks and releases
 
-## Companion diagnostic runtime
+- `web-app.yml`: browser tests, static build, and dependency checks.
+- `companion.yml`: Rust checks and browser-to-Companion contract checks.
+- `companion-release.yml`: manual, versioned, signed Companion packages, SBOM, checksums, attestations, and GitHub Release assets.
 
-`companion/` contains a loopback-only Rust HTTP service, shared job service, diagnostic provider, portable CLI, and optional Tauri adapter. REST v1 is its only active wire protocol. Pairing creates an origin-bound session; each job is scoped to its creating session. Binary region crops, bounded results, storage quotas, and cancellation protect the provider seam.
-
-Companion currently reports diagnostic provider evidence. The main extraction pipeline does not route work to it, and Companion is not an extraction accelerator. Capability routing, evidence reconciliation, model integration, and capability-specific result schemas remain planned. See [the Companion guide](companion-engine.md) and the [active roadmap](roadmap.md).
-
-## Branding and compatibility
-
-Brand identity is separate from extraction configuration. Branding changes must not alter extraction fingerprints or invalidate checkpoints. Historical command aliases remain documented in the Python interface guides.
-
-## Tests and automation
-
-```text
-tests/                         Python unit, integration, and interface tests
-web-app/src/**/*.test.js       Browser unit and contract tests
-companion/crates/**/tests      Rust contract, service, and bridge tests
-companion/tests/               Browser-client to runtime end-to-end checks
-```
-
-| Workflow | Responsibility |
-| --- | --- |
-| `test.yml` | Python lint, matrix tests, package build, command smoke tests (manual only) |
-| `web-app.yml` | Browser tests, production build, and dependency/security gates |
-| `companion.yml` | REST contract, Rust verification, browser-to-runtime E2E on Windows/Linux/macOS, dependency policy, portable artifacts |
-| `release.yml` | Manually dispatched version/tag validation and GlyphMend distribution build |
-
-GitHub workflows run when a pull request is opened or when manually dispatched; they do not run on pushes. Linux checks can run in disposable Docker containers with [the local CI guide](ci.md). Windows and macOS verification requires the hosted workflow. Current unresolved work is tracked only in [docs/roadmap.md](roadmap.md). Historical upgrade and backlog snapshots live in [docs/archive/2026-09-upgrade/](archive/2026-09-upgrade/).
+The first Companion publication must be a prerelease. The release workflow blocks public assets when required platform signing credentials are unavailable or signing/notarization fails. Benchmark and licensing decisions remain visible in the [roadmap](roadmap.md).

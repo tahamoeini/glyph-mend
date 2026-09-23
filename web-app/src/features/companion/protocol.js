@@ -1,8 +1,10 @@
 // Versioned browser-side constants and validators for the Companion REST API.
-export const COMPANION_PROTOCOL = Object.freeze({ major: 1, minor: 1 });
+export const COMPANION_PROTOCOL = Object.freeze({ major: 1, minor: 2 });
 export const COMPANION_IR_SCHEMA = Object.freeze({ id: "glyphmend.semantic-document-ir", version: 2 });
 export const COMPANION_RESULT_SCHEMA = "glyphmend.provider-result.v1";
 export const REGION_INPUT_SCHEMA = "glyphmend.region-input.v1";
+export const DOCUMENT_EXTRACTION_CAPABILITY = "glyphmend.document.extract.v2";
+export const DOCUMENT_OPTIONS_SCHEMA = "glyphmend.document-extraction-options.v2";
 export const COMPANION_LIMITS = Object.freeze({
   controlBytes: 64 * 1024,
   chunkBytes: 1024 * 1024,
@@ -17,6 +19,7 @@ export const COMPANION_LIMITS = Object.freeze({
   maxMetadataBytes: 16 * 1024,
   maxDiagnosticsBytes: 32 * 1024,
   maxProviderResultBytes: 64 * 1024,
+  maxIrResultBytes: 32 * 1024 * 1024,
   maxIdentifierBytes: 128,
 });
 export const COMPANION_STATUSES = Object.freeze([
@@ -161,6 +164,7 @@ export function validateJobCreate(request) {
   const fields = new Set(["documentName", "capabilityId", "inputKind", "declaredBytes", "pageCount", "metadata", "idempotencyKey"]);
   if (!isPlainObject(request) || !hasOnlyKeys(request, fields)
     || typeof request.documentName !== "string" || utf8Length(request.documentName) > 255
+    || request.documentName.includes("/") || request.documentName.includes("\\") || request.documentName.includes(":") || request.documentName.includes(String.fromCharCode(0)) || request.documentName.includes("://")
     || typeof request.capabilityId !== "string" || !request.capabilityId
     || utf8Length(request.capabilityId) > COMPANION_LIMITS.maxIdentifierBytes
     || !INPUT_KINDS.includes(request.inputKind)
@@ -172,6 +176,21 @@ export function validateJobCreate(request) {
   }
   if (encodedSize(request.metadata) > COMPANION_LIMITS.maxMetadataBytes) throw new TypeError("Companion metadata exceeds its size limit.");
   if (request.inputKind === "region") validateRegionMetadata(request.metadata);
+  if (request.capabilityId === DOCUMENT_EXTRACTION_CAPABILITY) {
+    const value = request.metadata;
+    const fields = new Set(["schema", "selectedPages", "ocrAccuracy", "useOcr", "forceOcr", "password"]);
+    if (request.inputKind !== "document" || !hasOnlyKeys(value, fields)
+      || value.schema !== DOCUMENT_OPTIONS_SCHEMA
+      || !Array.isArray(value.selectedPages) || value.selectedPages.length < 1 || value.selectedPages.length > 2000
+      || value.selectedPages.some((page) => !Number.isInteger(page) || page < 1 || page > request.pageCount)
+      || new Set(value.selectedPages).size !== value.selectedPages.length
+      || !["fast", "high-accuracy"].includes(value.ocrAccuracy)
+      || (value.useOcr !== undefined && typeof value.useOcr !== "boolean")
+      || (value.forceOcr !== undefined && typeof value.forceOcr !== "boolean")
+      || (value.password !== undefined && (typeof value.password !== "string" || utf8Length(value.password) > 4096))) {
+      throw new TypeError("Invalid document extraction options.");
+    }
+  }
   if (encodedSize(request) > COMPANION_LIMITS.controlBytes) throw new TypeError("Companion control request exceeds 64 KiB.");
   return request;
 }

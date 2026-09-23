@@ -1,20 +1,18 @@
-# Optional Companion diagnostic runtime
+# Rust Companion engine and API
 
-Companion is a diagnostic layer and provider integration seam. It is not an active extraction accelerator: the Browser's primary extraction flow does not send work to Companion. The Browser remains responsible for PDF intake, extraction, OCR, provenance, review, canonical IR, checkpoints, fallback decisions, and exports. Companion does not parse documents or own canonical reconstruction.
+The Rust Companion is an optional local PDF extraction engine. Users download and start it, connect from the browser, and select it for an individual job. The browser engine remains the default and is available without a Companion.
 
-## Current capability
+The Companion uses PDFium for native PDF text, page geometry, page objects, and rendering. Tesseract OCR is English-only in this release scope and offers Fast (default) and High Accuracy modes. Release packages bundle both the Fast and Best English model sets. The Tesseract project documents the speed/accuracy tradeoff between these model sets in its [data-file guide](https://github.com/tesseract-ocr/tessdoc/blob/main/Data-Files.md).
 
-The current runtime advertises a deterministic diagnostic capability. It validates pairing, binary job input, provider boundaries, job lifecycle, and result transport. Its output is diagnostic evidence only and does not change extracted document content. No machine-learning model is included or required.
+## User initiated loopback connection
 
-`glyphmend.provider-result.v1` is a bounded provider envelope containing source region, observations, provider metadata, optional model metadata, warnings, and diagnostics. Providers cannot directly replace `SemanticIR`, `VisualIR`, `TableIR`, `EquationIR`, or `ChartIR`. Capability-specific result payloads, a capability router, and an evidence reconciler are planned for a later phase.
+The browser connects only to an explicitly provided loopback endpoint. The Companion binds to loopback, checks the exact allowed web origin, and requires a one-use pairing code before issuing a session token. The browser does not send a document until the user connects and selects Companion for the job. A browser local-network permission prompt may appear; declining it leaves browser extraction available.
 
-## REST v1 and pairing
+The API accepts PDF bytes and bounded extraction options. It rejects arbitrary local paths and remote URLs. Request size, metadata, runtime input storage, concurrent jobs, and provider execution are bounded. Cancellation is delivered to the active job. Input chunks are content-hashed and idempotent; events are replayable so a client can recover progress after a temporary disconnect.
 
-REST is the only active wire protocol. Legacy `Envelope` and `MessageType` message schemas are retired. A client posts its supported protocol version and IR schema version to `POST /v1/session`; the server stores the highest mutually supported minor version within protocol major 1. A protocol-major mismatch returns `protocol-incompatible`; an IR mismatch returns `ir-schema-unsupported`. Pairing is single-use, and the bearer session is bound to the exact allowed web origin.
+## Versioned REST API
 
-The CLI defaults to the GlyphMend web origin and accepts `--web-origin https://example.invalid` to select one exact `http` or `https` origin. Paths, queries, credentials, wildcards, and non-HTTP schemes are rejected. The emitted pairing secret is placed in the URL fragment so it is not sent to the host; the Browser removes it from the address bar immediately after reading it and clears manual pairing input after use.
-
-Authenticated endpoints are:
+Protocol v1 negotiates a protocol version and Semantic Document IR version at `POST /v1/session`. Authenticated endpoints are:
 
 ```text
 GET  /v1/capabilities
@@ -26,24 +24,27 @@ GET  /v1/jobs/:id/result
 POST /v1/jobs/:id/cancel
 ```
 
-The independent request/response schemas and error behavior are in [`companion/schemas/companion/v1/`](../companion/schemas/companion/v1/protocol.json). Protocol minor negotiation, limits, event replay, and errors are part of the REST contract.
+Document extraction uses the `glyphmend.document.extract.v2` capability, `inputKind=document`, PDF bytes uploaded in bounded chunks, and metadata such as `ocrAccuracy: "fast" | "high-accuracy"` and selected page numbers. Input is identified by its digest, not by a caller-supplied path or URL. Capability discovery reports engine version, supported IR version, and available OCR choices.
 
-## Input, result, and resource limits
+Results are Semantic Document IR v2 and contain per-page source geometry, text and object evidence, engine/version metadata, OCR status, and fallback details. The browser validates the IR before updating checkpoints, then uses the existing shared Markdown and DOCX exporters. The Companion cannot replace the browser's export implementation.
 
-Region input uses `glyphmend.region-input.v1` metadata: page number, four finite bounding-box coordinates, source IDs, and a deterministic summary. The crop is uploaded as binary data, in chunks no larger than 1 MiB. Control requests are limited to 64 KiB in the HTTP bridge; Tauri commands apply the same field and chunk limits through the shared service contract.
+The wire schemas are under [`companion/schemas/`](../companion/schemas/). The shared IR schema and cross-runtime fixtures define the stable data contract.
 
-Limits include 512 MiB per job, 8 active jobs and at most 2 running providers, 1 GiB aggregate runtime input storage, and 512 MiB per session. Provider results allow at most 256 observations, 64 warnings, 16 KiB metadata, 32 KiB diagnostics, 128-byte identifiers, and 64 KiB for a complete response. Bounding boxes have exactly four finite coordinates; confidence is between 0 and 1; SHA-256 values are 64 hexadecimal characters. Provider execution is bounded to five minutes and runs in Tokio's blocking pool, with cancellation delivered through a token.
+## Failure and fallback behavior
 
-The runtime stores inputs under a dedicated Companion directory with restricted directory permissions and removes abandoned jobs after 30 minutes through periodic cleanup. Startup removes stale instance data. Repeating job creation with the same session, idempotency key, and request returns the existing job; a changed request returns HTTP 409. Repeating input completion with the same digest and byte count is accepted. Jobs are visible only to their creating session.
+Connection denial, missing or unsupported Companion APIs, protocol mismatch, Companion unavailability, invalid output, or an extraction failure causes the current uncommitted batch to run in the browser engine. Previously checkpointed pages are reused. User cancellation stops the Companion job and does not trigger fallback work.
 
-Event pages report `earliestSequence` and `historyTruncated`. A cursor older than retained history returns HTTP 409 `event-history-gap`, including the earliest available sequence. Clients should restart from that point. Browser abort signals also cancel active long polls and signal provider job cancellation.
+## Resource and security boundaries
 
-## Tauri
+- Loopback endpoints only; exact-origin check and short-lived, single-use pairing.
+- Session-scoped jobs and bearer authentication.
+- PDF-only bounded upload; no path or URL intake.
+- Per-request size, job count, storage, timeout, and concurrency limits.
+- PDFium calls are safely serialized; bounded OCR and semantic processing may run concurrently.
+- Progress and terminal events are available through a bounded replayable event stream.
 
-Tauri remains an optional shell over the shared `JobManager`; the portable CLI is the current runtime entry point. Tauri commands use a local session identity and the same job, chunk, completion, result, event, and cancellation contract.
+## Release packages
 
-## Verification
+Each signed archive contains the Companion executable, required PDFium and Tesseract runtime files, English Fast and Best models, third-party notices, SHA-256 checksums, and an SBOM. The manual release workflow also uploads workflow artifacts and GitHub Release assets with provenance attestations. It stops when Windows signing, or macOS signing/notarization, cannot complete.
 
-The Companion workflow runs formatting, Clippy, Rust tests, and a browser-client-to-runtime diagnostic E2E on Windows, Linux, and macOS when a pull request is opened or when manually dispatched. The Linux checks can also run locally in disposable Docker containers; see the [CI guide](ci.md). The end-to-end job covers pairing, version and IR errors, chunked upload and retries, idempotent creation, event-history recovery, result retrieval, request limits, long-poll cancellation, and job cleanup.
-
-No public-release licensing determination is made in this phase. The licensing decision remains a public-release blocker tracked in the [active roadmap](roadmap.md).
+The first release is a prerelease. Stable promotion requires repeatable, independently measured improvements by document class and no browser-only regression.
