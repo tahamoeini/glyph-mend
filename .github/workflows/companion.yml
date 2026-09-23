@@ -1,13 +1,10 @@
 name: GlyphMend Companion
 
 on:
-  push:
-    branches: [main]
-    paths: ["companion/**", "docs/**", "README.md", ".github/workflows/companion.yml"]
   pull_request:
+    types: [opened]
     paths: ["companion/**", "docs/**", "README.md", ".github/workflows/companion.yml"]
   workflow_dispatch:
-
 permissions:
   contents: read
 
@@ -59,6 +56,7 @@ jobs:
       - run: cargo deny check
 
   release-artifacts:
+    if: github.event_name == 'workflow_dispatch'
     name: Portable artifact (${{ matrix.os }})
     needs: [verify, dependency-policy]
     runs-on: ${{ matrix.os }}
@@ -72,9 +70,6 @@ jobs:
             binary: glyphmend-companion.exe
           - os: ubuntu-latest
             artifact: glyphmend-companion-linux-x64
-            binary: glyphmend-companion
-          - os: macos-13
-            artifact: glyphmend-companion-macos-x64
             binary: glyphmend-companion
           - os: macos-latest
             artifact: glyphmend-companion-macos-arm64

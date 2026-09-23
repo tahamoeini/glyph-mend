@@ -28,6 +28,7 @@ Chunking, embeddings, RAG, article generation, and other downstream concerns sta
 - [Browser operations guide](docs/browser.md): local processing, OCR settings, checkpoints, deployment, and troubleshooting.
 - [Browser application guide](web-app/README.md): install, build, verification, and browser-specific licensing.
 - [Architecture guide](docs/architecture.md): current product boundaries, repository layout, and CI workflows.
+- [CI guide](docs/ci.md): manual/PR-open workflow triggers and local Docker checks.
 - [Companion runtime](docs/companion-engine.md): optional diagnostic layer and provider seam; not an extraction accelerator.
 - [Active roadmap](docs/roadmap.md): the sole active backlog.
 - [Desktop GUI guide](docs/gui.md): Python desktop interface.

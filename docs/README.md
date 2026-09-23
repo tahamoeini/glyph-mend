@@ -9,6 +9,7 @@
 | [Architecture](architecture.md) | Current product boundaries, repository layout, and implementation responsibilities. |
 | [Companion runtime](companion-engine.md) | Diagnostic REST runtime, limits, pairing, and the provider seam. |
 | [Active roadmap](roadmap.md) | The sole active project backlog. |
+| [CI guide](ci.md) | Workflow triggers, local Docker checks, and cleanup behavior. |
 | [Desktop GUI](gui.md) | The Python/Tkinter interface. |
 | [Project README](../README.md) | Product overview, Python CLI reference, and semantic-output contract. |
 | [Browser README](../web-app/README.md) | Browser build commands, verification, configuration, and licensing. |

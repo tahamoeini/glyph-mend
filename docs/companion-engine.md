@@ -44,6 +44,6 @@ Tauri remains an optional shell over the shared `JobManager`; the portable CLI i
 
 ## Verification
 
-The Companion workflow runs formatting, Clippy, Rust tests, `cargo deny`, and a browser-client-to-runtime diagnostic E2E on Windows, Linux, and macOS. The end-to-end job covers pairing, version and IR errors, chunked upload and retries, idempotent creation, event-history recovery, result retrieval, request limits, long-poll cancellation, and job cleanup.
+The Companion workflow runs formatting, Clippy, Rust tests, and a browser-client-to-runtime diagnostic E2E on Windows, Linux, and macOS when a pull request is opened or when manually dispatched. The Linux checks can also run locally in disposable Docker containers; see the [CI guide](ci.md). The end-to-end job covers pairing, version and IR errors, chunked upload and retries, idempotent creation, event-history recovery, result retrieval, request limits, long-poll cancellation, and job cleanup.
 
 No public-release licensing determination is made in this phase. The licensing decision remains a public-release blocker tracked in the [active roadmap](roadmap.md).

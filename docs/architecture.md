@@ -84,9 +84,9 @@ companion/tests/               Browser-client to runtime end-to-end checks
 
 | Workflow | Responsibility |
 | --- | --- |
-| `test.yml` | Python lint, matrix tests, package build, command smoke tests |
+| `test.yml` | Python lint, matrix tests, package build, command smoke tests (manual only) |
 | `web-app.yml` | Browser tests, production build, and dependency/security gates |
 | `companion.yml` | REST contract, Rust verification, browser-to-runtime E2E on Windows/Linux/macOS, dependency policy, portable artifacts |
-| `release.yml` | Version/tag validation and GlyphMend distribution build |
+| `release.yml` | Manually dispatched version/tag validation and GlyphMend distribution build |
 
-Current unresolved work is tracked only in [docs/roadmap.md](roadmap.md). Historical upgrade and backlog snapshots live in [docs/archive/2026-09-upgrade/](archive/2026-09-upgrade/).
+GitHub workflows run when a pull request is opened or when manually dispatched; they do not run on pushes. Linux checks can run in disposable Docker containers with [the local CI guide](ci.md). Windows and macOS verification requires the hosted workflow. Current unresolved work is tracked only in [docs/roadmap.md](roadmap.md). Historical upgrade and backlog snapshots live in [docs/archive/2026-09-upgrade/](archive/2026-09-upgrade/).

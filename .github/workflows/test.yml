@@ -1,11 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
 
@@ -87,7 +83,8 @@ jobs:
           md-to-docx --help
           pdf-sanitizer --help
           python -c "import glyphmend, pdf_sanitizer; print(glyphmend.__version__); assert glyphmend.__version__ == pdf_sanitizer.__version__"
-      - uses: actions/upload-artifact@v7
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
         with:
           name: glyphmend-python
           path: dist/*
