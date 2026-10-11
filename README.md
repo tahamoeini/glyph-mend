@@ -86,7 +86,7 @@ The reconstruction policy is conservative: preserve source evidence and expose u
 
 Browser Edition sends one product_opened event per page load when a public project token is configured for production. It shows no in-app setup prompt. The event's custom properties include only the fixed app name. PostHog also receives a session-scoped anonymous identifier and ordinary request metadata such as IP address and browser details; page views, autocapture, session replay, exception capture, feature flags, document content, and workspace data are disabled. GlyphMend Desktop does not load this integration.
 
-Analytics is disabled when the project token is blank. For a production Browser Edition build, set VITE_POSTHOG_PROJECT_TOKEN and VITE_POSTHOG_API_HOST (for example, https://us.i.posthog.com). Use the public project ingestion token, not a personal API key. The CSP allows the standard US and EU PostHog Cloud hosts; a self-hosted endpoint needs a matching CSP update.
+The public project token is preconfigured for production Browser Edition builds. Set VITE_POSTHOG_PROJECT_TOKEN and VITE_POSTHOG_API_HOST to override the token or endpoint; set the token to an empty string to disable analytics. Use a public project ingestion token, not a personal API key. The CSP allows standard US and EU PostHog Cloud hosts; a self-hosted endpoint needs a matching CSP update.
 
 ## Licensing
 
