@@ -82,10 +82,6 @@ export default defineConfig(({ mode }) => {
             }
             const scriptPolicy = "script-src 'self' 'wasm-unsafe-eval'";
             const connectPolicy = "connect-src 'self' http://127.0.0.1:*";
-            const scriptHosts =
-              "https://us-assets.i.posthog.com https://eu-assets.i.posthog.com";
-            const connectHosts =
-              "https://us.i.posthog.com https://eu.i.posthog.com";
             transformed = transformed.replace(
               cspAttribute,
               (_match, prefix, policy, suffix) => {
@@ -93,8 +89,7 @@ export default defineConfig(({ mode }) => {
                   throw new Error("GlyphMend Content-Security-Policy directives changed unexpectedly.");
                 }
                 const updatedPolicy = policy
-                  .replace(scriptPolicy, scriptPolicy + " " + scriptHosts)
-                  .replace(connectPolicy, connectPolicy + " " + connectHosts);
+                  ;
                 return prefix + updatedPolicy + suffix;
               },
             );
