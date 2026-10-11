@@ -123,8 +123,10 @@ function safeEvent(event) {
       return null;
   }
   event.properties = safeProperties;
-  delete event.$set;
-  delete event.$set_once;
+  const allowedEnvelopeFields = new Set(["event", "properties", "uuid", "timestamp", "distinct_id", "type", "sent_at"]);
+  for (const key of Object.keys(event)) {
+    if (!allowedEnvelopeFields.has(key)) delete event[key];
+  }
   return event;
 }
 
@@ -220,6 +222,9 @@ function getPosthogStub() {
     });
     const methods = "init capture register register_once register_for_session unregister unregister_for_session getFeatureFlag getFeatureFlagResult getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey getNextSurveyStep identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty createPersonProfile opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing debug".split(" ");
     for (const method of methods) instance[method] = function (...args) { instance.push([method, ...args]); };
+    for (const method of ["identify", "setPersonProperties", "group"]) {
+      instance[method] = function () {};
+    }
     posthog._i.push([token, options, instanceName]);
   };
   posthog.__SV = 1;
