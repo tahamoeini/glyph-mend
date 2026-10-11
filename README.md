@@ -82,6 +82,12 @@ Every CI/CD run is manually dispatched from one workflow. Choose the fast, test-
 
 The reconstruction policy is conservative: preserve source evidence and expose uncertainty instead of inventing document structure. Markdown is the canonical text artifact; DOCX is a shared export layered on top.
 
+## Optional analytics
+
+Browser Edition sends one product_opened event per page load when a public project token is configured for production. It shows no in-app setup prompt. The event's custom properties include only the fixed app name. PostHog also receives a session-scoped anonymous identifier and ordinary request metadata such as IP address and browser details; page views, autocapture, session replay, exception capture, feature flags, document content, and workspace data are disabled. GlyphMend Desktop does not load this integration.
+
+Analytics is disabled when the project token is blank. For a production Browser Edition build, set VITE_POSTHOG_PROJECT_TOKEN and VITE_POSTHOG_API_HOST (for example, https://us.i.posthog.com). Use the public project ingestion token, not a personal API key. The CSP allows the standard US and EU PostHog Cloud hosts; a self-hosted endpoint needs a matching CSP update.
+
 ## Licensing
 
 The browser interface is licensed under AGPL-3.0-or-later; its [license](web-app/LICENSE) and deployed-version source links are available in the app footer. The Rust crates are separately licensed under Apache-2.0 OR MIT. Desktop bundles include these licenses and target-specific runtime notices.

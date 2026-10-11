@@ -1,4 +1,5 @@
 import { registerSW } from "virtual:pwa-register";
+import "./posthog-analytics.js";
 
 if (location.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
   navigator.serviceWorker?.getRegistrations?.().then((registrations) =>

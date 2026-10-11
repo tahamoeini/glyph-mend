@@ -71,7 +71,35 @@ export default defineConfig(({ mode }) => {
           if (!html.includes(placeholder)) {
             throw new Error("GlyphMend entry point placeholder is missing from index.html.");
           }
-          return html.replace(placeholder, `<script type="module" src="/src/${entry}"></script>`);
+          let transformed = html.replace(
+            placeholder,
+            '<script type="module" src="/src/' + entry + '"></script>',
+          );
+          if (!desktopBuild) {
+            const cspAttribute = /(<meta\s+http-equiv="Content-Security-Policy"\s+content=")([^"]+)(")/i;
+            if (!cspAttribute.test(transformed)) {
+              throw new Error("GlyphMend Content-Security-Policy meta tag is missing.");
+            }
+            const scriptPolicy = "script-src 'self' 'wasm-unsafe-eval'";
+            const connectPolicy = "connect-src 'self' http://127.0.0.1:*";
+            const scriptHosts =
+              "https://us-assets.i.posthog.com https://eu-assets.i.posthog.com";
+            const connectHosts =
+              "https://us.i.posthog.com https://eu.i.posthog.com";
+            transformed = transformed.replace(
+              cspAttribute,
+              (_match, prefix, policy, suffix) => {
+                if (!policy.includes(scriptPolicy) || !policy.includes(connectPolicy)) {
+                  throw new Error("GlyphMend Content-Security-Policy directives changed unexpectedly.");
+                }
+                const updatedPolicy = policy
+                  .replace(scriptPolicy, scriptPolicy + " " + scriptHosts)
+                  .replace(connectPolicy, connectPolicy + " " + connectHosts);
+                return prefix + updatedPolicy + suffix;
+              },
+            );
+          }
+          return transformed;
         },
       },
     },
