@@ -1,5 +1,5 @@
 const appName = "GlyphMend";
-const projectToken = String(import.meta.env.VITE_POSTHOG_PROJECT_TOKEN || "").trim();
+const projectToken = String(import.meta.env.VITE_POSTHOG_PROJECT_TOKEN ?? "phc_qRDEkzEUNcBVnAEWbenzKFYtNCdu77Chs7piLRz6XU37").trim();
 let apiHost = String(import.meta.env.VITE_POSTHOG_API_HOST || "https://us.i.posthog.com").trim();
 const productionBuild = import.meta.env.PROD;
 
