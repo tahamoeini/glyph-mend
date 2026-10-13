@@ -94,11 +94,31 @@ export async function onRequest(context) {
     responseHeaders.set("x-content-type-options", "nosniff");
 
     const upstreamType = (responseHeaders.get("content-type") || "").toLowerCase();
-    if (upstreamType.includes("application/json") || upstreamType.includes("+json")) {
+    const isTextResponse = upstreamType.startsWith("text/") ||
+      upstreamType.includes("json") ||
+      upstreamType.includes("javascript") ||
+      upstreamType.includes("ecmascript") ||
+      upstreamType.includes("xml");
+    if (isTextResponse && request.method !== "HEAD" && upstream.status !== 204 && upstream.status !== 304) {
       const text = await upstream.text();
       responseHeaders.delete("content-encoding");
-      responseHeaders.set("cache-control", "no-store");
-      return new Response(text.replaceAll(projectToken, TOKEN_PLACEHOLDER), {
+      const encodedToken = encodeURIComponent(projectToken);
+      const encodedPlaceholder = encodeURIComponent(TOKEN_PLACEHOLDER);
+      let tokenWasRedacted = false;
+      const redactToken = (value) => {
+        const redacted = value
+          .replaceAll(projectToken, TOKEN_PLACEHOLDER)
+          .replaceAll(encodedToken, encodedPlaceholder);
+        if (redacted !== value) tokenWasRedacted = true;
+        return redacted;
+      };
+      const responseText = redactToken(text);
+      for (const [name, value] of Array.from(responseHeaders.entries())) {
+        const redacted = redactToken(value);
+        if (redacted !== value) responseHeaders.set(name, redacted);
+      }
+      if (tokenWasRedacted) responseHeaders.set("cache-control", "no-store");
+      return new Response(responseText, {
         status: upstream.status,
         headers: responseHeaders
       });
