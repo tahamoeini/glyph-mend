@@ -122,7 +122,7 @@ function safeEvent(event) {
     default:
       return null;
   }
-  event.properties = { token: projectToken, ...safeProperties };
+  event.properties = { token: projectToken, distinct_id: properties.distinct_id, ...safeProperties };
   const allowedEnvelopeFields = new Set(["event", "properties", "uuid", "timestamp", "distinct_id", "type", "sent_at"]);
   for (const key of Object.keys(event)) {
     if (!allowedEnvelopeFields.has(key)) delete event[key];
