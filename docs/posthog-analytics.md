@@ -16,7 +16,7 @@ The current Cloudflare Pages project uses `web-app` as its root directory and `d
 
 The client captures `product_opened`, allowlisted `page_viewed` route IDs, and `ui_interaction` control types. Controls can use an allowlisted `data-posthog-action` value; a small fixed mapping also recognizes exact English, Persian, Russian, and Chinese accessible labels. Only the mapped action ID is sent, never the label or user content. The global `window.__APP_ANALYTICS__.trackFeature(id, outcome)` helper accepts only allowlisted IDs and the `started`, `completed`, or `failed` outcomes. Feature flag evaluation is enabled.
 
-The event sanitizer drops unknown events and replaces event properties with a small allowlist. It never sends page query strings, hashes, form values, uploaded content, filenames, document text, prompts, or user-created labels. GlyphMend processes source documents locally; neither document text nor rendered page content is sent to analytics.
+The event sanitizer drops unknown events and replaces event properties with a small allowlist. It preserves PostHog's `$process_person_profile: false` marker so session-scoped anonymous events do not create person profiles. It never sends page query strings, hashes, form values, uploaded content, filenames, document text, prompts, or user-created labels. GlyphMend processes source documents locally; neither document text nor rendered page content is sent to analytics.
 
 Session replay, surveys, autocapture, and exception capture are off by default. Survey automatic display remains disabled. The code contains masked replay settings as a safeguard if recording is deliberately enabled later, but content-heavy areas still need review first. There is no in-app project, setup, or consent prompt.
 

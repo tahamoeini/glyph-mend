@@ -6,7 +6,7 @@ GlyphMend follows system accessibility preferences by default. The appearance co
 
 ## Implemented checks
 
-- Keyboard: the primary workflow is reachable with Tab; document-view tabs use a roving tab stop and arrow/Home/End navigation; Escape closes compact settings and quality sheets; Tab is trapped inside an open compact sheet and focus returns to its invoking control.
+- Keyboard: the primary workflow is reachable with Tab; document-view tabs use a roving tab stop and arrow/Home/USERNAME navigation; Escape closes compact settings and quality sheets; Tab is trapped inside an open compact sheet and focus returns to its invoking control.
 - Reduced motion: elastic, morphing, scale, and sheet transitions are removed under `prefers-reduced-motion: reduce`.
 - Reduced transparency: glass chrome becomes opaque content-elevated/frosted surfaces and removes backdrop filtering.
 - Increased contrast: foreground tokens, boundaries, focus rings, and glass edges strengthen together; the treatment does not depend on color alone.
