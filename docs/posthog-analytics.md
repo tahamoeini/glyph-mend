@@ -8,6 +8,10 @@ The function at `/api/posthog/*` reads this binding at runtime. The browser bund
 
 If this project is deployed somewhere other than Cloudflare Pages, the Pages Function will not run and tracking stays inactive. Use an equivalent server-side proxy before enabling analytics on another host.
 
+## Pages project layout
+
+The current Cloudflare Pages project uses `web-app` as its root directory and `dist` as its build output. Keep the Function at `web-app/functions/api/posthog/[[path]].js` so Pages discovers the `/api/posthog/*` route. Deploying only the static `web-app/dist/` directory does not include the Function. With the Production Secret configured, `/api/posthog/static/array.js` should return JavaScript; an HTML app shell at that path means the Function is not being routed.
+
 ## Events and privacy
 
 The client captures `product_opened`, allowlisted `page_viewed` route IDs, and `ui_interaction` control types. Controls can use an allowlisted `data-posthog-action` value; a small fixed mapping also recognizes exact English, Persian, Russian, and Chinese accessible labels. Only the mapped action ID is sent, never the label or user content. The global `window.__APP_ANALYTICS__.trackFeature(id, outcome)` helper accepts only allowlisted IDs and the `started`, `completed`, or `failed` outcomes. Feature flag evaluation is enabled.

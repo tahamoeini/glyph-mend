@@ -84,9 +84,9 @@ The reconstruction policy is conservative: preserve source evidence and expose u
 
 ## Optional analytics
 
-Browser Edition sends one product_opened event per page load when a public project token is configured for production. It shows no in-app setup prompt. The event's custom properties include only the fixed app name. PostHog also receives a session-scoped anonymous identifier and ordinary request metadata such as IP address and browser details; page views, autocapture, session replay, exception capture, feature flags, document content, and workspace data are disabled. GlyphMend Desktop does not load this integration.
+Browser Edition can send `product_opened`, `page_viewed`, allowlisted `ui_interaction`, and `feature_used` events through a same-origin Cloudflare Pages Function. The Function reads the encrypted runtime Secret `POSTHOG_PROJECT_TOKEN`; the browser bundle contains no project token. Analytics is active only where the Pages Function is deployed and that Secret is configured. GlyphMend Desktop does not load this integration.
 
-The public project token is preconfigured for production Browser Edition builds. Set VITE_POSTHOG_PROJECT_TOKEN and VITE_POSTHOG_API_HOST to override the token or endpoint; set the token to an empty string to disable analytics. Use a public project ingestion token, not a personal API key. The CSP allows standard US and EU PostHog Cloud hosts; a self-hosted endpoint needs a matching CSP update.
+The client filters event properties to fixed route, control, and feature IDs. It does not send document content, filenames, workspace data, form values, or user-created labels. Autocapture, session replay, surveys, and exception capture are disabled. The proxy does not forward cookies, referrer, browser user-agent, or visitor IP headers; PostHog may process network metadata from the proxy request. See [PostHog analytics setup](docs/posthog-analytics.md) for the Pages Secret and deployment layout.
 
 ## Licensing
 

@@ -60,7 +60,7 @@ complete          → extraction and document-level cleanup finished
 ## Deployment checklist
 
 1. From the repository root, run `npm ci` and `npm run build:web`. To run the browser suite locally, use `npm test`. GitHub Actions has no automatic push or pull-request trigger: select `quick` for the test-free checks, or `full` to run the browser and native test suites manually. The build verifies the three copied MuPDF files, checks that the service worker precaches them, and fetches them from a local production preview.
-2. Deploy the contents of `web-app/dist/` over HTTPS.
+2. Deploy over HTTPS. For the current Cloudflare Pages project, use `web-app` as the project root and `dist` as the build output; keep Pages Functions under `web-app/functions/`. A static upload of `web-app/dist/` does not include the PostHog proxy Function.
 3. Verify `branding.json`, the configured logo, MuPDF, OCR, PDF.js WASM, and service-worker assets return HTTP 200.
 4. Test one native-text PDF and one scanned PDF in the target browser. Confirm the MuPDF requests succeed and extraction reaches engine-ready.
 5. Test the configured name/slogan/logo online, then reload offline to verify the cached-brand fallback.
