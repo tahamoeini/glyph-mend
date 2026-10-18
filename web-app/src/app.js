@@ -550,6 +550,8 @@ async function openFile(file) {
     !/\.pdf$/i.test(file.name)
   )
     return toast("Choose a PDF file.", true);
+  window.__APP_ANALYTICS__?.trackWorkflow("upload", "started");
+  const uploadStart = Date.now();
   try {
     const maxBytes = (Number($("maxFileMb").value) || 512) * 1048576;
     if (file.size > maxBytes)
@@ -599,10 +601,15 @@ async function openFile(file) {
     });
     activateWorkspace();
     renderSource(1);
+    window.__APP_ANALYTICS__?.trackWorkflow("upload", "completed");
     toast("PDF opened locally.");
   } catch (error) {
+    window.__APP_ANALYTICS__?.trackIssue("validation");
+    window.__APP_ANALYTICS__?.trackWorkflow("upload", "failed");
     log("error", "Could not open PDF", { error: error.message }, "error");
     toast(`Could not open PDF: ${error.message}`, true);
+  } finally {
+    window.__APP_ANALYTICS__?.trackTiming("upload", Date.now() - uploadStart);
   }
 }
 function selectedPages() {
@@ -980,6 +987,8 @@ async function extract() {
       ? "This job starts with the bundled local engine. Browser fallback is available if it fails."
       : "This job starts with the connected Companion. Browser fallback is available if it fails."
     : "This job uses browser extraction.";
+  const extractStart = Date.now();
+  window.__APP_ANALYTICS__?.trackWorkflow("extract", "started");
   setWorking(true);
   setStatus(
     "Starting extraction…",
@@ -1099,8 +1108,10 @@ async function extract() {
       quality: state.audit.status,
       seconds: (Date.now() - Date.parse(state.startedAt)) / 1000,
     });
+    window.__APP_ANALYTICS__?.trackWorkflow("extract", skipped ? "failed" : "completed");
     toast("Extraction complete.");
   } catch (error) {
+    window.__APP_ANALYTICS__?.trackWorkflow("extract", error.aborted ? "cancelled" : "failed");
     if (!error.aborted) {
       setStatus(
         error.workerCrash ? "Extraction worker failed" : "Extraction failed",
@@ -1119,10 +1130,12 @@ async function extract() {
       toast(error.message, true);
     }
   } finally {
+    window.__APP_ANALYTICS__?.trackTiming("extract", Date.now() - extractStart);
     setWorking(false);
   }
 }
 async function stop(cancel = false) {
+  if (cancel && state.running) window.__APP_ANALYTICS__?.trackWorkflow("extract", "cancelled");
   state.running = false;
   state.abortBatch?.(cancel ? "cancelled" : "paused");
   state.abortBatch = null;
