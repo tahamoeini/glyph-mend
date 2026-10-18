@@ -32,3 +32,34 @@ Tracking behavior is configured in the project's `posthog-analytics` module unde
 - [PostHog surveys](https://posthog.com/docs/surveys/installation)
 - [Cloudflare Pages Function bindings and secrets](https://developers.cloudflare.com/pages/functions/bindings/)
 - [Cloudflare Pages Function routing](https://developers.cloudflare.com/pages/functions/routing/)
+
+
+## Structured workflow and friction telemetry (October 2026)
+
+The client now exposes a deliberately bounded interface:
+
+```js
+window.__APP_ANALYTICS__?.trackWorkflow(" upload ".trim(), "started");
+window.__APP_ANALYTICS__?.trackWorkflow(" upload ".trim(), "completed");
+window.__APP_ANALYTICS__?.trackIssue("validation");
+window.__APP_ANALYTICS__?.trackTiming(" upload ".trim(), 640);
+```
+
+Approved workflow identifiers for this app: `upload`, `extract`, `ocr`, `review`, `export`, `download`, `desktop-connect`.
+
+- `workflow_step` has only `app_name`, `route_id`, `step_id`, `outcome` (started/completed/failed/cancelled).
+- `client_issue` has only `app_name`, `route_id`, `issue_kind` (runtime/promise/network/validation/timeout/render/storage/unknown).
+- `workflow_timing` has only `app_name`, `route_id`, `step_id`, `duration_band` (under_100ms/100_499ms/500_1999ms/2_9s/10s_plus).
+- Generic uncaught browser errors and rejected promises emit a **category only**. No exception messages, stack traces or values are transmitted. This is *not* full PostHog exception tracking.
+- Calls with unrecognized workflow names, outcomes, timing values or error kinds are ignored. The `before_send` sanitizer also rejects unsafe properties.
+- The workflow helper must be called at the actual beginning and end of each operation, including exception/cancellation paths. Simply adding the helper does **not** instrument the operation.
+- Never pass usernames, user-generated content, monetary amounts, portfolio holdings, uploaded document names/content, source code, form values, free-text labels, query parameters or raw URLs.
+
+**Reporting contract:** create an app-filtered dashboard with app opens, page views, action IDs, started/completed/failed/cancelled workflow counts, completion funnel and drop-off by `step_id`, error categories, duration bands, and release-over-release comparisons once production events exist. Retention and navigation paths require stable, actually observed event sequences. A dashboard created before deployment is not evidence of working instrumentation.
+
+**Session replay:** stays disabled. Recording cannot be enabled safely merely by setting masking options; it requires review of app-specific sensitive screens and consent/legal basis. The current sanitizer rejects recorder payload events. For actual recordings, a dedicated audited capture pipeline and proxy path will be necessary.
+
+**Free-tier operations:** monitor current PostHog billing/usage before enabling high-volume features. Use scoped events, sampling and retention appropriate to measured demand; free allowances can change. Avoid duplicating autocapture with manually emitted clicks.
+
+**Validation:** confirm the encrypted Cloudflare Pages binding, deploy the Function with the frontend, verify its static SDK route (not an HTML fallback), exercise an actual workflow, then confirm each event's allowlisted properties in PostHog Live Events. Compare started and terminal outcomes; test failed requests and rejected promises without exposing sensitive content. Verify ad blockers and offline operation degrade gracefully. Source module: `web-app/src/posthog-analytics.js`.
+
