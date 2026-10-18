@@ -60,6 +60,35 @@ function trackFeature(featureId, outcome = "started") {
   capture("feature_used", { feature_id: featureId, outcome });
 }
 
+
+/**
+ * Privacy-preserving instrumentation contract.
+ * Only predefined step identifiers, outcomes, issue types and numeric duration bands are accepted.
+ * Never pass names, financial/document content, URLs, request bodies, or exception messages.
+ */
+const WORKFLOW_STEPS = new Set(["upload","extract","ocr","review","export","download","desktop-connect"]);
+const WORKFLOW_RESULTS = new Set(["started", "completed", "failed", "cancelled"]);
+const ISSUE_KINDS = new Set(["runtime", "promise", "network", "validation", "timeout", "render", "storage", "unknown"]);
+function trackWorkflow(step, outcome = "started") {
+  if (WORKFLOW_STEPS.has(step) && WORKFLOW_RESULTS.has(outcome)) {
+    capture("workflow_step", { step_id: step, outcome });
+  }
+}
+function trackIssue(kind) {
+  if (ISSUE_KINDS.has(kind)) capture("client_issue", { issue_kind: kind });
+}
+function trackTiming(step, elapsedMs) {
+  if (!WORKFLOW_STEPS.has(step) || !Number.isFinite(elapsedMs) || elapsedMs < 0) return;
+  const durationBand = elapsedMs < 100 ? "under_100ms" :
+    elapsedMs < 500 ? "100_499ms" : elapsedMs < 2000 ? "500_1999ms" :
+    elapsedMs < 10000 ? "2_9s" : "10s_plus";
+  capture("workflow_timing", { step_id: step, duration_band: durationBand });
+}
+function installIssueTracking() {
+  window.addEventListener("error", () => trackIssue("runtime"));
+  window.addEventListener("unhandledrejection", () => trackIssue("promise"));
+}
+
 function capturePageView() {
   if (!TRACKING_OPTIONS.pageViews) return;
   const routeId = currentRouteId();
@@ -92,6 +121,22 @@ function safeEvent(event) {
       const outcome = properties.outcome;
       if (!ACTION_IDS.has(featureId) || !OUTCOMES.has(outcome)) return null;
       safeProperties = { app_name: appName, route_id: currentRouteId(), feature_id: featureId, outcome };
+      break;
+    }
+    case "workflow_step": {
+      if (!WORKFLOW_STEPS.has(properties.step_id) || !WORKFLOW_RESULTS.has(properties.outcome)) return null;
+      safeProperties = { app_name: appName, route_id: currentRouteId(), step_id: properties.step_id, outcome: properties.outcome };
+      break;
+    }
+    case "client_issue": {
+      if (!ISSUE_KINDS.has(properties.issue_kind)) return null;
+      safeProperties = { app_name: appName, route_id: currentRouteId(), issue_kind: properties.issue_kind };
+      break;
+    }
+    case "workflow_timing": {
+      const allowedBands = ["under_100ms", "100_499ms", "500_1999ms", "2_9s", "10s_plus"];
+      if (!WORKFLOW_STEPS.has(properties.step_id) || !allowedBands.includes(properties.duration_band)) return null;
+      safeProperties = { app_name: appName, route_id: currentRouteId(), step_id: properties.step_id, duration_band: properties.duration_band };
       break;
     }
     case "$feature_flag_called": {
@@ -189,6 +234,7 @@ function posthogOptions() {
       }
       instance.capture("product_opened", { app_name: appName });
       installInteractionTracking(instance);
+      installIssueTracking();
       capturePageView();
       window.addEventListener("popstate", capturePageView);
     }
@@ -236,7 +282,7 @@ function getPosthogStub() {
   return posthog;
 }
 
-window.__APP_ANALYTICS__ = Object.freeze({ trackFeature, trackPageView: capturePageView });
+window.__APP_ANALYTICS__ = Object.freeze({ trackFeature, trackWorkflow, trackIssue, trackTiming, trackPageView: capturePageView });
 
 if (productionBuild && TRACKING_OPTIONS.analytics && projectToken) {
   getPosthogStub().init(projectToken, posthogOptions());
