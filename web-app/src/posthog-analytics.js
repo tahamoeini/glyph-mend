@@ -89,6 +89,58 @@ function installIssueTracking() {
   window.addEventListener("unhandledrejection", () => trackIssue("promise"));
 }
 
+
+/** Coarse, content-free browser performance signals; not canonical Core Web Vitals. */
+const PERF_METRICS = new Set(["ttfb", "fcp", "lcp", "cls"]);
+const PERF_BANDS = new Set(["under_800ms", "800_2500ms", "2500_4000ms", "over_4000ms", "low", "medium", "high"]);
+function trackPerformanceMetric(metric, value) {
+  if (!PERF_METRICS.has(metric) || !Number.isFinite(value) || value < 0) return;
+  const band = metric === "cls"
+    ? value <= 0.1 ? "low" : value <= 0.25 ? "medium" : "high"
+    : value < 800 ? "under_800ms" : value < 2500 ? "800_2500ms" : value < 4000 ? "2500_4000ms" : "over_4000ms";
+  capture("client_performance", { metric_id: metric, metric_band: band });
+}
+function installPerformanceTracking() {
+  const navigation = window.performance?.getEntriesByType?.("navigation")?.[0];
+  if (navigation && Number.isFinite(navigation.responseStart)) {
+    trackPerformanceMetric("ttfb", navigation.responseStart);
+  }
+  if (typeof PerformanceObserver === "undefined") return;
+  try {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.name === "first-contentful-paint") {
+          trackPerformanceMetric("fcp", entry.startTime);
+          observer.disconnect();
+          break;
+        }
+      }
+    });
+    observer.observe({ type: "paint", buffered: true });
+  } catch { /* Unsupported performance observer type. */ }
+  let lcp = -1;
+  let cls = 0;
+  try {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) lcp = entry.startTime;
+    });
+    observer.observe({ type: "largest-contentful-paint", buffered: true });
+  } catch { /* Unsupported observer type. */ }
+  try {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        const shift = entry;
+        if (!shift.hadRecentInput && Number.isFinite(shift.value)) cls += shift.value;
+      }
+    });
+    observer.observe({ type: "layout-shift", buffered: true });
+  } catch { /* Unsupported observer type. */ }
+  window.addEventListener("pagehide", () => {
+    if (lcp >= 0) trackPerformanceMetric("lcp", lcp);
+    trackPerformanceMetric("cls", cls);
+  }, { once: true });
+}
+
 function capturePageView() {
   if (!TRACKING_OPTIONS.pageViews) return;
   const routeId = currentRouteId();
@@ -137,6 +189,11 @@ function safeEvent(event) {
       const allowedBands = ["under_100ms", "100_499ms", "500_1999ms", "2_9s", "10s_plus"];
       if (!WORKFLOW_STEPS.has(properties.step_id) || !allowedBands.includes(properties.duration_band)) return null;
       safeProperties = { app_name: appName, route_id: currentRouteId(), step_id: properties.step_id, duration_band: properties.duration_band };
+      break;
+    }
+    case "client_performance": {
+      if (typeof properties.metric_id !== "string" || typeof properties.metric_band !== "string" || !PERF_METRICS.has(properties.metric_id) || !PERF_BANDS.has(properties.metric_band)) return null;
+      safeProperties = { app_name: appName, route_id: currentRouteId(), metric_id: properties.metric_id, metric_band: properties.metric_band };
       break;
     }
     case "$feature_flag_called": {
@@ -235,6 +292,7 @@ function posthogOptions() {
       instance.capture("product_opened", { app_name: appName });
       installInteractionTracking(instance);
       installIssueTracking();
+      installPerformanceTracking();
       capturePageView();
       window.addEventListener("popstate", capturePageView);
     }
@@ -282,7 +340,7 @@ function getPosthogStub() {
   return posthog;
 }
 
-window.__APP_ANALYTICS__ = Object.freeze({ trackFeature, trackWorkflow, trackIssue, trackTiming, trackPageView: capturePageView });
+window.__APP_ANALYTICS__ = Object.freeze({ trackFeature, trackWorkflow, trackIssue, trackTiming, trackPerformanceMetric, trackPageView: capturePageView });
 
 if (productionBuild && TRACKING_OPTIONS.analytics && projectToken) {
   getPosthogStub().init(projectToken, posthogOptions());
