@@ -1111,7 +1111,7 @@ async function extract() {
     window.__APP_ANALYTICS__?.trackWorkflow("extract", skipped ? "failed" : "completed");
     toast("Extraction complete.");
   } catch (error) {
-    window.__APP_ANALYTICS__?.trackWorkflow("extract", error.aborted ? "cancelled" : "failed");
+    if (!error.aborted) window.__APP_ANALYTICS__?.trackWorkflow("extract", "failed");
     if (!error.aborted) {
       setStatus(
         error.workerCrash ? "Extraction worker failed" : "Extraction failed",
