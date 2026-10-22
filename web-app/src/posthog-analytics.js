@@ -46,7 +46,10 @@ let interactionTrackingInstalled = false;
 let lastPageRoute = "";
 
 function currentRouteId() {
-  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const pathname = typeof window !== "undefined" && typeof window.location?.pathname === "string"
+    ? window.location.pathname
+    : "/";
+  const path = pathname.replace(/\/+$/, "") || "/";
   return routeLabels[path] || "other";
 }
 
@@ -256,7 +259,6 @@ function installInteractionTracking(instance) {
       ? requestedAction
       : ACTION_LABELS.get(accessibleLabel) || "other";
     instance.capture("ui_interaction", { control_type: controlType, action_id: actionId });
-    if (actionId !== "other") instance.capture("feature_used", { feature_id: actionId, outcome: "started" });
   }, true);
 }
 
